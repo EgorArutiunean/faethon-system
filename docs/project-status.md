@@ -1,0 +1,83 @@
+# Project Status
+
+## Current Phase
+
+The application has a working Stock, Documents, Payments, Debts, Cash, Simple Auth, Reports, Export, Print Forms, and Import Lite core MVP.
+
+Implemented:
+
+- product, partner, and warehouse directories;
+- document creation with generated numbers;
+- document lines with quantity, price, and calculated totals;
+- draft document header editing;
+- draft document line deletion with total recalculation;
+- draft document deletion;
+- posted/cancelled document edit/delete protection;
+- draft document posting;
+- document cancellation;
+- stock balances;
+- stock movements;
+- audit log entries for document actions;
+- payment creation, posting, and cancellation;
+- cash operation records linked to posted/cancelled payments;
+- manual cash operations with `cash_in`, `cash_out`, and `correction` types;
+- cash balance and cash book API;
+- partner balances calculated from posted documents and posted payments;
+- partner statement API and frontend view;
+- frontend document list, document editor, stock balances, and stock movements views.
+- frontend payments list/form and partner balance/statement views;
+- frontend cash balance, cash operation form, and cash book view.
+- login with JWT access token;
+- simple role and object/action permissions;
+- demo users for admin, manager, cashier, and viewer roles;
+- frontend protected routes and permission-aware actions.
+- reports API for stock balances, stock movements, partner debts, cash book, and documents register;
+- frontend Reports page with tabs, filters, totals, loading/error/empty states, and `reports.read` access handling.
+- XLSX/CSV export for core reports using the same filters as on-screen reports.
+- HTML invoice print view for documents with protected `documents.read` access.
+- operator UX improvements for document editing, product search, current stock display, validations, confirmations, toasts, status badges, and basic table search/sort/pagination.
+- CSV/XLSX Import Lite for products, partners, warehouses, opening stock, and opening partner balances with dry-run validation.
+- business logic/CRUD audit for core entities;
+- partner split into `customer`, `supplier`, and `both` with document/payment validation and UI filters.
+- production deployment prep: `docker-compose.prod.yml`, production Dockerfiles, nginx SPA/API proxy config, env template, and PostgreSQL backup/restore scripts.
+- production Docker/PostgreSQL smoke completed successfully on 2026-05-03.
+
+## Local Runtime
+
+The target runtime is PostgreSQL through `docker-compose.yml`.
+
+Docker Compose configuration is prepared for:
+
+- `postgres` on `localhost:5432`;
+- `backend` on `localhost:8000`;
+- `frontend` on `localhost:5173`;
+- persistent `postgres_data` and `frontend_node_modules` volumes.
+
+On this machine Docker validation could not be completed on 2026-05-02 because the `docker` command is not installed or not in `PATH`. Until Docker/PostgreSQL is available, local manual testing can use the temporary SQLite fallback:
+
+```powershell
+cd backend
+$env:DATABASE_URL='sqlite:///./buy_modern_dev.db'
+python -c "from app.db.session import Base, engine; import app.db.base; Base.metadata.create_all(engine)"
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+This fallback is only for local development. PostgreSQL remains the intended database.
+
+See `docs/development-setup.md` for the PostgreSQL/Docker workflow.
+
+## Verification
+
+Latest checks:
+
+- backend tests: `80 passed`;
+- backend compileall: successful;
+- frontend TypeScript check: successful.
+- Docker Compose smoke: successful on 2026-05-03.
+- Production Docker Compose smoke: successful on 2026-05-03.
+
+Deployment smoke details: `docs/deployment-smoke.md`.
+
+## Legacy Dependency
+
+Legacy discovery is still unresolved. Any final accounting behavior must be confirmed from the legacy database/application before implementation.

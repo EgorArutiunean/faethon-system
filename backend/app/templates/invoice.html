@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Invoice {{document_number}}</title>
+  <style>
+    body { font-family: Arial, sans-serif; color: #111827; margin: 32px; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #111827; padding-bottom: 12px; }
+    h1 { font-size: 22px; margin: 0 0 8px; }
+    .muted { color: #52616f; font-size: 12px; }
+    .status { border: 1px solid #111827; padding: 4px 8px; font-weight: 700; text-transform: uppercase; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; margin: 20px 0; }
+    .label { color: #52616f; font-size: 12px; }
+    .value { font-size: 14px; font-weight: 600; }
+    table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+    th, td { border: 1px solid #9aa6b2; padding: 7px; font-size: 13px; text-align: left; }
+    th { background: #f1f5f9; }
+    .num { text-align: right; }
+    .total { margin-top: 14px; text-align: right; font-size: 16px; font-weight: 700; }
+    .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; margin-top: 54px; }
+    .signature-line { border-top: 1px solid #111827; padding-top: 6px; font-size: 12px; color: #52616f; }
+    @media print {
+      body { margin: 18mm; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <h1>Накладная {{document_number}}</h1>
+      <div class="muted">TODO LEGACY_RULE_REQUIRED: confirm final BuySell print form title, columns, and signature fields.</div>
+    </div>
+    <div class="status">{{status}}</div>
+  </div>
+
+  <div class="grid">
+    <div>
+      <div class="label">Дата</div>
+      <div class="value">{{document_date}}</div>
+    </div>
+    <div>
+      <div class="label">Тип документа</div>
+      <div class="value">{{document_type}}</div>
+    </div>
+    <div>
+      <div class="label">Склад</div>
+      <div class="value">{{warehouse_name}}</div>
+    </div>
+    <div>
+      <div class="label">Контрагент</div>
+      <div class="value">{{partner_name}}</div>
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 40px;">#</th>
+        <th>Товар</th>
+        <th class="num">Количество</th>
+        <th class="num">Цена</th>
+        <th class="num">Сумма</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{line_rows}}
+    </tbody>
+  </table>
+
+  <div class="total">Итого: {{total_amount}}</div>
+
+  <div class="signatures">
+    <div class="signature-line">Отпустил / Ответственный</div>
+    <div class="signature-line">Получил / Контрагент</div>
+  </div>
+
+  <script>
+    window.addEventListener("load", () => window.print());
+  </script>
+</body>
+</html>

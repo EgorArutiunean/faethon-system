@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { DataTable } from "../components/DataTable";
 import { PageScaffold } from "../components/PageScaffold";
+import { formatCode } from "../format";
 import { useI18n } from "../i18n";
 import { StockBalance, StockMovement, Warehouse, api } from "../lib/api";
 
@@ -81,7 +82,7 @@ export function Stock() {
             { key: "product_name", header: t("product") },
             { key: "warehouse_name", header: t("warehouse") },
             { key: "document_number", header: t("document") },
-            { key: "movement_type", header: t("movement") },
+            { key: "movement_type", header: t("movement"), render: (row) => formatCode(row.movement_type, t) },
             { key: "quantity_delta", header: t("quantity") },
             { key: "document_id", header: t("sourceId") }
           ]}

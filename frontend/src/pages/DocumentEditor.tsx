@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router-dom";
 
 import { DataTable } from "../components/DataTable";
 import { useAuth } from "../auth";
-import { formatMoney, StatusBadge } from "../format";
+import { formatCode, formatMoney, StatusBadge } from "../format";
 import { useI18n } from "../i18n";
 import { useToast } from "../toast";
 import { Document, Partner, Product, Warehouse, api } from "../lib/api";
@@ -246,7 +246,7 @@ export function DocumentEditor() {
             <option value="transfer">{t("transfer")}</option>
           </select>
         </div>
-        <div className="field"><label>{t("status")}</label><div style={{ paddingTop: 5 }}><StatusBadge status={document?.status} /></div></div>
+        <div className="field"><label>{t("status")}</label><div style={{ paddingTop: 5 }}><StatusBadge status={document?.status} label={formatCode(document?.status, t)} /></div></div>
         <div className="field"><label>{t("number")}</label><input value={header.number} onChange={(event) => setHeader({ ...header, number: event.target.value })} disabled={!isDraft} /></div>
         <div className="field"><label>{t("date")}</label><input type="date" value={header.document_date} onChange={(event) => setHeader({ ...header, document_date: event.target.value })} disabled={!isDraft} /></div>
         <div className="field">

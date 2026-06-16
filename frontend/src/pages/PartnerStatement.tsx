@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 
 import { DataTable } from "../components/DataTable";
 import { PageScaffold } from "../components/PageScaffold";
+import { formatCode } from "../format";
 import { useI18n } from "../i18n";
 import { PartnerBalance, PartnerStatementRow, api } from "../lib/api";
 
@@ -38,12 +39,12 @@ export function PartnerStatement() {
         emptyMessage={t("noStatement")}
         columns={[
           { key: "date", header: t("date") },
-          { key: "source_type", header: t("source") },
+          { key: "source_type", header: t("source"), render: (row) => formatCode(row.source_type, t) },
           { key: "source_number", header: t("number") },
           { key: "debit", header: t("debit") },
           { key: "credit", header: t("credit") },
           { key: "balance", header: t("balance") },
-          { key: "status", header: t("status") }
+          { key: "status", header: t("status"), render: (row) => formatCode(row.status, t) }
         ]}
       />
       <p style={{ color: "#52616f", fontSize: 13 }}>

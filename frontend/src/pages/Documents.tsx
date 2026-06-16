@@ -4,7 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { DataTable } from "../components/DataTable";
 import { PageScaffold } from "../components/PageScaffold";
 import { useAuth } from "../auth";
-import { formatDate, formatMoney, StatusBadge } from "../format";
+import { formatCode, formatDate, formatMoney, StatusBadge } from "../format";
 import { useI18n } from "../i18n";
 import { useToast } from "../toast";
 import { Document, api } from "../lib/api";
@@ -97,7 +97,7 @@ export function Documents() {
         <div className="field"><label>{t("type")}</label><select><option>{t("incoming")}</option><option>{t("outgoing")}</option><option>{t("adjustment")}</option><option>{t("transfer")}</option></select></div>
         <div className="field"><label>{t("number")}</label><input /></div>
         <div className="field"><label>{t("date")}</label><input type="date" /></div>
-        <div className="field"><label>{t("status")}</label><select><option>draft</option><option>posted</option><option>cancelled</option></select></div>
+        <div className="field"><label>{t("status")}</label><select><option>{t("draft")}</option><option>{t("posted")}</option><option>{t("cancelled")}</option></select></div>
       </div>
       <div className="toolbar">
         <button className="button primary" title={!can("documents.create") ? t("noPermission") : ""} disabled={!can("documents.create")} onClick={createDraft}>{t("createDocument")}</button>
@@ -109,10 +109,10 @@ export function Documents() {
         searchable
         columns={[
           { key: "id", header: "ID", sortable: true, render: (row) => <Link to={`/documents/${row.id}`}>{row.id}</Link> },
-          { key: "document_type", header: t("type"), sortable: true, render: (row) => t(row.document_type as Parameters<typeof t>[0]) },
+          { key: "document_type", header: t("type"), sortable: true, render: (row) => formatCode(row.document_type, t) },
           { key: "number", header: t("number"), sortable: true },
           { key: "document_date", header: t("date"), sortable: true, render: (row) => formatDate(row.document_date) },
-          { key: "status", header: t("status"), sortable: true, render: (row) => <StatusBadge status={row.status} /> },
+          { key: "status", header: t("status"), sortable: true, render: (row) => <StatusBadge status={row.status} label={formatCode(row.status, t)} /> },
           { key: "partner_name", header: t("partner"), sortable: true },
           { key: "warehouse_name", header: t("warehouse"), sortable: true },
           { key: "destination_warehouse_name", header: t("destinationWarehouse"), sortable: true },

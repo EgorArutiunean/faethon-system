@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { DataTable } from "../components/DataTable";
 import { PageScaffold } from "../components/PageScaffold";
 import { useAuth } from "../auth";
-import { formatDate, formatMoney, StatusBadge } from "../format";
+import { formatCode, formatDate, formatMoney, StatusBadge } from "../format";
 import { useI18n } from "../i18n";
 import { CashBookRow, api } from "../lib/api";
 
@@ -70,9 +70,9 @@ export function Cash() {
         <div className="field">
           <label>{t("type")}</label>
           <select value={operationType} onChange={(event) => setOperationType(event.target.value)}>
-            <option value="cash_in">cash_in</option>
-            <option value="cash_out">cash_out</option>
-            <option value="correction">correction</option>
+            <option value="cash_in">{t("cashIn")}</option>
+            <option value="cash_out">{t("cashOut")}</option>
+            <option value="correction">{t("correction")}</option>
           </select>
         </div>
         <div className="field"><label>{t("amount")}</label><input value={amount} onChange={(event) => setAmount(event.target.value)} /></div>
@@ -86,11 +86,11 @@ export function Cash() {
         searchable
         columns={[
           { key: "operation_date", header: t("date"), sortable: true, render: (row) => formatDate(row.operation_date) },
-          { key: "operation_type", header: t("type"), sortable: true },
+          { key: "operation_type", header: t("type"), sortable: true, render: (row) => formatCode(row.operation_type, t) },
           { key: "amount", header: t("amount"), sortable: true, render: (row) => formatMoney(row.amount) },
           { key: "partner_name", header: t("partner"), sortable: true },
           { key: "payment_id", header: t("payment"), sortable: true },
-          { key: "status", header: t("status"), sortable: true, render: (row) => <StatusBadge status={row.status} /> },
+          { key: "status", header: t("status"), sortable: true, render: (row) => <StatusBadge status={row.status} label={formatCode(row.status, t)} /> },
           { key: "balance", header: t("balance"), sortable: true, render: (row) => formatMoney(row.balance) },
           { key: "note", header: t("note") },
           {

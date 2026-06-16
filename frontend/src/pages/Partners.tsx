@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { DataTable } from "../components/DataTable";
 import { PageScaffold } from "../components/PageScaffold";
 import { useAuth } from "../auth";
-import { formatMoney } from "../format";
+import { formatCode, formatMoney } from "../format";
 import { useI18n } from "../i18n";
 import { Partner, PartnerBalance, api } from "../lib/api";
 
@@ -108,11 +108,11 @@ export function Partners() {
         columns={[
           { key: "code", header: t("code"), sortable: true },
           { key: "name", header: t("name"), sortable: true },
-          { key: "partner_type", header: t("partnerType"), sortable: true, render: (row) => t(row.partner_type) },
+          { key: "partner_type", header: t("partnerType"), sortable: true, render: (row) => formatCode(row.partner_type, t) },
           { key: "phone", header: t("phone"), sortable: true },
           { key: "balance", header: t("balance"), sortable: true, render: (row) => formatMoney(row.balance) },
           { key: "statement", header: t("partnerStatement"), render: (row) => <Link to={`/partners/${row.id}/statement`}>{t("open")}</Link> },
-          { key: "is_active", header: t("active"), sortable: true },
+          { key: "is_active", header: t("active"), sortable: true, render: (row) => row.is_active ? t("yes") : t("no") },
           {
             key: "actions",
             header: t("actions"),

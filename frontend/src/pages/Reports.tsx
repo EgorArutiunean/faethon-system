@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { DataTable } from "../components/DataTable";
 import { useAuth } from "../auth";
+import { formatCode } from "../format";
 import { useI18n } from "../i18n";
 import { useToast } from "../toast";
 import {
@@ -188,9 +189,9 @@ export function Reports() {
             <label>{t("operationType")}</label>
             <select value={operationType} onChange={(event) => setOperationType(event.target.value)}>
               <option value="">{t("all")}</option>
-              <option value="cash_in">cash_in</option>
-              <option value="cash_out">cash_out</option>
-              <option value="correction">correction</option>
+              <option value="cash_in">{t("cashIn")}</option>
+              <option value="cash_out">{t("cashOut")}</option>
+              <option value="correction">{t("correction")}</option>
             </select>
           </div>
         ) : null}
@@ -199,9 +200,9 @@ export function Reports() {
             <label>{t("status")}</label>
             <select value={status} onChange={(event) => setStatus(event.target.value)}>
               <option value="">{t("all")}</option>
-              <option value="draft">draft</option>
-              <option value="posted">posted</option>
-              <option value="cancelled">cancelled</option>
+              <option value="draft">{t("draft")}</option>
+              <option value="posted">{t("posted")}</option>
+              <option value="cancelled">{t("cancelled")}</option>
             </select>
           </div>
         ) : null}
@@ -243,7 +244,7 @@ export function Reports() {
             { key: "product_name", header: t("product") },
             { key: "warehouse_name", header: t("warehouse") },
             { key: "document_number", header: t("document") },
-            { key: "movement_type", header: t("movement") },
+            { key: "movement_type", header: t("movement"), render: (row) => formatCode(row.movement_type, t) },
             { key: "quantity_delta", header: t("quantity") }
           ]} />
         </>
@@ -254,7 +255,7 @@ export function Reports() {
           <div className="panel summary-row">{t("totalPartnerDebt")}: {partnerDebts.total_partner_debt}</div>
           <DataTable rows={partnerDebts.rows} emptyMessage={t("noReportRows")} columns={[
             { key: "partner_name", header: t("partner") },
-            { key: "partner_type", header: t("partnerType"), render: (row) => t(row.partner_type) },
+            { key: "partner_type", header: t("partnerType"), render: (row) => formatCode(row.partner_type, t) },
             { key: "balance", header: t("balance") }
           ]} />
         </>
@@ -267,8 +268,8 @@ export function Reports() {
           </div>
           <DataTable rows={cashBook.rows} emptyMessage={t("noReportRows")} columns={[
             { key: "operation_date", header: t("date") },
-            { key: "operation_type", header: t("type") },
-            { key: "status", header: t("status") },
+            { key: "operation_type", header: t("type"), render: (row) => formatCode(row.operation_type, t) },
+            { key: "status", header: t("status"), render: (row) => formatCode(row.status, t) },
             { key: "partner_name", header: t("partner") },
             { key: "payment_id", header: t("payment") },
             { key: "amount", header: t("amount") },
@@ -283,8 +284,8 @@ export function Reports() {
           <DataTable rows={documentsRegister.rows} emptyMessage={t("noReportRows")} columns={[
             { key: "document_date", header: t("date") },
             { key: "document_number", header: t("number") },
-            { key: "document_type", header: t("type"), render: (row) => t(row.document_type as Parameters<typeof t>[0]) },
-            { key: "status", header: t("status") },
+            { key: "document_type", header: t("type"), render: (row) => formatCode(row.document_type, t) },
+            { key: "status", header: t("status"), render: (row) => formatCode(row.status, t) },
             { key: "partner_name", header: t("partner") },
             { key: "warehouse_name", header: t("warehouse") },
             { key: "destination_warehouse_name", header: t("destinationWarehouse") },

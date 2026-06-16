@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { DataTable } from "../components/DataTable";
 import { PageScaffold } from "../components/PageScaffold";
 import { useAuth } from "../auth";
-import { formatDate, formatMoney, StatusBadge } from "../format";
+import { formatCode, formatDate, formatMoney, StatusBadge } from "../format";
 import { useI18n } from "../i18n";
 import { Partner, Payment, api } from "../lib/api";
 
@@ -93,9 +93,9 @@ export function Payments() {
         <div className="field">
           <label>{t("type")}</label>
           <select value={paymentType} onChange={(event) => setPaymentTypeChecked(event.target.value)}>
-            <option value="customer_payment">customer_payment</option>
-            <option value="supplier_payment">supplier_payment</option>
-            <option value="refund">refund</option>
+            <option value="customer_payment">{t("customerPayment")}</option>
+            <option value="supplier_payment">{t("supplierPayment")}</option>
+            <option value="refund">{t("refund")}</option>
           </select>
         </div>
         <div className="field"><label>{t("amount")}</label><input value={amount} onChange={(event) => setAmount(event.target.value)} /></div>
@@ -103,7 +103,7 @@ export function Payments() {
           <label>{t("method")}</label>
           <select value={method} onChange={(event) => setMethod(event.target.value)}>
             <option value="cash">{t("cash")}</option>
-            <option value="bank">Bank</option>
+            <option value="bank">{t("bank")}</option>
           </select>
         </div>
         <div className="field"><label>&nbsp;</label><button className="button primary" title={!can("payments.create") ? t("noPermission") : ""} disabled={!can("payments.create")} onClick={create}>{t("createPayment")}</button></div>
@@ -117,14 +117,14 @@ export function Payments() {
           { key: "payment_date", header: t("date"), sortable: true, render: (row) => formatDate(row.payment_date) },
           { key: "partner_name", header: t("partner"), sortable: true },
           { key: "document_number", header: t("document"), sortable: true },
-          { key: "payment_type", header: t("type"), sortable: true },
+          { key: "payment_type", header: t("type"), sortable: true, render: (row) => formatCode(row.payment_type, t) },
           { key: "amount", header: t("amount"), sortable: true, render: (row) => formatMoney(row.amount) },
-          { key: "method", header: t("method"), sortable: true },
-          { key: "status", header: t("status"), sortable: true, render: (row) => <StatusBadge status={row.status} /> },
+          { key: "method", header: t("method"), sortable: true, render: (row) => formatCode(row.method, t) },
+          { key: "status", header: t("status"), sortable: true, render: (row) => <StatusBadge status={row.status} label={formatCode(row.status, t)} /> },
           {
             key: "cash_operation_status",
             header: t("cash"),
-            render: (row) => row.cash_operation_id ? `#${row.cash_operation_id} ${row.cash_operation_status ?? ""}` : ""
+            render: (row) => row.cash_operation_id ? `#${row.cash_operation_id} ${formatCode(row.cash_operation_status, t)}` : ""
           },
           {
             key: "actions",

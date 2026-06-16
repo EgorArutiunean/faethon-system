@@ -77,7 +77,7 @@ export function Products() {
           { key: "sku", header: "SKU", sortable: true },
           { key: "name", header: t("name"), sortable: true },
           { key: "base_price", header: t("basePrice"), sortable: true, render: (row) => formatMoney(row.base_price) },
-          { key: "is_active", header: t("active"), sortable: true },
+          { key: "is_active", header: t("active"), sortable: true, render: (row) => row.is_active ? t("yes") : t("no") },
           {
             key: "actions",
             header: t("actions"),

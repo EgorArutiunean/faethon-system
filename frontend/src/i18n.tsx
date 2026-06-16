@@ -388,10 +388,7 @@ type I18nContextValue = {
 const I18nContext = createContext<I18nContextValue | null>(null);
 
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguageState] = useState<Language>(() => {
-    const saved = localStorage.getItem("buy-modern-language");
-    return saved === "ru" || saved === "en" ? saved : "ru";
-  });
+  const [language, setLanguageState] = useState<Language>("ru");
 
   const value = useMemo<I18nContextValue>(() => {
     function setLanguage(nextLanguage: Language) {

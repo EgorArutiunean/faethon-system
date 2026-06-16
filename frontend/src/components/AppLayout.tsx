@@ -29,7 +29,7 @@ const nav = [
 ];
 
 export function AppLayout() {
-  const { language, setLanguage, t } = useI18n();
+  const { t } = useI18n();
   const { user, logout, can } = useAuth();
   const visibleNav = nav.filter((item) => item.to !== "/settings" || can("settings.manage"));
   return (
@@ -55,10 +55,6 @@ export function AppLayout() {
         <header className="header">
           <strong>{t("operationalWorkspace")}</strong>
           <div style={{ display: "flex", gap: 8 }}>
-            <div className="language-switcher" aria-label="Language switcher">
-              <button className={`button ${language === "ru" ? "primary" : ""}`} onClick={() => setLanguage("ru")}>RU</button>
-              <button className={`button ${language === "en" ? "primary" : ""}`} onClick={() => setLanguage("en")}>EN</button>
-            </div>
             <span style={{ fontSize: 13, color: "#52616f" }}>
               {user?.email} {user?.role_names[0] ? `(${t("role")}: ${user.role_names[0]})` : ""}
             </span>

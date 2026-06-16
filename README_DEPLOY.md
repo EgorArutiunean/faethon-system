@@ -4,12 +4,53 @@ This guide describes deployment on a real server with Docker Compose and Postgre
 
 Do not commit real production credentials. Use `.env.production.example` as a template only.
 
+## Current Deployment Decision
+
+As of 2026-06-16 the immediate target is GitHub publication, not a live server deployment.
+
+- GitHub target: `EgorArutiunean/faethon-system`.
+- The repository `main` branch should contain this `buy-modern` codebase.
+- The previous remote Vite/MUI prototype is considered superseded.
+- A live production deployment remains blocked until server access, production secrets, and the required legacy data set are ready.
+
+Before a production server launch, complete `docs/legacy-data-readiness.md` and rerun the production smoke checklist below.
+
 ## Requirements
 
 - Linux server or Windows server with Docker Desktop / Docker Engine.
 - Docker Compose v2.
 - Open inbound HTTP port, default `80`.
 - Enough disk space for PostgreSQL data and backups.
+- Production values for PostgreSQL credentials, `AUTH_SECRET_KEY`, public origin, and backup retention.
+
+## GitHub Publication
+
+Use this when publishing the codebase before server access is available.
+
+1. Confirm the working tree is clean and ignored secrets are not tracked:
+
+```bash
+git status --ignored --short
+```
+
+2. Run checks:
+
+```bash
+cd backend && python -m pytest
+cd backend && python -m compileall app
+cd frontend && npm run lint
+cd frontend && npm run build
+```
+
+3. Point the local repository at GitHub and publish `main`:
+
+```bash
+git remote add origin https://github.com/EgorArutiunean/faethon-system.git
+git branch -M main
+git push --force-with-lease origin main
+```
+
+Use `--force-with-lease` only for the planned replacement of the current remote prototype. Do not use it after the repository becomes the active source of truth.
 
 ## First Deploy
 
@@ -52,6 +93,8 @@ The demo users are for controlled deployments and should be changed or disabled 
 docker compose --env-file .env.production -f docker-compose.prod.yml ps
 curl http://localhost/health
 ```
+
+7. Run the manual smoke scenarios listed under Update Procedure.
 
 ## Verified Smoke
 
@@ -131,6 +174,8 @@ docker compose --env-file .env.production -f docker-compose.prod.yml up -d
 ```
 
 6. Smoke test login, documents, stock, payments, cash, reports, export, print, and import dry-run.
+
+7. Verify migrated legacy totals against `docs/legacy-data-readiness.md`.
 
 ## Rollback Basics
 

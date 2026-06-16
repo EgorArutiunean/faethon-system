@@ -1,8 +1,10 @@
-# Buy Modern
+# Faethon System / Buy Modern
 
 Modern replacement scaffold for the legacy BuySell accounting/warehouse application.
 
 Legacy discovery continues under `migration/legacy_discovery`. The new app does not mechanically copy the old InterBase schema; business rules that still need confirmation are marked with `TODO LEGACY_RULE_REQUIRED`.
+
+This repository is intended to be published as `EgorArutiunean/faethon-system`. The current codebase is the working `buy-modern` MVP that replaces the earlier Vite/MUI prototype in that GitHub repository.
 
 ## Stack
 
@@ -92,6 +94,21 @@ make test      # backend tests
 make smoke     # docker compose ps
 ```
 
+## Publication Status
+
+Current target:
+
+- publish this codebase to GitHub `main`;
+- keep production credentials, local databases, logs, build output, downloaded Firebird tools, and legacy working copies out of version control;
+- prepare for a future Docker Compose production deployment after server access and production secrets are available.
+
+Verification on 2026-06-16:
+
+- backend tests: `80 passed`;
+- backend compileall: successful;
+- frontend TypeScript check: successful;
+- frontend production build: successful.
+
 ## Current Scope
 
 Implemented:
@@ -108,8 +125,8 @@ Not implemented yet:
 - final legacy-compatible accounting behavior;
 - PDF print generation;
 - advanced report builder;
-- legacy data import.
+- full legacy data import.
 
-Those depend on legacy discovery and must be implemented only after the legacy behavior is confirmed.
+Those depend on legacy discovery and must be implemented only after the legacy behavior is confirmed. Production launch is gated on a verified data migration plan; see `docs/legacy-data-readiness.md`.
 
 See also: `docs/development-setup.md`.

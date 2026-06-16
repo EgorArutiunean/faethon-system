@@ -4,6 +4,8 @@
 
 The application has a working Stock, Documents, Payments, Debts, Cash, Simple Auth, Reports, Export, Print Forms, and Import Lite core MVP.
 
+As of 2026-06-16, the next delivery step is publication of this codebase to `EgorArutiunean/faethon-system` on GitHub. Live production deployment is intentionally deferred until server access and legacy data readiness are complete.
+
 Implemented:
 
 - product, partner, and warehouse directories;
@@ -53,7 +55,7 @@ Docker Compose configuration is prepared for:
 - `frontend` on `localhost:5173`;
 - persistent `postgres_data` and `frontend_node_modules` volumes.
 
-On this machine Docker validation could not be completed on 2026-05-02 because the `docker` command is not installed or not in `PATH`. Until Docker/PostgreSQL is available, local manual testing can use the temporary SQLite fallback:
+Docker is currently available on this machine. If Docker/PostgreSQL is unavailable in another environment, local manual testing can use the temporary SQLite fallback:
 
 ```powershell
 cd backend
@@ -70,9 +72,10 @@ See `docs/development-setup.md` for the PostgreSQL/Docker workflow.
 
 Latest checks:
 
-- backend tests: `80 passed`;
-- backend compileall: successful;
-- frontend TypeScript check: successful.
+- backend tests: `80 passed` on 2026-06-16;
+- backend compileall: successful on 2026-06-16;
+- frontend TypeScript check: successful on 2026-06-16;
+- frontend production build: successful on 2026-06-16.
 - Docker Compose smoke: successful on 2026-05-03.
 - Production Docker Compose smoke: successful on 2026-05-03.
 
@@ -81,3 +84,5 @@ Deployment smoke details: `docs/deployment-smoke.md`.
 ## Legacy Dependency
 
 Legacy discovery is still unresolved. Any final accounting behavior must be confirmed from the legacy database/application before implementation.
+
+The required production data set includes products, warehouses, partners, stock balances, debts, cash, documents, and payments. Because direct `BUY.GDB` access is still blocked by InterBase/ODS compatibility, the first migration path is a controlled manual minimum documented in `docs/legacy-data-readiness.md`.

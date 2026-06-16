@@ -44,6 +44,8 @@ export type Document = {
   partner_name?: string | null;
   warehouse_id?: number | null;
   warehouse_name?: string | null;
+  destination_warehouse_id?: number | null;
+  destination_warehouse_name?: string | null;
   total_amount: string;
   note?: string | null;
   lines?: DocumentLine[];
@@ -167,6 +169,8 @@ export type DocumentsRegisterReportRow = {
   partner_name?: string | null;
   warehouse_id?: number | null;
   warehouse_name?: string | null;
+  destination_warehouse_id?: number | null;
+  destination_warehouse_name?: string | null;
   total_amount: string;
 };
 

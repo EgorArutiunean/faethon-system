@@ -29,9 +29,9 @@ Risk rule:
 | Warehouses | CRUD, safe delete when unused | implemented | Keep as baseline |
 | Partners | `customer`, `supplier`, `both`; document/payment validation uses type | assumed | Confirm old customer/supplier model |
 | Documents | `draft`, `posted`, `cancelled`; draft editable; posted/cancelled read-only | assumed | Confirm lifecycle and deletion rules |
-| Numbering | `IN-000001`, `OUT-000001`, `ADJ-000001` per document type | assumed | Replace if old numbering differs |
-| Stock posting | incoming adds, outgoing subtracts, adjustment sets target stock | assumed | Confirm before final accounting parity |
-| Negative stock | outgoing is blocked when stock is insufficient | assumed | Confirm whether old program allowed exceptions |
+| Numbering | `IN-000001`, `OUT-000001`, `ADJ-000001`, `TR-000001` per document type | assumed | Replace if old numbering differs |
+| Stock posting | incoming adds, outgoing subtracts, adjustment sets target stock, transfer moves between warehouses without partner/debt effect | confirmed | Commercial default selected |
+| Negative stock | outgoing and transfer posting are blocked when stock is insufficient | confirmed | Commercial default selected |
 | Cancellation | posted document creates reverse stock movements; blocked if reversal makes stock negative | assumed | Confirm dependency behavior |
 | Debts | outgoing increases customer debt; incoming reduces supplier balance; adjustment ignored | assumed | Confirm signs and supplier presentation |
 | Payments | customer payment, supplier payment, refund; posted payments affect balances | assumed | Confirm refund and allocation rules |
@@ -49,14 +49,14 @@ These questions must be answered before changing accounting rules for documents 
 
 | ID | Priority | Question | Current assumption | Status | Code/test impact |
 | --- | --- | --- | --- | --- | --- |
-| DOC-001 | P0 | What document types existed in the old program? | incoming, outgoing, adjustment | question | Models, UI labels, posting rules, reports |
-| DOC-002 | P0 | How were document numbers generated? | Global sequence per type with `IN/OUT/ADJ` prefixes | question | `documents_service._generate_document_number`, tests |
+| DOC-001 | P0 | What document types should exist at launch? | incoming, outgoing, adjustment, transfer | confirmed | Models, UI labels, posting rules, reports |
+| DOC-002 | P0 | How were document numbers generated? | Global sequence per type with `IN/OUT/ADJ/TR` prefixes | assumed | `documents_service._generate_document_number`, tests |
 | DOC-003 | P0 | Could users edit a posted document directly? | No; posted documents are read-only | question | API update guards, frontend disabled states |
 | DOC-004 | P0 | Could users delete posted or cancelled documents? | No; only draft documents can be deleted | question | Delete endpoint behavior, audit policy |
 | DOC-005 | P0 | What happened when cancelling a posted document after later documents consumed its stock? | Block cancellation if reversal makes stock negative | question | Cancellation algorithm and error messages |
-| DOC-006 | P0 | Did the old program allow selling more than available stock? | No; insufficient stock blocks posting | question | Posting validation, role exceptions |
-| DOC-007 | P0 | What did an adjustment document line mean? | Target final stock quantity | question | Adjustment delta calculation, import opening stock |
-| DOC-008 | P0 | Were warehouse transfers a separate document type? | Not implemented | question | New document type or transfer workflow |
+| DOC-006 | P0 | Should the app allow selling or transferring more than available stock? | No; insufficient stock blocks posting | confirmed | Posting validation, role exceptions |
+| DOC-007 | P0 | What should an adjustment document line mean? | Target final stock quantity | confirmed | Adjustment delta calculation, import opening stock |
+| DOC-008 | P0 | Should warehouse transfers be a separate document type? | Yes | confirmed | New document type and transfer workflow |
 | DOC-009 | P0 | Did stock have valuation/cost accounting or only quantities? | Quantities only in current stock reports | question | Stock models, reports, import data |
 | DOC-010 | P0 | Which date controls stock movement date: document date or posting time? | Movement rows use created timestamp in reports | question | Movement schema/report filters |
 
@@ -98,6 +98,7 @@ These questions must be answered before changing accounting rules for documents 
 ## Confirmed Decisions
 
 - UI-001: the application interface must be in Russian. English may remain as an internal fallback dictionary, but users should not switch the active UI to English.
+- DOC-001/DOC-006/DOC-007/DOC-008: use commercial stock-accounting defaults. Launch document types are incoming, outgoing, adjustment, and transfer. Outgoing/transfer cannot make stock negative. Adjustment quantity means target final stock. Transfer is a warehouse-to-warehouse document with source and destination warehouses and no partner/debt effect.
 
 When Egor answers a question:
 

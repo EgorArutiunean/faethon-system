@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from app.schemas.common import Timestamped
 
 DOCUMENT_STATUSES = {"draft", "posted", "cancelled"}
-DOCUMENT_TYPES = {"incoming", "outgoing", "adjustment"}
+DOCUMENT_TYPES = {"incoming", "outgoing", "adjustment", "transfer"}
 
 
 class DocumentBase(BaseModel):
@@ -16,6 +16,7 @@ class DocumentBase(BaseModel):
     status: str = "draft"
     partner_id: int | None = None
     warehouse_id: int | None = None
+    destination_warehouse_id: int | None = None
     total_amount: Decimal = Decimal("0")
     note: str | None = None
 
@@ -31,6 +32,7 @@ class DocumentUpdate(BaseModel):
     status: str | None = None
     partner_id: int | None = None
     warehouse_id: int | None = None
+    destination_warehouse_id: int | None = None
     total_amount: Decimal | None = None
     note: str | None = None
 
@@ -39,6 +41,7 @@ class DocumentRead(DocumentBase, Timestamped):
     id: int
     partner_name: str | None = None
     warehouse_name: str | None = None
+    destination_warehouse_name: str | None = None
 
 
 class DocumentLineBase(BaseModel):

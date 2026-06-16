@@ -24,7 +24,7 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 def list_documents(db: Session = Depends(get_db), skip: int = 0, limit: int = Query(default=100, le=500), search: str | None = None):
     stmt = (
         select(Document)
-        .options(selectinload(Document.partner), selectinload(Document.warehouse))
+        .options(selectinload(Document.partner), selectinload(Document.warehouse), selectinload(Document.destination_warehouse))
         .offset(skip)
         .limit(limit)
     )

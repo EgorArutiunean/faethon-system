@@ -29,6 +29,7 @@ export function DocumentEditor() {
     number: "",
     document_date: "",
     warehouse_id: "",
+    destination_warehouse_id: "",
     partner_id: "",
     note: ""
   });
@@ -40,6 +41,9 @@ export function DocumentEditor() {
     return products.filter((product) => `${product.name} ${product.sku ?? ""}`.toLowerCase().includes(search));
   }, [products, productSearch]);
   const filteredPartners = useMemo(() => {
+    if (header.document_type === "transfer" || header.document_type === "adjustment") {
+      return [];
+    }
     if (header.document_type === "incoming") {
       return partners.filter((partner) => partner.partner_type === "supplier" || partner.partner_type === "both");
     }
@@ -50,7 +54,7 @@ export function DocumentEditor() {
   }, [partners, header.document_type]);
 
   function isPartnerAllowed(partner: Partner | undefined, documentType: string) {
-    if (!partner || documentType === "adjustment") return true;
+    if (!partner || documentType === "adjustment" || documentType === "transfer") return true;
     if (documentType === "incoming") return partner.partner_type === "supplier" || partner.partner_type === "both";
     if (documentType === "outgoing") return partner.partner_type === "customer" || partner.partner_type === "both";
     return true;
@@ -65,6 +69,7 @@ export function DocumentEditor() {
         number: doc.number ?? "",
         document_date: doc.document_date,
         warehouse_id: doc.warehouse_id ? String(doc.warehouse_id) : "",
+        destination_warehouse_id: doc.destination_warehouse_id ? String(doc.destination_warehouse_id) : "",
         partner_id: doc.partner_id ? String(doc.partner_id) : "",
         note: doc.note ?? ""
       });
@@ -98,13 +103,17 @@ export function DocumentEditor() {
 
   function setDocumentType(nextType: string) {
     const currentPartner = partners.find((partner) => String(partner.id) === header.partner_id);
+    if (nextType === "transfer" || nextType === "adjustment") {
+      setHeader({ ...header, document_type: nextType, partner_id: "", destination_warehouse_id: nextType === "transfer" ? header.destination_warehouse_id : "" });
+      return;
+    }
     if (!isPartnerAllowed(currentPartner, nextType)) {
-      setHeader({ ...header, document_type: nextType, partner_id: "" });
+      setHeader({ ...header, document_type: nextType, partner_id: "", destination_warehouse_id: "" });
       setError(t("invalidPartnerForDocument"));
       showToast("warning", t("invalidPartnerForDocument"));
       return;
     }
-    setHeader({ ...header, document_type: nextType });
+    setHeader({ ...header, document_type: nextType, destination_warehouse_id: "" });
   }
 
   function handleError(exc: unknown) {
@@ -143,6 +152,7 @@ export function DocumentEditor() {
         number: header.number || null,
         document_date: header.document_date,
         warehouse_id: header.warehouse_id ? Number(header.warehouse_id) : null,
+        destination_warehouse_id: header.destination_warehouse_id ? Number(header.destination_warehouse_id) : null,
         partner_id: header.partner_id ? Number(header.partner_id) : null,
         note: header.note || null
       })
@@ -230,24 +240,34 @@ export function DocumentEditor() {
             onChange={(event) => setDocumentType(event.target.value)}
             disabled={!isDraft}
           >
-            <option>incoming</option>
-            <option>outgoing</option>
-            <option>adjustment</option>
+            <option value="incoming">{t("incoming")}</option>
+            <option value="outgoing">{t("outgoing")}</option>
+            <option value="adjustment">{t("adjustment")}</option>
+            <option value="transfer">{t("transfer")}</option>
           </select>
         </div>
         <div className="field"><label>{t("status")}</label><div style={{ paddingTop: 5 }}><StatusBadge status={document?.status} /></div></div>
         <div className="field"><label>{t("number")}</label><input value={header.number} onChange={(event) => setHeader({ ...header, number: event.target.value })} disabled={!isDraft} /></div>
         <div className="field"><label>{t("date")}</label><input type="date" value={header.document_date} onChange={(event) => setHeader({ ...header, document_date: event.target.value })} disabled={!isDraft} /></div>
         <div className="field">
-          <label>{t("warehouse")}</label>
+          <label>{header.document_type === "transfer" ? t("sourceWarehouse") : t("warehouse")}</label>
           <select value={header.warehouse_id} onChange={(event) => setHeader({ ...header, warehouse_id: event.target.value })} disabled={!isDraft}>
             <option value="">{t("notSelected")}</option>
             {warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}
           </select>
         </div>
+        {header.document_type === "transfer" ? (
+          <div className="field">
+            <label>{t("destinationWarehouse")}</label>
+            <select value={header.destination_warehouse_id} onChange={(event) => setHeader({ ...header, destination_warehouse_id: event.target.value })} disabled={!isDraft}>
+              <option value="">{t("notSelected")}</option>
+              {warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}
+            </select>
+          </div>
+        ) : null}
         <div className="field">
           <label>{t("partner")}</label>
-          <select value={header.partner_id} onChange={(event) => setHeader({ ...header, partner_id: event.target.value })} disabled={!isDraft}>
+          <select value={header.partner_id} onChange={(event) => setHeader({ ...header, partner_id: event.target.value })} disabled={!isDraft || header.document_type === "transfer" || header.document_type === "adjustment"}>
             <option value="">{t("notSelected")}</option>
             {filteredPartners.map((partner) => <option key={partner.id} value={partner.id}>{partner.name} - {t(partner.partner_type)}</option>)}
           </select>
@@ -255,6 +275,7 @@ export function DocumentEditor() {
         <div className="field"><label>{t("total")}</label><input value={formatMoney(document?.total_amount ?? "0")} readOnly /></div>
         <div className="field"><label>{t("note")}</label><input value={header.note} onChange={(event) => setHeader({ ...header, note: event.target.value })} disabled={!isDraft} /></div>
         <div className="field"><label>{t("warehouse")}</label><input value={document?.warehouse_name ?? ""} readOnly /></div>
+        <div className="field"><label>{t("destinationWarehouse")}</label><input value={document?.destination_warehouse_name ?? ""} readOnly /></div>
         <div className="field"><label>{t("partner")}</label><input value={document?.partner_name ?? ""} readOnly /></div>
       </div>
 

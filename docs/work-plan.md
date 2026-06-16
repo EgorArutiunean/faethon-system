@@ -21,7 +21,7 @@ Implemented MVP:
 - authentication with demo roles and permissions;
 - products, warehouses, and partners;
 - draft/posted/cancelled documents;
-- document lines, totals, stock posting, and cancellation;
+- document lines, totals, stock posting, warehouse transfer, and cancellation;
 - stock balances and movements;
 - payments, partner balances, and partner statements;
 - cash operations, cash balance, and cash book;
@@ -181,4 +181,3 @@ Use this order unless Egor changes priority:
 7. Complete high-priority product gaps.
 8. Run full acceptance scenarios.
 9. Prepare production server deployment.
-

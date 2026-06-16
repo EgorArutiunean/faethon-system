@@ -210,9 +210,10 @@ export function Reports() {
             <label>{t("type")}</label>
             <select value={documentType} onChange={(event) => setDocumentType(event.target.value)}>
               <option value="">{t("all")}</option>
-              <option value="incoming">incoming</option>
-              <option value="outgoing">outgoing</option>
-              <option value="adjustment">adjustment</option>
+              <option value="incoming">{t("incoming")}</option>
+              <option value="outgoing">{t("outgoing")}</option>
+              <option value="adjustment">{t("adjustment")}</option>
+              <option value="transfer">{t("transfer")}</option>
             </select>
           </div>
         ) : null}
@@ -282,10 +283,11 @@ export function Reports() {
           <DataTable rows={documentsRegister.rows} emptyMessage={t("noReportRows")} columns={[
             { key: "document_date", header: t("date") },
             { key: "document_number", header: t("number") },
-            { key: "document_type", header: t("type") },
+            { key: "document_type", header: t("type"), render: (row) => t(row.document_type as Parameters<typeof t>[0]) },
             { key: "status", header: t("status") },
             { key: "partner_name", header: t("partner") },
             { key: "warehouse_name", header: t("warehouse") },
+            { key: "destination_warehouse_name", header: t("destinationWarehouse") },
             { key: "total_amount", header: t("sum") }
           ]} />
         </>

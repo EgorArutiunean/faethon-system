@@ -19,12 +19,13 @@ Both endpoints include display names for products and warehouses.
 - Incoming: `quantity_delta = line.quantity`
 - Outgoing: `quantity_delta = -line.quantity`
 - Adjustment: `quantity_delta = line.quantity - current_balance`
+- Transfer: `quantity_delta = -line.quantity` on source warehouse and `quantity_delta = line.quantity` on destination warehouse
 - Cancellation: creates opposite deltas for original posting movements
 
-TODO LEGACY_RULE_REQUIRED: confirm whether legacy adjustment documents store target balance, correction delta, inventory fact, or another behavior.
+Commercial default: adjustment line quantity is a target final stock quantity, not a delta.
 
 ## Constraints
 
-Outgoing movement cannot make stock negative.
+Outgoing and transfer source movement cannot make stock negative.
 
-TODO LEGACY_RULE_REQUIRED: confirm whether legacy system permits negative stock for specific users, warehouses, products, or periods.
+Commercial default: negative stock is not permitted for launch.

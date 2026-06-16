@@ -11,6 +11,7 @@
 - `incoming`: increases stock.
 - `outgoing`: decreases stock.
 - `adjustment`: currently treats line quantity as target stock quantity.
+- `transfer`: moves stock from source warehouse to destination warehouse.
 
 ## Numbering
 
@@ -19,6 +20,7 @@ Current temporary numbering:
 - incoming: `IN-000001`
 - outgoing: `OUT-000001`
 - adjustment: `ADJ-000001`
+- transfer: `TR-000001`
 
 TODO LEGACY_RULE_REQUIRED: confirm legacy numbering by period, organization, document subtype, warehouse, and concurrency requirements.
 
@@ -38,7 +40,7 @@ Posting a draft document:
 7. Writes `audit_log`.
 8. Sets status to `posted`.
 
-Outgoing documents are rejected if stock is insufficient.
+Outgoing and transfer documents are rejected if source stock is insufficient. Transfer documents require source and destination warehouses, the warehouses must be different, and no partner is allowed.
 
 ## Editing
 

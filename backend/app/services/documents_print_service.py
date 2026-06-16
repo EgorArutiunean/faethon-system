@@ -28,8 +28,25 @@ def _line_rows(document: Document) -> str:
             "</tr>"
         )
     if not rows:
-        rows.append("<tr><td colspan=\"5\">No lines</td></tr>")
+        rows.append("<tr><td colspan=\"5\">Нет строк</td></tr>")
     return "\n".join(rows)
+
+
+def _document_type_label(value: str) -> str:
+    return {
+        Document.TYPE_INCOMING: "Приход",
+        Document.TYPE_OUTGOING: "Расход",
+        Document.TYPE_ADJUSTMENT: "Коррекция",
+        Document.TYPE_TRANSFER: "Перемещение",
+    }.get(value, value)
+
+
+def _status_label(value: str) -> str:
+    return {
+        Document.STATUS_DRAFT: "Черновик",
+        Document.STATUS_POSTED: "Проведён",
+        Document.STATUS_CANCELLED: "Отменён",
+    }.get(value, value)
 
 
 def get_invoice_html(db: Session, document_id: int) -> str:
@@ -39,6 +56,7 @@ def get_invoice_html(db: Session, document_id: int) -> str:
         .options(
             selectinload(Document.partner),
             selectinload(Document.warehouse),
+            selectinload(Document.destination_warehouse),
             selectinload(Document.lines).selectinload(DocumentLine.product),
         )
     )
@@ -49,9 +67,10 @@ def get_invoice_html(db: Session, document_id: int) -> str:
     values = {
         "document_number": _text(document.number or f"#{document.id}"),
         "document_date": _text(document.document_date),
-        "document_type": _text(document.document_type),
-        "status": _text(document.status),
+        "document_type": _text(_document_type_label(document.document_type)),
+        "status": _text(_status_label(document.status)),
         "warehouse_name": _text(document.warehouse_name or ""),
+        "destination_warehouse_name": _text(document.destination_warehouse_name or ""),
         "partner_name": _text(document.partner_name or ""),
         "total_amount": _text(document.total_amount),
         "line_rows": _line_rows(document),

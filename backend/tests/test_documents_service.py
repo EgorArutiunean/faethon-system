@@ -164,12 +164,103 @@ def test_document_number_is_generated_by_type(db: Session) -> None:
     incoming = make_document(db, Document.TYPE_INCOMING, warehouse.id, partner.id)
     outgoing = make_document(db, Document.TYPE_OUTGOING, warehouse.id, partner.id)
     adjustment = make_document(db, Document.TYPE_ADJUSTMENT, warehouse.id, partner.id)
+    transfer = make_document(db, Document.TYPE_TRANSFER, warehouse.id, None)
     second_incoming = make_document(db, Document.TYPE_INCOMING, warehouse.id, partner.id)
 
     assert incoming.number == "IN-000001"
     assert outgoing.number == "OUT-000001"
     assert adjustment.number == "ADJ-000001"
+    assert transfer.number == "TR-000001"
     assert second_incoming.number == "IN-000002"
+
+
+def test_transfer_moves_stock_between_warehouses(db: Session) -> None:
+    product, source, partner = seed_catalog(db)
+    destination = Warehouse(name="Retail", code="RET")
+    db.add(destination)
+    db.commit()
+    incoming = make_document(db, Document.TYPE_INCOMING, source.id, partner.id)
+    add_line(db, incoming.id, product.id, "5")
+    post_document(db, incoming.id)
+
+    transfer = create_document(
+        db,
+        DocumentCreate(
+            document_type=Document.TYPE_TRANSFER,
+            document_date=date(2026, 5, 2),
+            warehouse_id=source.id,
+            destination_warehouse_id=destination.id,
+        ),
+    )
+    add_line(db, transfer.id, product.id, "2")
+    post_document(db, transfer.id)
+
+    assert balance_quantity(db, product.id, source.id) == Decimal("3.000")
+    assert balance_quantity(db, product.id, destination.id) == Decimal("2.000")
+
+
+def test_transfer_without_stock_is_rejected(db: Session) -> None:
+    product, source, _partner = seed_catalog(db)
+    destination = Warehouse(name="Retail", code="RET")
+    db.add(destination)
+    db.commit()
+    transfer = create_document(
+        db,
+        DocumentCreate(
+            document_type=Document.TYPE_TRANSFER,
+            document_date=date(2026, 5, 2),
+            warehouse_id=source.id,
+            destination_warehouse_id=destination.id,
+        ),
+    )
+    add_line(db, transfer.id, product.id, "2")
+
+    with pytest.raises(HTTPException) as exc:
+        post_document(db, transfer.id)
+
+    assert exc.value.status_code == 409
+    assert balance_quantity(db, product.id, source.id) == Decimal("0")
+    assert balance_quantity(db, product.id, destination.id) == Decimal("0")
+
+
+def test_transfer_requires_different_warehouses(db: Session) -> None:
+    product, source, _partner = seed_catalog(db)
+    transfer = create_document(
+        db,
+        DocumentCreate(
+            document_type=Document.TYPE_TRANSFER,
+            document_date=date(2026, 5, 2),
+            warehouse_id=source.id,
+            destination_warehouse_id=source.id,
+        ),
+    )
+    add_line(db, transfer.id, product.id, "1")
+
+    with pytest.raises(HTTPException) as exc:
+        post_document(db, transfer.id)
+
+    assert exc.value.status_code == 422
+
+
+def test_transfer_rejects_partner(db: Session) -> None:
+    _product, source, partner = seed_catalog(db)
+    destination = Warehouse(name="Retail", code="RET")
+    db.add(destination)
+    db.commit()
+
+    with pytest.raises(HTTPException) as exc:
+        create_document(
+            db,
+            DocumentCreate(
+                document_type=Document.TYPE_TRANSFER,
+                document_date=date(2026, 5, 2),
+                warehouse_id=source.id,
+                destination_warehouse_id=destination.id,
+                partner_id=partner.id,
+            ),
+        )
+
+    assert exc.value.status_code == 422
 
 
 def test_line_total_is_calculated(db: Session) -> None:

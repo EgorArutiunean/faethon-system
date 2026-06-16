@@ -94,7 +94,7 @@ export function Documents() {
   return (
     <PageScaffold title={t("documents")}>
       <div className="panel form-grid" style={{ marginBottom: 10 }}>
-        <div className="field"><label>{t("type")}</label><select><option>incoming</option><option>outgoing</option><option>adjustment</option></select></div>
+        <div className="field"><label>{t("type")}</label><select><option>{t("incoming")}</option><option>{t("outgoing")}</option><option>{t("adjustment")}</option><option>{t("transfer")}</option></select></div>
         <div className="field"><label>{t("number")}</label><input /></div>
         <div className="field"><label>{t("date")}</label><input type="date" /></div>
         <div className="field"><label>{t("status")}</label><select><option>draft</option><option>posted</option><option>cancelled</option></select></div>
@@ -109,12 +109,13 @@ export function Documents() {
         searchable
         columns={[
           { key: "id", header: "ID", sortable: true, render: (row) => <Link to={`/documents/${row.id}`}>{row.id}</Link> },
-          { key: "document_type", header: t("type"), sortable: true },
+          { key: "document_type", header: t("type"), sortable: true, render: (row) => t(row.document_type as Parameters<typeof t>[0]) },
           { key: "number", header: t("number"), sortable: true },
           { key: "document_date", header: t("date"), sortable: true, render: (row) => formatDate(row.document_date) },
           { key: "status", header: t("status"), sortable: true, render: (row) => <StatusBadge status={row.status} /> },
           { key: "partner_name", header: t("partner"), sortable: true },
           { key: "warehouse_name", header: t("warehouse"), sortable: true },
+          { key: "destination_warehouse_name", header: t("destinationWarehouse"), sortable: true },
           { key: "total_amount", header: t("total"), sortable: true, render: (row) => formatMoney(row.total_amount) },
           {
             key: "actions",

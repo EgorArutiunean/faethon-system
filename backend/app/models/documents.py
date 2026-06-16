@@ -17,6 +17,7 @@ class Document(TimestampMixin, Base):
     TYPE_INCOMING = "incoming"
     TYPE_OUTGOING = "outgoing"
     TYPE_ADJUSTMENT = "adjustment"
+    TYPE_TRANSFER = "transfer"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     document_type: Mapped[str] = mapped_column(String(60), index=True)
@@ -25,11 +26,13 @@ class Document(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(40), default=STATUS_DRAFT, index=True)
     partner_id: Mapped[int | None] = mapped_column(ForeignKey("partners.id"))
     warehouse_id: Mapped[int | None] = mapped_column(ForeignKey("warehouses.id"))
+    destination_warehouse_id: Mapped[int | None] = mapped_column(ForeignKey("warehouses.id"))
     total_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=0)
     note: Mapped[str | None] = mapped_column(Text)
 
     partner = relationship("Partner", back_populates="documents")
-    warehouse = relationship("Warehouse")
+    warehouse = relationship("Warehouse", foreign_keys=[warehouse_id])
+    destination_warehouse = relationship("Warehouse", foreign_keys=[destination_warehouse_id])
     lines = relationship("DocumentLine", back_populates="document", cascade="all, delete-orphan")
 
     @property
@@ -39,6 +42,10 @@ class Document(TimestampMixin, Base):
     @property
     def warehouse_name(self) -> str | None:
         return self.warehouse.name if self.warehouse else None
+
+    @property
+    def destination_warehouse_name(self) -> str | None:
+        return self.destination_warehouse.name if self.destination_warehouse else None
 
 
 class DocumentLine(TimestampMixin, Base):

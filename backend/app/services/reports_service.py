@@ -200,7 +200,7 @@ def documents_register_report(
     partner_id: int | None = None,
     warehouse_id: int | None = None,
 ) -> DocumentsRegisterReport:
-    stmt = select(Document).options(selectinload(Document.partner), selectinload(Document.warehouse))
+    stmt = select(Document).options(selectinload(Document.partner), selectinload(Document.warehouse), selectinload(Document.destination_warehouse))
     if date_from is not None:
         stmt = stmt.where(Document.document_date >= date_from)
     if date_to is not None:
@@ -225,6 +225,8 @@ def documents_register_report(
             partner_name=item.partner_name,
             warehouse_id=item.warehouse_id,
             warehouse_name=item.warehouse_name,
+            destination_warehouse_id=item.destination_warehouse_id,
+            destination_warehouse_name=item.destination_warehouse_name,
             total_amount=item.total_amount,
         )
         for item in db.scalars(stmt.order_by(Document.document_date, Document.id))

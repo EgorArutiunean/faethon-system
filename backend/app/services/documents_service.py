@@ -24,6 +24,7 @@ def _document_prefix(document_type: str) -> str:
         Document.TYPE_INCOMING: "IN",
         Document.TYPE_OUTGOING: "OUT",
         Document.TYPE_ADJUSTMENT: "ADJ",
+        Document.TYPE_TRANSFER: "TR",
     }
     try:
         return prefixes[document_type]
@@ -59,6 +60,7 @@ def _load_document(db: Session, document_id: int) -> Document:
         .options(
             selectinload(Document.partner),
             selectinload(Document.warehouse),
+            selectinload(Document.destination_warehouse),
             selectinload(Document.lines).selectinload(DocumentLine.product),
         )
     )
@@ -98,7 +100,15 @@ def _ensure_draft(document: Document) -> None:
         raise HTTPException(status_code=409, detail="Only draft documents can be edited")
 
 
+def _valid_document_types() -> set[str]:
+    return {Document.TYPE_INCOMING, Document.TYPE_OUTGOING, Document.TYPE_ADJUSTMENT, Document.TYPE_TRANSFER}
+
+
 def _validate_document_partner(db: Session, document_type: str, partner_id: int | None) -> None:
+    if document_type == Document.TYPE_TRANSFER:
+        if partner_id is not None:
+            raise HTTPException(status_code=422, detail="Transfer document must not have partner")
+        return
     if document_type == Document.TYPE_ADJUSTMENT:
         return
     if partner_id is None:
@@ -116,7 +126,7 @@ def _validate_document_partner(db: Session, document_type: str, partner_id: int 
 
 
 def create_document(db: Session, payload: DocumentCreate) -> Document:
-    if payload.document_type not in {Document.TYPE_INCOMING, Document.TYPE_OUTGOING, Document.TYPE_ADJUSTMENT}:
+    if payload.document_type not in _valid_document_types():
         raise HTTPException(status_code=422, detail="Invalid document type")
     _validate_document_partner(db, payload.document_type, payload.partner_id)
     values = payload.model_dump(exclude={"status"})
@@ -171,7 +181,7 @@ def update_document_header(db: Session, document_id: int, payload: DocumentUpdat
     document = _load_document(db, document_id)
     _ensure_draft(document)
     values = payload.model_dump(exclude_unset=True, exclude={"status", "total_amount"})
-    if "document_type" in values and values["document_type"] not in {Document.TYPE_INCOMING, Document.TYPE_OUTGOING, Document.TYPE_ADJUSTMENT}:
+    if "document_type" in values and values["document_type"] not in _valid_document_types():
         raise HTTPException(status_code=422, detail="Invalid document type")
     next_type = values.get("document_type", document.document_type)
     next_partner_id = values.get("partner_id", document.partner_id)
@@ -218,15 +228,30 @@ def _movement_delta(document: Document, line: DocumentLine, current_quantity: De
         return -line.quantity
     if document.document_type == Document.TYPE_ADJUSTMENT:
         return line.quantity - current_quantity
+    if document.document_type == Document.TYPE_TRANSFER:
+        if current_quantity < line.quantity:
+            raise DocumentRulesError("Not enough stock for transfer document")
+        return -line.quantity
     raise DocumentRulesError("Unsupported document type")
+
+
+def _validate_document_warehouses(document: Document) -> None:
+    if document.warehouse_id is None:
+        raise HTTPException(status_code=422, detail="Document warehouse is required")
+    if document.document_type == Document.TYPE_TRANSFER:
+        if document.destination_warehouse_id is None:
+            raise HTTPException(status_code=422, detail="Transfer document destination warehouse is required")
+        if document.destination_warehouse_id == document.warehouse_id:
+            raise HTTPException(status_code=422, detail="Transfer warehouses must be different")
+    elif document.destination_warehouse_id is not None:
+        raise HTTPException(status_code=422, detail="Destination warehouse is only valid for transfer documents")
 
 
 def post_document(db: Session, document_id: int) -> Document:
     document = _load_document(db, document_id)
     if document.status != Document.STATUS_DRAFT:
         raise HTTPException(status_code=409, detail="Only draft documents can be posted")
-    if document.warehouse_id is None:
-        raise HTTPException(status_code=422, detail="Document warehouse is required")
+    _validate_document_warehouses(document)
     if not document.lines:
         raise HTTPException(status_code=422, detail="Document has no lines")
     _validate_document_partner(db, document.document_type, document.partner_id)
@@ -245,6 +270,18 @@ def post_document(db: Session, document_id: int) -> Document:
                     reason=f"post:{document.document_type}",
                 )
             )
+            if document.document_type == Document.TYPE_TRANSFER:
+                destination_balance = _get_balance(db, line.product_id, document.destination_warehouse_id)
+                destination_balance.quantity += line.quantity
+                db.add(
+                    StockMovement(
+                        product_id=line.product_id,
+                        warehouse_id=document.destination_warehouse_id,
+                        document_id=document.id,
+                        quantity_delta=line.quantity,
+                        reason=f"post:{document.document_type}",
+                    )
+                )
         document.status = Document.STATUS_POSTED
         _audit(db, "document", document.id, "post", "draft posting rules applied")
         db.commit()
@@ -259,8 +296,7 @@ def cancel_document(db: Session, document_id: int) -> Document:
     document = _load_document(db, document_id)
     if document.status != Document.STATUS_POSTED:
         raise HTTPException(status_code=409, detail="Only posted documents can be cancelled")
-    if document.warehouse_id is None:
-        raise HTTPException(status_code=422, detail="Document warehouse is required")
+    _validate_document_warehouses(document)
 
     movements = list(
         db.scalars(

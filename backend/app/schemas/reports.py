@@ -79,6 +79,8 @@ class DocumentsRegisterReportRow(BaseModel):
     partner_name: str | None = None
     warehouse_id: int | None = None
     warehouse_name: str | None = None
+    destination_warehouse_id: int | None = None
+    destination_warehouse_name: str | None = None
     total_amount: Decimal
 
 

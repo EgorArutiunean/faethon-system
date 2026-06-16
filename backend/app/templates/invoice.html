@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8">
-  <title>Invoice {{document_number}}</title>
+  <title>Документ {{document_number}}</title>
   <style>
     body { font-family: Arial, sans-serif; color: #111827; margin: 32px; }
     .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #111827; padding-bottom: 12px; }
@@ -27,8 +27,8 @@
 <body>
   <div class="header">
     <div>
-      <h1>Накладная {{document_number}}</h1>
-      <div class="muted">TODO LEGACY_RULE_REQUIRED: confirm final BuySell print form title, columns, and signature fields.</div>
+      <h1>Документ {{document_number}}</h1>
+      <div class="muted">TODO LEGACY_RULE_REQUIRED: подтвердить финальную печатную форму, колонки и подписи.</div>
     </div>
     <div class="status">{{status}}</div>
   </div>
@@ -45,6 +45,10 @@
     <div>
       <div class="label">Склад</div>
       <div class="value">{{warehouse_name}}</div>
+    </div>
+    <div>
+      <div class="label">Склад назначения</div>
+      <div class="value">{{destination_warehouse_name}}</div>
     </div>
     <div>
       <div class="label">Контрагент</div>

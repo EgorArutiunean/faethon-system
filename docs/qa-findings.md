@@ -19,9 +19,9 @@ No open P0 issues found.
   - Examples: `incoming`, `outgoing`, `cash_in`, `cash_out`, `posted`, `cancelled`.
   - Recommendation: add enum display labels later without changing API payload values.
 
-- Dashboard metrics are static placeholders.
-  - Impact: dashboard can mislead users because counts remain `0`.
-  - Recommendation: wire metrics to existing API endpoints in a later UI polish pass.
+- Fixed: Dashboard metrics are loaded from live API data.
+  - Coverage: products, partners, documents, draft payments, stock positions, and cash balance.
+  - Verification: frontend TypeScript check and production build pass; browser preview showed live demo values.
 
 - Manual QA creates persistent QA records in the local database.
   - Impact: repeated QA runs add products, warehouses, partners, documents, payments, and cash operations.

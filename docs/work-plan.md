@@ -35,7 +35,7 @@ Known limits:
 
 - final legacy-compatible accounting rules are not confirmed;
 - full history import from `BUY.GDB` is not available;
-- dashboard metrics are placeholders;
+- dashboard metrics are live for products, partners, documents, draft payments, stock positions, and cash balance;
 - payment draft edit/delete is missing;
 - user and role management UI is missing;
 - audit log viewer is missing;
@@ -117,7 +117,6 @@ Close MVP gaps that affect real daily work.
 
 High priority:
 
-- live dashboard metrics;
 - draft payment edit/delete;
 - final enum labels instead of technical codes;
 - final document print form;

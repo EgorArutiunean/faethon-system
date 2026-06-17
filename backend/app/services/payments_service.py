@@ -9,7 +9,7 @@ from app.models.accounting import AuditLog, CashOperation, Payment
 from app.models.documents import Document
 from app.models.partners import Partner
 from app.schemas.cash import CashOperationCreate
-from app.schemas.payments import PaymentCreate, PartnerBalanceRead, PartnerStatementRow
+from app.schemas.payments import PaymentCreate, PaymentUpdate, PartnerBalanceRead, PartnerStatementRow
 from app.services import cash_service
 
 
@@ -64,12 +64,21 @@ def _validate_payment_partner(db: Session, payment_type: str, partner_id: int) -
     # TODO LEGACY_RULE_REQUIRED: refund partner direction must be confirmed against legacy payment rules.
 
 
-def create_payment(db: Session, payload: PaymentCreate) -> Payment:
-    if payload.payment_type not in {
+def _valid_payment_types() -> set[str]:
+    return {
         Payment.TYPE_CUSTOMER_PAYMENT,
         Payment.TYPE_SUPPLIER_PAYMENT,
         Payment.TYPE_REFUND,
-    }:
+    }
+
+
+def _ensure_draft(payment: Payment) -> None:
+    if payment.status != Payment.STATUS_DRAFT:
+        raise HTTPException(status_code=409, detail="Only draft payments can be edited")
+
+
+def create_payment(db: Session, payload: PaymentCreate) -> Payment:
+    if payload.payment_type not in _valid_payment_types():
         raise HTTPException(status_code=422, detail="Invalid payment type")
     _validate_payment_partner(db, payload.payment_type, payload.partner_id)
     payment = Payment(**payload.model_dump(exclude={"status"}), status=Payment.STATUS_DRAFT)
@@ -79,6 +88,32 @@ def create_payment(db: Session, payload: PaymentCreate) -> Payment:
     db.commit()
     db.refresh(payment)
     return payment
+
+
+def update_payment(db: Session, payment_id: int, payload: PaymentUpdate) -> Payment:
+    payment = _load_payment(db, payment_id)
+    _ensure_draft(payment)
+    values = payload.model_dump(exclude_unset=True)
+    if "payment_type" in values and values["payment_type"] not in _valid_payment_types():
+        raise HTTPException(status_code=422, detail="Invalid payment type")
+    next_payment_type = values.get("payment_type", payment.payment_type)
+    next_partner_id = values.get("partner_id", payment.partner_id)
+    _validate_payment_partner(db, next_payment_type, next_partner_id)
+    for key, value in values.items():
+        setattr(payment, key, value)
+    _audit(db, "payment", payment.id, "update", ",".join(sorted(values.keys())))
+    db.commit()
+    db.refresh(payment)
+    return payment
+
+
+def delete_draft_payment(db: Session, payment_id: int) -> None:
+    payment = _load_payment(db, payment_id)
+    if payment.status != Payment.STATUS_DRAFT:
+        raise HTTPException(status_code=409, detail="Only draft payments can be deleted")
+    _audit(db, "payment", payment.id, "delete_draft")
+    db.delete(payment)
+    db.commit()
 
 
 def post_payment(db: Session, payment_id: int) -> Payment:

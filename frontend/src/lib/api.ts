@@ -290,6 +290,9 @@ export const api = {
   payments: () => request<Payment[]>("/payments"),
   createPayment: (payload: Partial<Payment>) =>
     request<Payment>("/payments", { method: "POST", body: JSON.stringify(payload) }),
+  updatePayment: (id: number, payload: Partial<Payment>) =>
+    request<Payment>(`/payments/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  deletePayment: (id: number) => request<void>(`/payments/${id}`, { method: "DELETE" }),
   postPayment: (paymentId: number) => request<Payment>(`/payments/${paymentId}/post`, { method: "POST" }),
   cancelPayment: (paymentId: number) => request<Payment>(`/payments/${paymentId}/cancel`, { method: "POST" }),
   partnerBalances: () => request<PartnerBalance[]>("/partners/balances"),

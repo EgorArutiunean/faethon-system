@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.api.deps import require_permission
 from app.db.session import get_db
 from app.models.accounting import Payment
-from app.schemas.payments import PaymentCreate, PaymentRead
+from app.schemas.payments import PaymentCreate, PaymentRead, PaymentUpdate
 from app.services import payments_service
 
 router = APIRouter(prefix="/payments", tags=["payments"])
@@ -34,6 +34,16 @@ def create_payment(payload: PaymentCreate, db: Session = Depends(get_db)):
 @router.get("/{payment_id}", response_model=PaymentRead, dependencies=[Depends(require_permission("payments.read"))])
 def get_payment(payment_id: int, db: Session = Depends(get_db)):
     return payments_service._load_payment(db, payment_id)
+
+
+@router.patch("/{payment_id}", response_model=PaymentRead, dependencies=[Depends(require_permission("payments.update"))])
+def update_payment(payment_id: int, payload: PaymentUpdate, db: Session = Depends(get_db)):
+    return payments_service.update_payment(db, payment_id, payload)
+
+
+@router.delete("/{payment_id}", status_code=204, dependencies=[Depends(require_permission("payments.delete"))])
+def delete_payment(payment_id: int, db: Session = Depends(get_db)):
+    payments_service.delete_draft_payment(db, payment_id)
 
 
 @router.post("/{payment_id}/post", response_model=PaymentRead, dependencies=[Depends(require_permission("payments.post"))])

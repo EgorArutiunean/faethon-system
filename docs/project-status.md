@@ -21,6 +21,7 @@ Implemented:
 - stock movements;
 - audit log entries for document actions;
 - payment creation, posting, and cancellation;
+- draft payment editing and deletion before posting;
 - cash operation records linked to posted/cancelled payments;
 - manual cash operations with `cash_in`, `cash_out`, and `correction` types;
 - cash balance and cash book API;

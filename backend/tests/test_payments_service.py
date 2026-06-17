@@ -15,9 +15,9 @@ from app.models.partners import Partner
 from app.models.products import Product
 from app.models.stock import Warehouse
 from app.schemas.documents import DocumentCreate, DocumentLineCreate
-from app.schemas.payments import PaymentCreate
+from app.schemas.payments import PaymentCreate, PaymentUpdate
 from app.services.documents_service import add_document_line, cancel_document, create_document, post_document
-from app.services.payments_service import cancel_payment, create_payment, get_partner_balance, post_payment
+from app.services.payments_service import cancel_payment, create_payment, delete_draft_payment, get_partner_balance, post_payment, update_payment
 
 
 @pytest.fixture()
@@ -141,5 +141,71 @@ def test_cancel_draft_payment_is_rejected(db: Session) -> None:
 
     with pytest.raises(HTTPException) as exc:
         cancel_payment(db, payment.id)
+
+    assert exc.value.status_code == 409
+
+
+def test_update_draft_payment_changes_editable_fields(db: Session) -> None:
+    _document, partner = posted_document(db, Document.TYPE_OUTGOING)
+    payment = make_payment(db, partner.id, "5.00")
+
+    updated = update_payment(
+        db,
+        payment.id,
+        PaymentUpdate(
+            payment_date=date(2026, 5, 4),
+            amount=Decimal("6.25"),
+            method="bank",
+            note="corrected before posting",
+        ),
+    )
+
+    assert updated.payment_date == date(2026, 5, 4)
+    assert updated.amount == Decimal("6.25")
+    assert updated.method == "bank"
+    assert updated.note == "corrected before posting"
+
+
+def test_update_posted_payment_is_rejected(db: Session) -> None:
+    _document, partner = posted_document(db, Document.TYPE_OUTGOING)
+    payment = make_payment(db, partner.id, "5.00")
+    post_payment(db, payment.id)
+
+    with pytest.raises(HTTPException) as exc:
+        update_payment(db, payment.id, PaymentUpdate(amount=Decimal("6.25")))
+
+    assert exc.value.status_code == 409
+
+
+def test_delete_draft_payment_removes_payment(db: Session) -> None:
+    _document, partner = posted_document(db, Document.TYPE_OUTGOING)
+    payment = make_payment(db, partner.id, "5.00")
+
+    delete_draft_payment(db, payment.id)
+
+    assert db.get(Payment, payment.id) is None
+
+
+def test_delete_posted_payment_is_rejected(db: Session) -> None:
+    _document, partner = posted_document(db, Document.TYPE_OUTGOING)
+    payment = make_payment(db, partner.id, "5.00")
+    post_payment(db, payment.id)
+
+    with pytest.raises(HTTPException) as exc:
+        delete_draft_payment(db, payment.id)
+
+    assert exc.value.status_code == 409
+    assert db.get(Payment, payment.id) is not None
+
+
+def test_update_payment_validates_partner_type(db: Session) -> None:
+    _document, partner = posted_document(db, Document.TYPE_OUTGOING)
+    supplier = Partner(name="Only Supplier", code="ONLY-SUP", partner_type=Partner.TYPE_SUPPLIER)
+    db.add(supplier)
+    db.commit()
+    payment = make_payment(db, partner.id, "5.00")
+
+    with pytest.raises(HTTPException) as exc:
+        update_payment(db, payment.id, PaymentUpdate(partner_id=supplier.id, payment_type=Payment.TYPE_CUSTOMER_PAYMENT))
 
     assert exc.value.status_code == 409

@@ -18,6 +18,7 @@ export function Payments() {
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState("cash");
   const [error, setError] = useState("");
+  const [editingId, setEditingId] = useState<number | null>(null);
 
   const partnerOptions = useMemo(() => partners.filter((partner) => {
     if (!partner.is_active) return false;
@@ -49,19 +50,41 @@ export function Payments() {
       .catch((err) => setError(err instanceof Error ? err.message : t("apiLoadPaymentsError")));
   }
 
+  function resetForm() {
+    setEditingId(null);
+    setPartnerId("");
+    setPaymentDate(new Date().toISOString().slice(0, 10));
+    setPaymentType("customer_payment");
+    setAmount("");
+    setMethod("cash");
+    setError("");
+  }
+
+  function edit(row: Payment) {
+    if (row.status !== "draft") return;
+    setEditingId(row.id);
+    setPartnerId(String(row.partner_id));
+    setPaymentDate(row.payment_date.slice(0, 10));
+    setPaymentType(row.payment_type);
+    setAmount(row.amount);
+    setMethod(row.method ?? "cash");
+    setError("");
+  }
+
   function create() {
     if (!partnerId || !amount) return;
-    api
-      .createPayment({
-        partner_id: Number(partnerId),
-        payment_date: paymentDate,
-        payment_type: paymentType,
-        status: "draft",
-        amount,
-        method
-      })
+    const payload = {
+      partner_id: Number(partnerId),
+      payment_date: paymentDate,
+      payment_type: paymentType,
+      status: "draft",
+      amount,
+      method
+    };
+    const request = editingId ? api.updatePayment(editingId, payload) : api.createPayment(payload);
+    request
       .then(() => {
-        setAmount("");
+        resetForm();
         load();
       })
       .catch((err) => setError(err instanceof Error ? err.message : t("apiCreatePaymentError")));
@@ -73,6 +96,14 @@ export function Payments() {
 
   function cancel(id: number) {
     api.cancelPayment(id).then(load).catch((err) => setError(err instanceof Error ? err.message : t("apiCancelPaymentError")));
+  }
+
+  function removeDraft(id: number) {
+    if (!window.confirm(t("deleteDraftConfirm"))) return;
+    api.deletePayment(id).then(() => {
+      if (editingId === id) resetForm();
+      load();
+    }).catch((err) => setError(err instanceof Error ? err.message : t("deleteError")));
   }
 
   useEffect(() => {
@@ -106,7 +137,20 @@ export function Payments() {
             <option value="bank">{t("bank")}</option>
           </select>
         </div>
-        <div className="field"><label>&nbsp;</label><button className="button primary" title={!can("payments.create") ? t("noPermission") : ""} disabled={!can("payments.create")} onClick={create}>{t("createPayment")}</button></div>
+        <div className="field">
+          <label>&nbsp;</label>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button
+              className="button primary"
+              title={!can(editingId ? "payments.update" : "payments.create") ? t("noPermission") : ""}
+              disabled={!can(editingId ? "payments.update" : "payments.create")}
+              onClick={create}
+            >
+              {editingId ? t("save") : t("createPayment")}
+            </button>
+            {editingId ? <button className="button" onClick={resetForm}>{t("cancel")}</button> : null}
+          </div>
+        </div>
       </div>
       {error ? <p style={{ color: "#b42318", fontSize: 13 }}>{error}</p> : null}
       <DataTable<Payment>
@@ -131,8 +175,10 @@ export function Payments() {
             header: t("actions"),
             render: (row) => (
               <div style={{ display: "flex", gap: 6 }}>
+                <button className="button" title={!can("payments.update") ? t("noPermission") : ""} disabled={row.status !== "draft" || !can("payments.update")} onClick={() => edit(row)}>{t("edit")}</button>
                 <button className="button" title={!can("payments.post") ? t("noPermission") : ""} disabled={row.status !== "draft" || !can("payments.post")} onClick={() => post(row.id)}>{t("post")}</button>
                 <button className="button" title={!can("payments.cancel") ? t("noPermission") : ""} disabled={row.status !== "posted" || !can("payments.cancel")} onClick={() => cancel(row.id)}>{t("cancel")}</button>
+                <button className="button" title={!can("payments.delete") ? t("noPermission") : ""} disabled={row.status !== "draft" || !can("payments.delete")} onClick={() => removeDraft(row.id)}>{t("deleteDraft")}</button>
               </div>
             )
           }

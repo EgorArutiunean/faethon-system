@@ -23,6 +23,10 @@ No open P0 issues found.
   - Coverage: products, partners, documents, draft payments, stock positions, and cash balance.
   - Verification: frontend TypeScript check and production build pass; browser preview showed live demo values.
 
+- Fixed: Draft payments can be edited and deleted before posting.
+  - Coverage: backend service/API protection for draft-only update/delete; frontend edit/save/delete controls on the payments page.
+  - Verification: payment service tests pass; frontend TypeScript check passes.
+
 - Manual QA creates persistent QA records in the local database.
   - Impact: repeated QA runs add products, warehouses, partners, documents, payments, and cash operations.
   - Recommendation: add a test-only cleanup/reset command or run QA against disposable databases.

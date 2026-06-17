@@ -37,7 +37,7 @@ Implemented:
 - reports API for stock balances, stock movements, partner debts, cash book, and documents register;
 - frontend Reports page with tabs, filters, totals, loading/error/empty states, and `reports.read` access handling.
 - XLSX/CSV export for core reports using the same filters as on-screen reports.
-- business-ready HTML invoice/stock document print view with protected `documents.read` access.
+- legacy-oriented HTML outgoing invoice print view with protected `documents.read` access, matched to the old program screenshot for releasing goods from own warehouse to a customer.
 - operator UX improvements for document editing, product search, current stock display, validations, confirmations, toasts, status badges, and basic table search/sort/pagination.
 - CSV/XLSX Import Lite for products, partners, warehouses, opening stock, and opening partner balances with dry-run validation.
 - business logic/CRUD audit for core entities;
@@ -73,10 +73,11 @@ See `docs/development-setup.md` for the PostgreSQL/Docker workflow.
 
 Latest checks:
 
-- backend tests: `80 passed` on 2026-06-16;
+- backend tests: `90 passed` on 2026-06-17;
+- print form targeted tests: `6 passed` on 2026-06-17 after legacy outgoing invoice layout update;
 - backend compileall: successful on 2026-06-16;
-- frontend TypeScript check: successful on 2026-06-16;
-- frontend production build: successful on 2026-06-16.
+- frontend TypeScript check: successful on 2026-06-17;
+- frontend production build: successful on 2026-06-17.
 - Docker Compose smoke: successful on 2026-05-03.
 - Production Docker Compose smoke: successful on 2026-05-03.
 
@@ -84,6 +85,6 @@ Deployment smoke details: `docs/deployment-smoke.md`.
 
 ## Legacy Dependency
 
-Legacy discovery is still unresolved. Any final accounting behavior must be confirmed from the legacy database/application before implementation.
+Legacy discovery is still unresolved. Any final accounting behavior must be confirmed from observed old-program behavior, operator knowledge, exports, screenshots, or manual control scenarios before implementation.
 
 The required production data set includes products, warehouses, partners, stock balances, debts, cash, documents, and payments. Because direct `BUY.GDB` access is still blocked by InterBase/ODS compatibility, the first migration path is a controlled manual minimum documented in `docs/legacy-data-readiness.md`.

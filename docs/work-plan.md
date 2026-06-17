@@ -39,7 +39,7 @@ Known limits:
 - draft payments can be edited and deleted before posting;
 - user and role management UI is missing;
 - audit log viewer is missing;
-- document print form is business-ready HTML, but not final legacy-compatible/PDF layout;
+- outgoing invoice print form follows the observed old program layout from the 2026-06-17 screenshot for releasing goods from own warehouse to a customer;
 - PDF generation/export is not implemented;
 - advanced reports, saved filters, configurable columns, VAT, discounts, currencies, and period closing are not implemented.
 
@@ -66,7 +66,7 @@ Initial question groups:
 - Cash: operation types, correction meaning, cancellation or reversal behavior, multiple cash desks, and bank operations.
 - Reports: required reports, exact column names/order, signs, totals, filters, export formats, and print/PDF needs.
 - Permissions: real user roles, forbidden actions, manager/cashier/viewer capabilities, and whether user management is needed before launch.
-- Printing: invoice title, legal fields, signatures, status watermarks, and required PDF output.
+- Printing: remaining form variants, legal fields, exact numbering, trust letter fields, status watermarks, and required PDF output.
 
 ## Phase 2: Accounting Parity
 
@@ -118,7 +118,7 @@ Close MVP gaps that affect real daily work.
 High priority:
 
 - final enum labels instead of technical codes;
-- legacy-compatible/PDF document print form if required after confirmation;
+- finish legacy-compatible print forms for all confirmed document types and add PDF output if required;
 - user and role management UI if needed for launch;
 - audit log viewer if accountability is required.
 

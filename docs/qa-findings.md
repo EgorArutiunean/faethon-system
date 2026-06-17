@@ -27,9 +27,9 @@ No open P0 issues found.
   - Coverage: backend service/API protection for draft-only update/delete; frontend edit/save/delete controls on the payments page.
   - Verification: payment service tests pass; frontend TypeScript check passes.
 
-- Fixed: Document print form no longer contains placeholder/TODO text or mojibake.
-  - Coverage: Russian document title/status/type, warehouse and partner details, note, totals, signatures, and draft/cancelled watermarks.
-  - Verification: print form tests pass and assert against common mojibake fragments.
+- Fixed: Outgoing invoice print form follows the observed old program layout for releasing goods from own warehouse to a customer.
+  - Coverage: title, date, supplier warehouse, buyer, trust letter placeholders, legacy columns, SKU code, unit, quantity, three-decimal price, two-decimal totals, Russian amount words, and `Отпустил`/`Получил` signatures.
+  - Verification: targeted print form tests assert the legacy-like layout and common mojibake fragments.
 
 - Manual QA creates persistent QA records in the local database.
   - Impact: repeated QA runs add products, warehouses, partners, documents, payments, and cash operations.

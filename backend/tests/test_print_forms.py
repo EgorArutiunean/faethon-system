@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal
+from html import unescape
 
 import pytest
 from fastapi.testclient import TestClient
@@ -13,11 +14,11 @@ from app.db.session import Base, get_db
 from app.main import app
 from app.models.identity import Role, User
 from app.models.partners import Partner
-from app.models.products import Product
+from app.models.products import Product, Unit
 from app.models.stock import Warehouse
 from app.schemas.documents import DocumentCreate, DocumentLineCreate
 from app.services.auth_seed import seed_auth_defaults
-from app.services.documents_service import add_document_line, create_document
+from app.services.documents_service import add_document_line, create_document, post_document
 
 
 @pytest.fixture()
@@ -70,22 +71,43 @@ def create_user_without_documents_read(db: Session) -> None:
 
 
 def make_document(db: Session) -> int:
-    product = Product(name="Printable Bolt", sku="PRINT-BOLT")
-    warehouse = Warehouse(name="Print Warehouse", code="PRINT-WH", address="Warehouse address")
-    partner = Partner(name="Print Partner", code="PRINT-P", tax_id="TAX-777", phone="+373000000", address="Partner address")
-    db.add_all([product, warehouse, partner])
+    unit = Unit(name="Штука", short_name="шт")
+    product = Product(name="Крупа Кутья 0,9к*17шт Рис", sku="93197", unit=unit)
+    warehouse = Warehouse(name="МОБИЛЬНЫЙ СКЛАД", code="MOB-WH", address="Warehouse address")
+    supplier = Partner(name="Поставщик остатков", partner_type=Partner.TYPE_SUPPLIER)
+    customer = Partner(name="Рынок Комсомольский №4 Людмила", partner_type=Partner.TYPE_CUSTOMER)
+    db.add_all([unit, product, warehouse, supplier, customer])
     db.commit()
-    document = create_document(
+    incoming = create_document(
         db,
         DocumentCreate(
             document_type="incoming",
             document_date=date(2026, 5, 2),
-            partner_id=partner.id,
+            partner_id=supplier.id,
             warehouse_id=warehouse.id,
-            note="Printed for QA",
         ),
     )
-    add_document_line(db, document.id, DocumentLineCreate(product_id=product.id, quantity=Decimal("2"), price=Decimal("11.50")))
+    add_document_line(
+        db,
+        incoming.id,
+        DocumentLineCreate(product_id=product.id, quantity=Decimal("17"), price=Decimal("8.00")),
+    )
+    post_document(db, incoming.id)
+    document = create_document(
+        db,
+        DocumentCreate(
+            document_type="outgoing",
+            document_date=date(2026, 5, 2),
+            partner_id=customer.id,
+            warehouse_id=warehouse.id,
+        ),
+    )
+    add_document_line(
+        db,
+        document.id,
+        DocumentLineCreate(product_id=product.id, quantity=Decimal("17"), price=Decimal("8.00")),
+    )
+    post_document(db, document.id)
     return document.id
 
 
@@ -130,28 +152,45 @@ def test_print_contains_document_number_and_total_amount(client: TestClient, db:
     response = client.get(f"/api/v1/documents/{document_id}/print.html", headers=auth_header(client))
 
     assert response.status_code == 200
-    assert "IN-000001" in response.text
-    assert "23.00" in response.text
-    assert "Printable Bolt" in response.text
+    assert "OUT-000001" in response.text
+    assert "136.00" in response.text
+    assert "Крупа Кутья 0,9к*17шт Рис" in response.text
 
 
-def test_print_form_has_business_ready_russian_layout(client: TestClient, db: Session) -> None:
+def test_print_form_matches_legacy_outgoing_invoice_layout(client: TestClient, db: Session) -> None:
     document_id = make_document(db)
 
     response = client.get(f"/api/v1/documents/{document_id}/print.html", headers=auth_header(client))
+    html = unescape(response.text)
 
     assert response.status_code == 200
-    assert "Приходная накладная" in response.text
-    assert "Черновик" in response.text
-    assert "Print Warehouse" in response.text
-    assert "PRINT-WH" in response.text
-    assert "Warehouse address" in response.text
-    assert "Print Partner" in response.text
-    assert "TAX-777" in response.text
-    assert "+373000000" in response.text
-    assert "Printed for QA" in response.text
-    assert "ЧЕРНОВИК" in response.text
-    assert "TODO" not in response.text
-    assert "Рџ" not in response.text
-    assert "Рќ" not in response.text
-    assert "СЃ" not in response.text
+    assert "РАСХОДНАЯ НАКЛАДНАЯ № OUT-000001" in html
+    assert "Дата:" in html
+    assert "2026.05.02" in html
+    assert "Поставщик:" in html
+    assert "МОБИЛЬНЫЙ СКЛАД" in html
+    assert "Покупатель:" in html
+    assert "Рынок Комсомольский №4 Людмила" in html
+    assert "Доверенность №:" in html
+    assert "Отпущено:" in html
+    assert ">№<" in html
+    assert ">Код<" in html
+    assert ">Товар<" in html
+    assert ">Ед.<" in html
+    assert ">Кол.<" in html
+    assert ">Цена<" in html
+    assert ">Сумма<" in html
+    assert "93197" in html
+    assert "Крупа Кутья 0,9к*17шт Рис" in html
+    assert ">шт<" in html
+    assert ">17<" in html
+    assert "8.000" in html
+    assert "136.00" in html
+    assert "( Сто тридцать шесть рублей 00 копеек )" in html
+    assert "Отпустил" in html
+    assert "Получил" in html
+    assert "ЧЕРНОВИК" not in html
+    assert "TODO" not in html
+    assert "Рџ" not in html
+    assert "Рќ" not in html
+    assert "СЃ" not in html

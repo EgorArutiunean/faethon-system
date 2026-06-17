@@ -1,6 +1,6 @@
 # Print Forms
 
-Print Forms Core starts with one commercial-ready HTML document form: invoice / накладная.
+Print Forms Core starts with one legacy-oriented HTML document form: invoice / накладная.
 
 Implemented endpoint:
 
@@ -13,28 +13,26 @@ Both endpoints require `documents.read`.
 
 The current invoice is an HTML print view rendered from `backend/app/templates/invoice.html`.
 
-It includes:
+As of 2026-06-17, the outgoing invoice layout is aligned to the observed old program screenshot for releasing goods from own warehouse to a customer.
 
-- document title based on type;
-- document number;
-- document date;
-- document type;
-- document status;
-- warehouse;
-- warehouse code/address when available;
-- destination warehouse for transfers;
-- partner;
-- partner code, tax ID, phone, and address when available;
-- note / document basis;
-- product lines;
-- quantity;
-- price;
-- line total;
-- document total;
-- draft/cancelled watermark;
-- signature lines.
+It includes the legacy visual structure:
 
-Draft, posted, and cancelled documents can all be previewed. The status is printed prominently.
+- centered title like `РАСХОДНАЯ НАКЛАДНАЯ № ...`;
+- date in `YYYY.MM.DD` format;
+- supplier line populated from the source warehouse name;
+- buyer line populated from the customer name;
+- visible but currently empty доверенность number/date fields;
+- released-by note line;
+- compact table columns: `№`, `Код`, `Товар`, `Ед.`, `Кол.`, `Цена`, `Сумма`;
+- product code from SKU;
+- unit from product unit short name, fallback `шт`;
+- quantity without redundant trailing zeros;
+- price with three decimals, e.g. `8.000`;
+- line/document totals with two decimals, e.g. `136.00`;
+- total amount in Russian words;
+- `Отпустил` and `Получил` signature lines.
+
+Draft, posted, and cancelled documents can all be previewed. Draft/cancelled documents still receive a watermark, while posted documents print without it.
 
 ## Frontend Behavior
 
@@ -46,6 +44,7 @@ The frontend fetches the print HTML with the current bearer token and opens a te
 - No act reconciliation form.
 - No cash receipt form.
 - No template designer.
-- No exact legacy-compatible print layout guarantee until legacy discovery is complete.
+- Only the outgoing warehouse-to-customer invoice has a screenshot-backed legacy layout.
+- Exact legal fields, numbering rules, and other document form variants are still not fully confirmed.
 
-TODO LEGACY_RULE_REQUIRED: confirm final BuySell invoice title, columns, legal fields, signature labels, and whether cancelled/draft watermarks are needed.
+TODO LEGACY_RULE_REQUIRED: confirm whether `Доверенность №`, `от`, `Отпущено`, numeric-only document number, and draft/cancelled watermarks must exactly match the old program rules.

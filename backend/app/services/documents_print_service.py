@@ -1,4 +1,3 @@
-from datetime import datetime
 from decimal import Decimal
 from html import escape
 from pathlib import Path
@@ -8,9 +7,36 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.documents import Document, DocumentLine
+from app.models.products import Product
 
 
 TEMPLATE_PATH = Path(__file__).resolve().parents[1] / "templates" / "invoice.html"
+
+ONES = {
+    0: "",
+    1: "один",
+    2: "два",
+    3: "три",
+    4: "четыре",
+    5: "пять",
+    6: "шесть",
+    7: "семь",
+    8: "восемь",
+    9: "девять",
+    10: "десять",
+    11: "одиннадцать",
+    12: "двенадцать",
+    13: "тринадцать",
+    14: "четырнадцать",
+    15: "пятнадцать",
+    16: "шестнадцать",
+    17: "семнадцать",
+    18: "восемнадцать",
+    19: "девятнадцать",
+}
+FEMININE_ONES = {1: "одна", 2: "две"}
+TENS = {2: "двадцать", 3: "тридцать", 4: "сорок", 5: "пятьдесят", 6: "шестьдесят", 7: "семьдесят", 8: "восемьдесят", 9: "девяносто"}
+HUNDREDS = {1: "сто", 2: "двести", 3: "триста", 4: "четыреста", 5: "пятьсот", 6: "шестьсот", 7: "семьсот", 8: "восемьсот", 9: "девятьсот"}
 
 
 def _text(value: object) -> str:
@@ -21,59 +47,104 @@ def _money(value: Decimal | None) -> str:
     return "" if value is None else f"{value:.2f}"
 
 
+def _price(value: Decimal | None) -> str:
+    return "" if value is None else f"{value:.3f}"
+
+
 def _quantity(value: Decimal | None) -> str:
     return "" if value is None else f"{value:.3f}".rstrip("0").rstrip(".")
 
 
-def _address_block(*parts: object) -> str:
-    visible = [_text(part) for part in parts if part]
-    return "<br>".join(visible) if visible else "&mdash;"
+def _document_date(document: Document) -> str:
+    return document.document_date.strftime("%Y.%m.%d")
+
+
+def _triad_words(value: int, feminine: bool = False) -> list[str]:
+    words: list[str] = []
+    hundreds = value // 100
+    rest = value % 100
+    if hundreds:
+        words.append(HUNDREDS[hundreds])
+    if 10 <= rest <= 19:
+        words.append(ONES[rest])
+        return words
+    tens = rest // 10
+    ones = rest % 10
+    if tens:
+        words.append(TENS[tens])
+    if ones:
+        words.append((FEMININE_ONES if feminine else ONES).get(ones, ONES[ones]))
+    return words
+
+
+def _plural(value: int, one: str, few: str, many: str) -> str:
+    tail = value % 100
+    if 11 <= tail <= 14:
+        return many
+    last = value % 10
+    if last == 1:
+        return one
+    if 2 <= last <= 4:
+        return few
+    return many
+
+
+def _integer_words(value: int) -> str:
+    if value == 0:
+        return "ноль"
+    parts: list[str] = []
+    thousands = value // 1000
+    remainder = value % 1000
+    if thousands:
+        parts.extend(_triad_words(thousands, feminine=True))
+        parts.append(_plural(thousands, "тысяча", "тысячи", "тысяч"))
+    if remainder:
+        parts.extend(_triad_words(remainder))
+    return " ".join(parts)
+
+
+def _amount_words(value: Decimal | None) -> str:
+    amount = value or Decimal("0")
+    rubles = int(amount)
+    kopecks = int((amount - Decimal(rubles)) * 100)
+    words = _integer_words(rubles).capitalize()
+    return f"( {words} {_plural(rubles, 'рубль', 'рубля', 'рублей')} {kopecks:02d} копеек )"
 
 
 def _line_rows(document: Document) -> str:
     rows: list[str] = []
     for index, line in enumerate(document.lines, start=1):
+        product = line.product
         rows.append(
             "<tr>"
             f"<td class=\"center\">{index}</td>"
+            f"<td class=\"center\">{_text(product.sku if product else line.product_id)}</td>"
             f"<td>{_text(line.product_name or line.product_id)}</td>"
+            f"<td class=\"center\">{_text(product.unit.short_name if product and product.unit else 'шт')}</td>"
             f"<td class=\"num\">{_quantity(line.quantity)}</td>"
-            f"<td class=\"num\">{_money(line.price)}</td>"
+            f"<td class=\"num\">{_price(line.price)}</td>"
             f"<td class=\"num strong\">{_money(line.line_total)}</td>"
             "</tr>"
         )
     if not rows:
-        rows.append("<tr><td colspan=\"5\" class=\"empty\">\u041d\u0435\u0442 \u0441\u0442\u0440\u043e\u043a</td></tr>")
+        rows.append("<tr><td colspan=\"7\" class=\"empty\">\u041d\u0435\u0442 \u0441\u0442\u0440\u043e\u043a</td></tr>")
     return "\n".join(rows)
-
-
-def _document_type_label(value: str) -> str:
-    return {
-        Document.TYPE_INCOMING: "\u041f\u0440\u0438\u0445\u043e\u0434",
-        Document.TYPE_OUTGOING: "\u0420\u0430\u0441\u0445\u043e\u0434",
-        Document.TYPE_ADJUSTMENT: "\u041a\u043e\u0440\u0440\u0435\u043a\u0446\u0438\u044f",
-        Document.TYPE_TRANSFER: "\u041f\u0435\u0440\u0435\u043c\u0435\u0449\u0435\u043d\u0438\u0435",
-    }.get(value, value)
-
-
-def _status_label(value: str) -> str:
-    return {
-        Document.STATUS_DRAFT: "\u0427\u0435\u0440\u043d\u043e\u0432\u0438\u043a",
-        Document.STATUS_POSTED: "\u041f\u0440\u043e\u0432\u0435\u0434\u0451\u043d",
-        Document.STATUS_CANCELLED: "\u041e\u0442\u043c\u0435\u043d\u0451\u043d",
-    }.get(value, value)
 
 
 def _document_title(document: Document) -> str:
     if document.document_type == Document.TYPE_INCOMING:
-        return "\u041f\u0440\u0438\u0445\u043e\u0434\u043d\u0430\u044f \u043d\u0430\u043a\u043b\u0430\u0434\u043d\u0430\u044f"
+        return "\u041f\u0420\u0418\u0425\u041e\u0414\u041d\u0410\u042f \u041d\u0410\u041a\u041b\u0410\u0414\u041d\u0410\u042f"
     if document.document_type == Document.TYPE_OUTGOING:
-        return "\u0420\u0430\u0441\u0445\u043e\u0434\u043d\u0430\u044f \u043d\u0430\u043a\u043b\u0430\u0434\u043d\u0430\u044f"
+        return "\u0420\u0410\u0421\u0425\u041e\u0414\u041d\u0410\u042f \u041d\u0410\u041a\u041b\u0410\u0414\u041d\u0410\u042f"
     if document.document_type == Document.TYPE_TRANSFER:
-        return "\u041d\u0430\u043a\u043b\u0430\u0434\u043d\u0430\u044f \u043d\u0430 \u043f\u0435\u0440\u0435\u043c\u0435\u0449\u0435\u043d\u0438\u0435"
+        return "\u041d\u0410\u041a\u041b\u0410\u0414\u041d\u0410\u042f \u041d\u0410 \u041f\u0415\u0420\u0415\u041c\u0415\u0429\u0415\u041d\u0418\u0415"
     if document.document_type == Document.TYPE_ADJUSTMENT:
-        return "\u0410\u043a\u0442 \u043a\u043e\u0440\u0440\u0435\u043a\u0446\u0438\u0438 \u043e\u0441\u0442\u0430\u0442\u043a\u043e\u0432"
-    return "\u0414\u043e\u043a\u0443\u043c\u0435\u043d\u0442"
+        return "\u0410\u041a\u0422 \u041a\u041e\u0420\u0420\u0415\u041a\u0426\u0418\u0418 \u041e\u0421\u0422\u0410\u0422\u041a\u041e\u0412"
+    return "\u0414\u041e\u041a\u0423\u041c\u0415\u041d\u0422"
+
+
+def _document_number(document: Document) -> str:
+    return document.number or str(document.id)
 
 
 def _watermark(document: Document) -> str:
@@ -92,38 +163,24 @@ def get_invoice_html(db: Session, document_id: int) -> str:
             selectinload(Document.partner),
             selectinload(Document.warehouse),
             selectinload(Document.destination_warehouse),
-            selectinload(Document.lines).selectinload(DocumentLine.product),
+            selectinload(Document.lines).selectinload(DocumentLine.product).selectinload(Product.unit),
         )
     )
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    partner = document.partner
-    warehouse = document.warehouse
-    destination = document.destination_warehouse
     template = TEMPLATE_PATH.read_text(encoding="utf-8")
     values = {
         "document_title": _text(_document_title(document)),
-        "document_number": _text(document.number or f"#{document.id}"),
-        "document_date": _text(document.document_date),
-        "document_type": _text(_document_type_label(document.document_type)),
-        "status": _text(_status_label(document.status)),
-        "warehouse_name": _text(document.warehouse_name or "\u2014"),
-        "warehouse_details": _address_block(warehouse.code if warehouse else None, warehouse.address if warehouse else None),
-        "destination_warehouse_name": _text(document.destination_warehouse_name or "\u2014"),
-        "destination_warehouse_details": _address_block(destination.code if destination else None, destination.address if destination else None),
-        "partner_name": _text(document.partner_name or "\u2014"),
-        "partner_details": _address_block(
-            partner.code if partner else None,
-            partner.tax_id if partner else None,
-            partner.phone if partner else None,
-            partner.address if partner else None,
-        ),
-        "note": _text(document.note or "\u2014"),
+        "document_number": _text(_document_number(document)),
+        "document_date": _text(_document_date(document)),
+        "supplier_name": _text(document.warehouse_name or ""),
+        "buyer_name": _text(document.partner_name or ""),
+        "note": _text(document.note or ""),
         "total_amount": _money(document.total_amount),
+        "amount_words": _text(_amount_words(document.total_amount)),
         "line_rows": _line_rows(document),
         "watermark": _watermark(document),
-        "generated_at": _text(datetime.now().strftime("%Y-%m-%d %H:%M")),
     }
     for key, value in values.items():
         template = template.replace(f"{{{{{key}}}}}", value)

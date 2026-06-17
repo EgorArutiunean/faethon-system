@@ -2,138 +2,152 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8">
-  <title>{{document_title}} {{document_number}}</title>
+  <title>{{document_title}} № {{document_number}}</title>
   <style>
     * { box-sizing: border-box; }
     body {
-      color: #111827;
+      color: #111;
       font-family: Arial, sans-serif;
-      font-size: 13px;
-      line-height: 1.35;
-      margin: 28px;
+      font-size: 12px;
+      line-height: 1.15;
+      margin: 14mm 16mm;
       position: relative;
     }
     .print-actions {
       display: flex;
-      gap: 8px;
       justify-content: flex-end;
-      margin-bottom: 14px;
+      margin-bottom: 8px;
     }
     .print-actions button {
-      background: #111827;
+      background: #111;
       border: 0;
-      color: white;
+      color: #fff;
       cursor: pointer;
+      font-size: 12px;
+      padding: 6px 10px;
+    }
+    .page {
+      margin: 0 auto;
+      max-width: 184mm;
+      min-height: 120mm;
+      position: relative;
+    }
+    h1 {
+      font-size: 18px;
       font-weight: 700;
-      padding: 8px 12px;
+      letter-spacing: .2px;
+      margin: 0 0 16px;
+      text-align: center;
     }
-    .watermark {
-      border: 3px solid #92400e;
-      color: #92400e;
-      font-size: 34px;
-      font-weight: 800;
-      left: 50%;
-      letter-spacing: 8px;
-      opacity: 0.12;
-      padding: 14px 28px;
-      position: fixed;
-      top: 42%;
-      transform: translate(-50%, -50%) rotate(-18deg);
-      z-index: 0;
-    }
-    .watermark.danger { border-color: #b42318; color: #b42318; }
-    .page { position: relative; z-index: 1; }
-    .header {
-      align-items: flex-start;
-      border-bottom: 2px solid #111827;
+    .top-fields {
       display: grid;
-      gap: 16px;
-      grid-template-columns: 1fr 220px;
-      padding-bottom: 12px;
+      gap: 3px;
+      grid-template-columns: 1fr;
+      margin-bottom: 4px;
+      width: 100%;
     }
-    .brand { color: #52616f; font-size: 12px; margin-bottom: 6px; }
-    h1 { font-size: 22px; line-height: 1.15; margin: 0 0 8px; }
-    .doc-meta {
-      border: 1px solid #111827;
+    .line {
+      align-items: baseline;
       display: grid;
-      grid-template-columns: 92px 1fr;
+      gap: 6px;
+      grid-template-columns: max-content 1fr;
+      min-height: 16px;
     }
-    .doc-meta div { border-bottom: 1px solid #d9e0e7; padding: 6px 8px; }
-    .doc-meta div:nth-last-child(-n+2) { border-bottom: 0; }
-    .label { color: #52616f; font-size: 11px; text-transform: uppercase; }
-    .value { font-weight: 700; }
-    .party-grid {
-      display: grid;
-      gap: 12px;
-      grid-template-columns: 1fr 1fr;
-      margin: 18px 0 14px;
+    .line.double {
+      grid-template-columns: max-content 1fr max-content 90px max-content 1fr;
     }
-    .party {
-      border: 1px solid #9aa6b2;
-      min-height: 92px;
-      padding: 10px;
-    }
-    .party-title { color: #52616f; font-size: 11px; margin-bottom: 4px; text-transform: uppercase; }
-    .party-name { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
-    .details { color: #374151; font-size: 12px; }
-    .note {
-      border: 1px solid #d9e0e7;
-      margin-bottom: 14px;
-      padding: 8px 10px;
+    .label { white-space: nowrap; }
+    .value {
+      border-bottom: 1px solid transparent;
+      min-height: 14px;
+      overflow: hidden;
+      white-space: nowrap;
     }
     table {
       border-collapse: collapse;
-      margin-top: 12px;
+      margin-top: 4px;
       width: 100%;
     }
-    th, td {
-      border: 1px solid #9aa6b2;
-      padding: 7px;
-      text-align: left;
+    th,
+    td {
+      border: 1px solid #222;
+      font-size: 11px;
+      padding: 1px 4px;
       vertical-align: top;
     }
     th {
-      background: #eef2f6;
-      color: #1f2937;
-      font-size: 11px;
-      text-transform: uppercase;
+      font-weight: 700;
+      text-align: center;
     }
     .center { text-align: center; }
-    .num { text-align: right; white-space: nowrap; }
-    .strong { font-weight: 700; }
-    .empty { color: #52616f; text-align: center; }
-    .total-box {
-      display: flex;
-      justify-content: flex-end;
-      margin-top: 14px;
+    .num {
+      text-align: right;
+      white-space: nowrap;
     }
-    .total-box table { margin-top: 0; width: 320px; }
-    .total-box td { font-size: 15px; }
+    .strong { font-weight: 700; }
+    .empty {
+      color: #555;
+      text-align: center;
+    }
+    .totals {
+      display: grid;
+      grid-template-columns: 1fr 120px;
+      margin-top: 3px;
+    }
+    .total-label {
+      font-size: 12px;
+      font-style: italic;
+      font-weight: 700;
+      padding-left: 72px;
+    }
+    .total-value {
+      font-weight: 700;
+      text-align: right;
+    }
+    .amount-words {
+      font-size: 12px;
+      margin-left: 76px;
+      margin-top: 4px;
+    }
     .signatures {
       display: grid;
-      gap: 42px;
       grid-template-columns: 1fr 1fr;
-      margin-top: 58px;
+      margin-top: 62px;
+      padding: 0 42px;
+    }
+    .signature {
+      align-items: baseline;
+      display: grid;
+      gap: 6px;
+      grid-template-columns: max-content 1fr;
     }
     .signature-line {
-      border-top: 1px solid #111827;
-      color: #52616f;
-      padding-top: 6px;
+      border-bottom: 1px solid #111;
+      height: 14px;
     }
-    .footer {
-      border-top: 1px solid #d9e0e7;
-      color: #52616f;
-      display: flex;
-      font-size: 11px;
-      justify-content: space-between;
-      margin-top: 34px;
-      padding-top: 8px;
+    .watermark {
+      border: 2px solid #777;
+      color: #777;
+      font-size: 30px;
+      font-weight: 700;
+      left: 50%;
+      letter-spacing: 6px;
+      opacity: .12;
+      padding: 8px 20px;
+      position: fixed;
+      top: 44%;
+      transform: translate(-50%, -50%) rotate(-18deg);
+      z-index: 0;
     }
-    @page { margin: 16mm; size: A4; }
+    .watermark.danger {
+      border-color: #900;
+      color: #900;
+    }
+    .content { position: relative; z-index: 1; }
+    @page { margin: 14mm 16mm; size: A4; }
     @media print {
       body { margin: 0; }
       .print-actions { display: none; }
-      .party, .note, tr { break-inside: avoid; }
     }
   </style>
 </head>
@@ -143,51 +157,42 @@
     <button onclick="window.print()">&#1055;&#1077;&#1095;&#1072;&#1090;&#1100;</button>
   </div>
 
-  <div class="page">
-    <div class="header">
-      <div>
-        <div class="brand">Buy Modern</div>
-        <h1>{{document_title}}</h1>
-        <div class="details">&#1055;&#1077;&#1095;&#1072;&#1090;&#1085;&#1072;&#1103; &#1092;&#1086;&#1088;&#1084;&#1072; &#1076;&#1086;&#1082;&#1091;&#1084;&#1077;&#1085;&#1090;&#1072; &#1089;&#1082;&#1083;&#1072;&#1076;&#1089;&#1082;&#1086;&#1075;&#1086; &#1080; &#1074;&#1079;&#1072;&#1080;&#1084;&#1086;&#1088;&#1072;&#1089;&#1095;&#1077;&#1090;&#1085;&#1086;&#1075;&#1086; &#1091;&#1095;&#1077;&#1090;&#1072;</div>
-      </div>
-      <div class="doc-meta">
-        <div class="label">&#1053;&#1086;&#1084;&#1077;&#1088;</div><div class="value">{{document_number}}</div>
-        <div class="label">&#1044;&#1072;&#1090;&#1072;</div><div class="value">{{document_date}}</div>
-        <div class="label">&#1058;&#1080;&#1087;</div><div class="value">{{document_type}}</div>
-        <div class="label">&#1057;&#1090;&#1072;&#1090;&#1091;&#1089;</div><div class="value">{{status}}</div>
-      </div>
-    </div>
+  <div class="page content">
+    <h1>{{document_title}} № {{document_number}}</h1>
 
-    <div class="party-grid">
-      <div class="party">
-        <div class="party-title">&#1057;&#1082;&#1083;&#1072;&#1076;</div>
-        <div class="party-name">{{warehouse_name}}</div>
-        <div class="details">{{warehouse_details}}</div>
+    <div class="top-fields">
+      <div class="line">
+        <span class="label">&#1044;&#1072;&#1090;&#1072;:</span>
+        <span class="value">{{document_date}}</span>
       </div>
-      <div class="party">
-        <div class="party-title">&#1057;&#1082;&#1083;&#1072;&#1076; &#1085;&#1072;&#1079;&#1085;&#1072;&#1095;&#1077;&#1085;&#1080;&#1103;</div>
-        <div class="party-name">{{destination_warehouse_name}}</div>
-        <div class="details">{{destination_warehouse_details}}</div>
+      <div class="line">
+        <span class="label">&#1055;&#1086;&#1089;&#1090;&#1072;&#1074;&#1097;&#1080;&#1082;:</span>
+        <span class="value">{{supplier_name}}</span>
       </div>
-      <div class="party">
-        <div class="party-title">&#1050;&#1086;&#1085;&#1090;&#1088;&#1072;&#1075;&#1077;&#1085;&#1090;</div>
-        <div class="party-name">{{partner_name}}</div>
-        <div class="details">{{partner_details}}</div>
+      <div class="line double">
+        <span class="label">&#1055;&#1086;&#1082;&#1091;&#1087;&#1072;&#1090;&#1077;&#1083;&#1100;:</span>
+        <span class="value">{{buyer_name}}</span>
+        <span class="label">&#1044;&#1086;&#1074;&#1077;&#1088;&#1077;&#1085;&#1085;&#1086;&#1089;&#1090;&#1100; №:</span>
+        <span class="value"></span>
+        <span class="label">&#1086;&#1090;:</span>
+        <span class="value"></span>
       </div>
-      <div class="party">
-        <div class="party-title">&#1054;&#1089;&#1085;&#1086;&#1074;&#1072;&#1085;&#1080;&#1077; / &#1087;&#1088;&#1080;&#1084;&#1077;&#1095;&#1072;&#1085;&#1080;&#1077;</div>
-        <div class="details">{{note}}</div>
+      <div class="line">
+        <span class="label">&#1054;&#1090;&#1087;&#1091;&#1097;&#1077;&#1085;&#1086;:</span>
+        <span class="value">{{note}}</span>
       </div>
     </div>
 
     <table>
       <thead>
         <tr>
-          <th style="width: 42px;">#</th>
+          <th style="width: 28px;">№</th>
+          <th style="width: 70px;">&#1050;&#1086;&#1076;</th>
           <th>&#1058;&#1086;&#1074;&#1072;&#1088;</th>
-          <th class="num" style="width: 110px;">&#1050;&#1086;&#1083;-&#1074;&#1086;</th>
-          <th class="num" style="width: 120px;">&#1062;&#1077;&#1085;&#1072;</th>
-          <th class="num" style="width: 130px;">&#1057;&#1091;&#1084;&#1084;&#1072;</th>
+          <th style="width: 36px;">&#1045;&#1076;.</th>
+          <th style="width: 48px;">&#1050;&#1086;&#1083;.</th>
+          <th style="width: 70px;">&#1062;&#1077;&#1085;&#1072;</th>
+          <th style="width: 78px;">&#1057;&#1091;&#1084;&#1084;&#1072;</th>
         </tr>
       </thead>
       <tbody>
@@ -195,23 +200,21 @@
       </tbody>
     </table>
 
-    <div class="total-box">
-      <table>
-        <tr>
-          <td class="label">&#1048;&#1090;&#1086;&#1075;&#1086;</td>
-          <td class="num strong">{{total_amount}}</td>
-        </tr>
-      </table>
+    <div class="totals">
+      <div class="total-label">&#1048;&#1090;&#1086;&#1075;&#1086;:</div>
+      <div class="total-value">{{total_amount}}</div>
     </div>
+    <div class="amount-words">{{amount_words}}</div>
 
     <div class="signatures">
-      <div class="signature-line">&#1054;&#1090;&#1087;&#1091;&#1089;&#1090;&#1080;&#1083; / &#1086;&#1090;&#1074;&#1077;&#1090;&#1089;&#1090;&#1074;&#1077;&#1085;&#1085;&#1099;&#1081;</div>
-      <div class="signature-line">&#1055;&#1086;&#1083;&#1091;&#1095;&#1080;&#1083; / &#1082;&#1086;&#1085;&#1090;&#1088;&#1072;&#1075;&#1077;&#1085;&#1090;</div>
-    </div>
-
-    <div class="footer">
-      <div>Buy Modern</div>
-      <div>&#1057;&#1092;&#1086;&#1088;&#1084;&#1080;&#1088;&#1086;&#1074;&#1072;&#1085;&#1086;: {{generated_at}}</div>
+      <div class="signature">
+        <span>&#1054;&#1090;&#1087;&#1091;&#1089;&#1090;&#1080;&#1083;</span>
+        <span class="signature-line"></span>
+      </div>
+      <div class="signature">
+        <span>&#1055;&#1086;&#1083;&#1091;&#1095;&#1080;&#1083;</span>
+        <span class="signature-line"></span>
+      </div>
     </div>
   </div>
 </body>

@@ -3,6 +3,7 @@ import { useState } from "react";
 import { DataTable } from "../components/DataTable";
 import { PageScaffold } from "../components/PageScaffold";
 import { useAuth } from "../auth";
+import { formatCode } from "../format";
 import { useI18n } from "../i18n";
 import { ImportSummary, api } from "../lib/api";
 import { useToast } from "../toast";
@@ -90,7 +91,7 @@ export function Settings() {
         <DataTable
           rows={importTypes.map((type) => ({ id: type, type, summary: summaries[type] }))}
           columns={[
-            { key: "type", header: t("type") },
+            { key: "type", header: t("type"), render: (row) => formatCode(row.type, t) },
             {
               key: "file",
               header: t("selectFile"),
@@ -121,7 +122,7 @@ export function Settings() {
       </div>
       {Object.entries(summaries).map(([type, summary]) => summary ? (
         <div className="panel" key={type} style={{ padding: 12, marginBottom: 10 }}>
-          <h3 style={{ fontSize: 15, margin: "0 0 8px" }}>{type}</h3>
+          <h3 style={{ fontSize: 15, margin: "0 0 8px" }}>{formatCode(type, t)}</h3>
           <div className="muted-note">{t("errors")}: {summary.errors.length}; {t("warnings")}: {summary.warnings.length}</div>
           {[...summary.errors, ...summary.warnings].map((issue, index) => (
             <div key={index} className={summary.errors.includes(issue) ? "error-panel" : "muted-note"}>

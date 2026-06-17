@@ -269,7 +269,7 @@ export function DocumentEditor() {
           <label>{t("partner")}</label>
           <select value={header.partner_id} onChange={(event) => setHeader({ ...header, partner_id: event.target.value })} disabled={!isDraft || header.document_type === "transfer" || header.document_type === "adjustment"}>
             <option value="">{t("notSelected")}</option>
-            {filteredPartners.map((partner) => <option key={partner.id} value={partner.id}>{partner.name} - {t(partner.partner_type)}</option>)}
+            {filteredPartners.map((partner) => <option key={partner.id} value={partner.id}>{partner.name} - {formatCode(partner.partner_type, t)}</option>)}
           </select>
         </div>
         <div className="field"><label>{t("total")}</label><input value={formatMoney(document?.total_amount ?? "0")} readOnly /></div>

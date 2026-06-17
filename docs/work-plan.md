@@ -37,6 +37,7 @@ Known limits:
 - full history import from `BUY.GDB` is not available;
 - dashboard metrics are live for products, partners, documents, draft payments, stock positions, and cash balance;
 - draft payments can be edited and deleted before posting;
+- core frontend tables and selectors show human-readable Russian labels for document, payment, cash, partner, movement, status, and Import Lite enum values;
 - user and role management UI is missing;
 - audit log viewer is missing;
 - outgoing invoice print form follows the observed old program layout from the 2026-06-17 screenshot for releasing goods from own warehouse to a customer;
@@ -117,7 +118,7 @@ Close MVP gaps that affect real daily work.
 
 High priority:
 
-- final enum labels instead of technical codes;
+- confirm final legacy wording for enum labels where old-program terminology differs from current Russian labels;
 - finish legacy-compatible print forms for all confirmed document types and add PDF output if required;
 - user and role management UI if needed for launch;
 - audit log viewer if accountability is required.

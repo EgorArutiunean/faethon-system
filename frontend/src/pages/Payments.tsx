@@ -118,7 +118,7 @@ export function Payments() {
           <label>{t("partner")}</label>
           <select value={partnerId} onChange={(event) => setPartnerId(event.target.value)}>
             <option value="">{t("selectPartner")}</option>
-            {partnerOptions.map((partner) => <option key={partner.id} value={partner.id}>{partner.name} - {t(partner.partner_type)}</option>)}
+            {partnerOptions.map((partner) => <option key={partner.id} value={partner.id}>{partner.name} - {formatCode(partner.partner_type, t)}</option>)}
           </select>
         </div>
         <div className="field">

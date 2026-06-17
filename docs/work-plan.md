@@ -39,7 +39,7 @@ Known limits:
 - draft payments can be edited and deleted before posting;
 - user and role management UI is missing;
 - audit log viewer is missing;
-- print form is not final legacy-compatible layout;
+- document print form is business-ready HTML, but not final legacy-compatible/PDF layout;
 - PDF generation/export is not implemented;
 - advanced reports, saved filters, configurable columns, VAT, discounts, currencies, and period closing are not implemented.
 
@@ -118,7 +118,7 @@ Close MVP gaps that affect real daily work.
 High priority:
 
 - final enum labels instead of technical codes;
-- final document print form;
+- legacy-compatible/PDF document print form if required after confirmation;
 - user and role management UI if needed for launch;
 - audit log viewer if accountability is required.
 

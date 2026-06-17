@@ -37,7 +37,7 @@ Implemented:
 - reports API for stock balances, stock movements, partner debts, cash book, and documents register;
 - frontend Reports page with tabs, filters, totals, loading/error/empty states, and `reports.read` access handling.
 - XLSX/CSV export for core reports using the same filters as on-screen reports.
-- HTML invoice print view for documents with protected `documents.read` access.
+- business-ready HTML invoice/stock document print view with protected `documents.read` access.
 - operator UX improvements for document editing, product search, current stock display, validations, confirmations, toasts, status badges, and basic table search/sort/pagination.
 - CSV/XLSX Import Lite for products, partners, warehouses, opening stock, and opening partner balances with dry-run validation.
 - business logic/CRUD audit for core entities;

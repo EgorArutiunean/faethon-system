@@ -27,6 +27,10 @@ No open P0 issues found.
   - Coverage: backend service/API protection for draft-only update/delete; frontend edit/save/delete controls on the payments page.
   - Verification: payment service tests pass; frontend TypeScript check passes.
 
+- Fixed: Document print form no longer contains placeholder/TODO text or mojibake.
+  - Coverage: Russian document title/status/type, warehouse and partner details, note, totals, signatures, and draft/cancelled watermarks.
+  - Verification: print form tests pass and assert against common mojibake fragments.
+
 - Manual QA creates persistent QA records in the local database.
   - Impact: repeated QA runs add products, warehouses, partners, documents, payments, and cash operations.
   - Recommendation: add a test-only cleanup/reset command or run QA against disposable databases.

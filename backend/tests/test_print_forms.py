@@ -71,8 +71,8 @@ def create_user_without_documents_read(db: Session) -> None:
 
 def make_document(db: Session) -> int:
     product = Product(name="Printable Bolt", sku="PRINT-BOLT")
-    warehouse = Warehouse(name="Print Warehouse", code="PRINT-WH")
-    partner = Partner(name="Print Partner", code="PRINT-P")
+    warehouse = Warehouse(name="Print Warehouse", code="PRINT-WH", address="Warehouse address")
+    partner = Partner(name="Print Partner", code="PRINT-P", tax_id="TAX-777", phone="+373000000", address="Partner address")
     db.add_all([product, warehouse, partner])
     db.commit()
     document = create_document(
@@ -82,6 +82,7 @@ def make_document(db: Session) -> int:
             document_date=date(2026, 5, 2),
             partner_id=partner.id,
             warehouse_id=warehouse.id,
+            note="Printed for QA",
         ),
     )
     add_document_line(db, document.id, DocumentLineCreate(product_id=product.id, quantity=Decimal("2"), price=Decimal("11.50")))
@@ -132,3 +133,25 @@ def test_print_contains_document_number_and_total_amount(client: TestClient, db:
     assert "IN-000001" in response.text
     assert "23.00" in response.text
     assert "Printable Bolt" in response.text
+
+
+def test_print_form_has_business_ready_russian_layout(client: TestClient, db: Session) -> None:
+    document_id = make_document(db)
+
+    response = client.get(f"/api/v1/documents/{document_id}/print.html", headers=auth_header(client))
+
+    assert response.status_code == 200
+    assert "Приходная накладная" in response.text
+    assert "Черновик" in response.text
+    assert "Print Warehouse" in response.text
+    assert "PRINT-WH" in response.text
+    assert "Warehouse address" in response.text
+    assert "Print Partner" in response.text
+    assert "TAX-777" in response.text
+    assert "+373000000" in response.text
+    assert "Printed for QA" in response.text
+    assert "ЧЕРНОВИК" in response.text
+    assert "TODO" not in response.text
+    assert "Рџ" not in response.text
+    assert "Рќ" not in response.text
+    assert "СЃ" not in response.text

@@ -186,6 +186,24 @@ export type CurrentUser = {
   permissions: string[];
 };
 
+export type Role = {
+  id: number;
+  name: string;
+  description?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ManagedUser = {
+  id: number;
+  email: string;
+  full_name?: string | null;
+  is_active: boolean;
+  role_names: string[];
+  created_at: string;
+  updated_at: string;
+};
+
 export type LoginResponse = {
   access_token: string;
   token_type: string;
@@ -265,6 +283,12 @@ export const api = {
   login: (payload: { email: string; password: string }) =>
     request<LoginResponse>("/auth/login", { method: "POST", body: JSON.stringify(payload) }),
   me: () => request<CurrentUser>("/auth/me"),
+  users: () => request<ManagedUser[]>("/users"),
+  roles: () => request<Role[]>("/users/roles"),
+  createUser: (payload: { email?: string; password: string; full_name?: string | null; is_active?: boolean; role_names?: string[] }) =>
+    request<ManagedUser>("/users", { method: "POST", body: JSON.stringify(payload) }),
+  updateUser: (id: number, payload: { email?: string; password?: string; full_name?: string | null; is_active?: boolean; role_names?: string[] }) =>
+    request<ManagedUser>(`/users/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
   products: () => request<Product[]>("/products"),
   createProduct: (payload: Partial<Product>) =>
     request<Product>("/products", { method: "POST", body: JSON.stringify(payload) }),

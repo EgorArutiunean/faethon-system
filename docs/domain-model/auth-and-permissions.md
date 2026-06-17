@@ -13,6 +13,7 @@ Implemented:
 - role-based permission assignment;
 - API dependencies returning `401` without token and `403` without permission;
 - frontend route guard and logout by deleting the token.
+- admin-only user management for creating users, changing names, active status, passwords, and role assignments.
 
 Not implemented:
 
@@ -21,6 +22,7 @@ Not implemented:
 - field-level security;
 - permission sets;
 - approval workflows;
+- custom role/permission editor.
 - record-level sharing.
 
 ## Demo Admin
@@ -105,6 +107,7 @@ The frontend uses `AuthContext`:
 - redirects unauthenticated users to Login;
 - hides Settings when `settings.manage` is absent;
 - hides Audit Log when `audit.read` is absent;
+- exposes user management inside Settings when `users.manage` is present;
 - disables posting/cancellation and cash actions when permissions are absent.
 
 ## Legacy Notes

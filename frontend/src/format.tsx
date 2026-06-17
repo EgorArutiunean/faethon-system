@@ -25,6 +25,7 @@ export function formatMoney(value?: string | number | null) {
 
 const CODE_LABEL_KEYS: Record<string, string> = {
   adjustment: "adjustment",
+  admin: "adminRole",
   bank: "bank",
   both: "both",
   cancel: "cancelMovement",
@@ -33,6 +34,7 @@ const CODE_LABEL_KEYS: Record<string, string> = {
   cash_in: "cashIn",
   cash_out: "cashOut",
   cash_operation: "cashOperation",
+  cashier: "cashierRole",
   correction: "correction",
   create: "create",
   customer: "customer",
@@ -45,6 +47,7 @@ const CODE_LABEL_KEYS: Record<string, string> = {
   draft: "draft",
   incoming: "incoming",
   import: "importLite",
+  manager: "managerRole",
   "opening-partner-balances": "importOpeningPartnerBalances",
   "opening-stock": "importOpeningStock",
   outgoing: "outgoing",
@@ -62,6 +65,8 @@ const CODE_LABEL_KEYS: Record<string, string> = {
   update: "update",
   update_header: "updateHeader",
   update_line: "updateLine",
+  user: "actorUser",
+  viewer: "viewerRole",
   warehouse: "warehouse",
   warehouses: "warehouses",
 };

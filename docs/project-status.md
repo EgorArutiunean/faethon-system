@@ -34,6 +34,7 @@ Implemented:
 - login with JWT access token;
 - simple role and object/action permissions;
 - demo users for admin, manager, cashier, and viewer roles;
+- admin user management API and Settings UI for creating, activating/deactivating, password reset, and role assignment;
 - frontend protected routes and permission-aware actions.
 - reports API for stock balances, stock movements, partner debts, cash book, and documents register;
 - frontend Reports page with tabs, filters, totals, loading/error/empty states, and `reports.read` access handling.
@@ -75,7 +76,7 @@ See `docs/development-setup.md` for the PostgreSQL/Docker workflow.
 
 Latest checks:
 
-- backend tests: `94 passed` on 2026-06-17;
+- backend tests: `99 passed` on 2026-06-17;
 - print form targeted tests: `6 passed` on 2026-06-17 after legacy outgoing invoice layout update;
 - backend compileall: successful on 2026-06-17;
 - frontend TypeScript check: successful on 2026-06-17;

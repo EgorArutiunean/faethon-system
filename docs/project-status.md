@@ -20,6 +20,7 @@ Implemented:
 - stock balances;
 - stock movements;
 - audit log entries for document actions;
+- protected audit log API and frontend viewer for admin/accountability review;
 - payment creation, posting, and cancellation;
 - draft payment editing and deletion before posting;
 - cash operation records linked to posted/cancelled payments;
@@ -74,9 +75,9 @@ See `docs/development-setup.md` for the PostgreSQL/Docker workflow.
 
 Latest checks:
 
-- backend tests: `90 passed` on 2026-06-17;
+- backend tests: `94 passed` on 2026-06-17;
 - print form targeted tests: `6 passed` on 2026-06-17 after legacy outgoing invoice layout update;
-- backend compileall: successful on 2026-06-16;
+- backend compileall: successful on 2026-06-17;
 - frontend TypeScript check: successful on 2026-06-17;
 - frontend production build: successful on 2026-06-17.
 - Docker Compose smoke: successful on 2026-05-03.

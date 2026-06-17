@@ -38,8 +38,8 @@ Known limits:
 - dashboard metrics are live for products, partners, documents, draft payments, stock positions, and cash balance;
 - draft payments can be edited and deleted before posting;
 - core frontend tables and selectors show human-readable Russian labels for document, payment, cash, partner, movement, status, and Import Lite enum values;
+- audit log viewer is available to users with `audit.read`;
 - user and role management UI is missing;
-- audit log viewer is missing;
 - outgoing invoice print form follows the observed old program layout from the 2026-06-17 screenshot for releasing goods from own warehouse to a customer;
 - PDF generation/export is not implemented;
 - advanced reports, saved filters, configurable columns, VAT, discounts, currencies, and period closing are not implemented.
@@ -121,7 +121,7 @@ High priority:
 - confirm final legacy wording for enum labels where old-program terminology differs from current Russian labels;
 - finish legacy-compatible print forms for all confirmed document types and add PDF output if required;
 - user and role management UI if needed for launch;
-- audit log viewer if accountability is required.
+- confirm whether non-admin roles need audit access before launch.
 
 Medium priority:
 

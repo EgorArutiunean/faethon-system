@@ -4,6 +4,7 @@ import {
   Building2,
   CircleDollarSign,
   ClipboardList,
+  History,
   FileText,
   Home,
   Package,
@@ -25,13 +26,18 @@ const nav = [
   { to: "/payments", labelKey: "payments", icon: WalletCards },
   { to: "/cash", labelKey: "cash", icon: CircleDollarSign },
   { to: "/reports", labelKey: "reports", icon: BarChart3 },
+  { to: "/audit", labelKey: "auditLog", icon: History },
   { to: "/settings", labelKey: "settings", icon: Settings }
 ];
 
 export function AppLayout() {
   const { t } = useI18n();
   const { user, logout, can } = useAuth();
-  const visibleNav = nav.filter((item) => item.to !== "/settings" || can("settings.manage"));
+  const visibleNav = nav.filter((item) => {
+    if (item.to === "/settings") return can("settings.manage");
+    if (item.to === "/audit") return can("audit.read");
+    return true;
+  });
   return (
     <div className="app-shell">
       <aside className="sidebar">

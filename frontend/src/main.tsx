@@ -4,6 +4,7 @@ import { createBrowserRouter, RouterProvider } from "react-router-dom";
 
 import { AppLayout } from "./components/AppLayout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
+import { Audit } from "./pages/Audit";
 import { Cash } from "./pages/Cash";
 import { Dashboard } from "./pages/Dashboard";
 import { DocumentEditor } from "./pages/DocumentEditor";
@@ -42,6 +43,7 @@ const router = createBrowserRouter([
           { path: "payments", element: <Payments /> },
           { path: "cash", element: <Cash /> },
           { path: "reports", element: <Reports /> },
+          { path: "audit", element: <Audit /> },
           { path: "settings", element: <Settings /> }
         ]
       }

@@ -35,6 +35,7 @@ PERMISSIONS = [
     "cash.create",
     "cash.cancel",
     "reports.read",
+    "audit.read",
     "users.manage",
     "settings.manage",
 ]

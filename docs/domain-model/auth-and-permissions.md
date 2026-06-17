@@ -91,6 +91,7 @@ Cash:
 System:
 
 - `reports.read`
+- `audit.read`
 - `users.manage`
 - `settings.manage`
 
@@ -103,6 +104,7 @@ The frontend uses `AuthContext`:
 - exposes `can(permission)`;
 - redirects unauthenticated users to Login;
 - hides Settings when `settings.manage` is absent;
+- hides Audit Log when `audit.read` is absent;
 - disables posting/cancellation and cash actions when permissions are absent.
 
 ## Legacy Notes

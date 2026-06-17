@@ -208,6 +208,17 @@ export type ImportSummary = {
   skipped: number;
 };
 
+export type AuditLog = {
+  id: number;
+  actor_user_id?: number | null;
+  entity_type: string;
+  entity_id: string;
+  action: string;
+  details?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = localStorage.getItem("buy-modern-token");
   const { headers, ...rest } = options;
@@ -322,5 +333,6 @@ export const api = {
       method: "POST",
       body,
       headers: { "Content-Type": "application/octet-stream", "X-Filename": file.name }
-    }))
+    })),
+  audit: (params = "") => request<AuditLog[]>(`/audit${params}`)
 };

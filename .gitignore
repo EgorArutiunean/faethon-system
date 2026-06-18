@@ -21,6 +21,7 @@ backend/pytest-cache-files-*/
 
 # Legacy working copies and downloaded tool archives are local operational artifacts.
 migration/legacy_work/
+migration/prepared_imports/
 tools/firebird/download/
 tools/firebird/*.dll
 tools/firebird/*.conf

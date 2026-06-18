@@ -29,6 +29,7 @@ Production launch is gated on verified legacy data. Direct automated access to `
 
 1. Freeze a legacy cutoff date and record it in this document.
 2. Export or manually prepare CSV/XLSX files for products, warehouses, partners, opening stock, opening partner balances, cash opening balance, documents, and payments.
+   For the known old price-list export, use `migration/data_preparation/prepare_legacy_price_list.py` to produce standard `products.xlsx` and `opening-stock.xlsx` files before upload.
 3. Run Import Lite dry-runs for supported templates and fix validation errors before applying data.
 4. Enter unsupported items manually through the UI or add a scoped importer before launch.
 5. Compare report totals in the new app against legacy control totals.
@@ -55,5 +56,6 @@ Fill these before production launch.
 
 - Original InterBase server/client runtime is still missing.
 - `BUY.GDB` metadata and row samples have not been exported.
+- The previously inspected old price-list file `E:\primer.xlsx` is not currently available in this workspace.
 - Exact legacy posting and cancellation rules remain unconfirmed.
 - Production server, domain/IP, HTTPS, secrets, and backup destination are not yet available.

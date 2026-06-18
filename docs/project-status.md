@@ -46,6 +46,7 @@ Implemented:
 - operator UX improvements for document editing, product search, current stock display, validations, confirmations, toasts, status badges, and basic table search/sort/pagination;
 - CSV/XLSX Import Lite for products, partners, warehouses, opening stock, and opening partner balances with dry-run validation;
 - product import standard includes explicit category assignment and raw old-program name preservation through `legacy_name`;
+- controlled data-preparation tool for converting the known old price-list export into Buy Modern standard product and opening-stock import templates;
 - old price-list sample from `E:\primer.xlsx` inspected: `BuyData` has 353 product rows with product code, name, unit, quantity, and price fields; this data must be prepared into Buy Modern standard templates before import;
 - business logic/CRUD audit for core entities;
 - partner split into `customer`, `supplier`, and `both` with document/payment validation and UI filters;
@@ -80,8 +81,8 @@ See `docs/development-setup.md` for the PostgreSQL/Docker workflow.
 
 Latest checks:
 
-- Import Lite targeted tests: `11 passed` on 2026-06-18 after the product import standard update;
-- backend tests: `108 passed` on 2026-06-18 after the latest Import Lite standard update;
+- Import Lite and data-preparation targeted tests: `12 passed` on 2026-06-18;
+- backend tests: `109 passed` on 2026-06-18 after the data-preparation tool was added;
 - print form targeted tests: `10 passed` on 2026-06-18 after PDF invoice export;
 - product category targeted tests: `4 passed` on 2026-06-18;
 - backend compileall: successful on 2026-06-17;

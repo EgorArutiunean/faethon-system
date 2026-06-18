@@ -20,11 +20,12 @@ Goal: prepare Buy Modern for the fastest safe company transition from the old Bu
 12. Import Lite supports reference data and opening balances.
 13. Old price-list sample from `E:\primer.xlsx` was inspected: product code, name, unit, quantity, and price data are available; category-like data is embedded in the product name.
 14. Buy Modern product import standard now includes explicit `category` and `legacy_name` fields.
+15. A controlled data-preparation tool converts the known old price-list XLSX shape into Buy Modern `products.xlsx` and `opening-stock.xlsx` templates.
 
 ## Before Release
 
 1. Confirm final document, stock, debt, payment, and cash rules from old-program behavior.
-2. Prepare old price-list data into Buy Modern standard templates: products, categories, units, prices, and opening stock.
+2. Prepare old price-list category mapping and run the data-preparation tool against the real export.
 3. Prepare and reconcile production opening data: products, categories, warehouses, partners, stock, debts, and cash.
 4. Confirm remaining print forms and whether invoice PDF needs visual tuning against the old form.
 5. Confirm production user list, roles, and whether non-admin users need audit access.
@@ -36,8 +37,8 @@ Goal: prepare Buy Modern for the fastest safe company transition from the old Bu
 
 ## Verified
 
-1. Product import standard fields are covered by targeted tests: `11 passed`.
-2. Backend test suite passed after the Import Lite standard update: `108 passed`.
+1. Product import standard fields and price-list data preparation are covered by targeted tests: `12 passed`.
+2. Backend test suite passed after the data-preparation tool was added: `109 passed`.
 3. Product category targeted tests passed.
 4. Print form targeted tests passed.
 5. Frontend production build passed after category work.
@@ -47,7 +48,8 @@ Goal: prepare Buy Modern for the fastest safe company transition from the old Bu
 
 ## Current Priority
 
-1. Build a controlled data-preparation workflow that converts old price-list exports into Buy Modern standard templates.
-2. Define the category extraction rule for old product names before using it on production data.
-3. Add reconciliation-friendly opening stock import data preparation from the same old price-list source.
-4. Run full acceptance smoke after import improvements.
+1. Restore access to the real old price-list file; `E:\primer.xlsx` is not currently available in this workspace.
+2. Define or manually prepare the category map for old product names.
+3. Run the data-preparation tool against the real old price-list export and inspect generated standard templates.
+4. Run Import Lite dry-run for generated `products.xlsx` and `opening-stock.xlsx`.
+5. Run full acceptance smoke after import improvements.

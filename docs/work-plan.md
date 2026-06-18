@@ -31,6 +31,7 @@ Implemented MVP:
 - Import Lite for products, partners, warehouses, opening stock, and opening partner balances;
 - Import Lite product template with explicit categories and preserved raw legacy names;
 - data-preparation tool for converting the known old price-list export into standard Buy Modern product and opening-stock templates;
+- incoming document foreign-currency purchase prices with fixed exchange rate and RUB PMR conversion;
 - Docker Compose development and production configuration;
 - GitHub publication to `EgorArutiunean/faethon-system`.
 
@@ -47,7 +48,7 @@ Known limits:
 - outgoing invoice print form follows the observed old program layout from the 2026-06-17 screenshot for releasing goods from own warehouse to a customer;
 - document invoice PDF export is implemented for the current invoice layout;
 - PDF report export is not implemented;
-- advanced reports, saved filters, configurable columns, VAT, discounts, currencies, and period closing are not implemented.
+- advanced reports, saved filters, configurable columns, VAT, discounts, currency debts/exchange differences, and period closing are not implemented.
 
 ## Phase 1: Behavior Reconstruction
 
@@ -144,7 +145,7 @@ Deferred until explicitly needed:
 
 - VAT;
 - discounts;
-- currencies;
+- currency debts and exchange-rate gain/loss;
 - price lists;
 - debt aging;
 - bank accounts;

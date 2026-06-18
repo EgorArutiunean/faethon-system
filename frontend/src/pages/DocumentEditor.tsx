@@ -6,7 +6,7 @@ import { useAuth } from "../auth";
 import { formatCode, formatMoney, StatusBadge } from "../format";
 import { useI18n } from "../i18n";
 import { useToast } from "../toast";
-import { Document, Partner, Product, Warehouse, api } from "../lib/api";
+import { Currency, Document, Partner, Product, Warehouse, api } from "../lib/api";
 
 export function DocumentEditor() {
   const { t } = useI18n();
@@ -18,6 +18,7 @@ export function DocumentEditor() {
   const [products, setProducts] = useState<Product[]>([]);
   const [partners, setPartners] = useState<Partner[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [productId, setProductId] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [price, setPrice] = useState("0");
@@ -31,10 +32,27 @@ export function DocumentEditor() {
     warehouse_id: "",
     destination_warehouse_id: "",
     partner_id: "",
+    currency_code: "RUB_PMR",
+    exchange_rate: "1",
     note: ""
   });
 
+  const isIncoming = header.document_type === "incoming";
   const lineSum = useMemo(() => Number(quantity || 0) * Number(price || 0), [quantity, price]);
+  const baseLineSum = useMemo(() => lineSum * Number(header.exchange_rate || 1), [lineSum, header.exchange_rate]);
+  const selectedProduct = useMemo(() => products.find((item) => String(item.id) === productId), [products, productId]);
+  const baseUnitCost = useMemo(() => Number(price || 0) * Number(header.exchange_rate || 1), [price, header.exchange_rate]);
+  const salePriceReview = useMemo(() => {
+    if (!isIncoming || !selectedProduct?.base_price || baseUnitCost <= 0) return null;
+    const salePrice = Number(selectedProduct.base_price);
+    if (!Number.isFinite(salePrice) || salePrice <= 0) return null;
+    if (baseUnitCost === salePrice) return null;
+    return {
+      direction: baseUnitCost > salePrice ? "higher" : "lower",
+      salePrice,
+      baseUnitCost
+    };
+  }, [isIncoming, selectedProduct, baseUnitCost]);
   const filteredProducts = useMemo(() => {
     const search = productSearch.trim().toLowerCase();
     if (!search) return products;
@@ -71,6 +89,8 @@ export function DocumentEditor() {
         warehouse_id: doc.warehouse_id ? String(doc.warehouse_id) : "",
         destination_warehouse_id: doc.destination_warehouse_id ? String(doc.destination_warehouse_id) : "",
         partner_id: doc.partner_id ? String(doc.partner_id) : "",
+        currency_code: doc.currency_code ?? "RUB_PMR",
+        exchange_rate: doc.exchange_rate ?? "1",
         note: doc.note ?? ""
       });
     }).catch((exc) => setError(String(exc)));
@@ -81,6 +101,7 @@ export function DocumentEditor() {
     api.products().then(setProducts).catch(() => setProducts([]));
     api.partners().then(setPartners).catch(() => setPartners([]));
     api.warehouses().then(setWarehouses).catch(() => setWarehouses([]));
+    api.currencies().then(setCurrencies).catch(() => setCurrencies([]));
   }, [documentId]);
 
   useEffect(() => {
@@ -104,16 +125,27 @@ export function DocumentEditor() {
   function setDocumentType(nextType: string) {
     const currentPartner = partners.find((partner) => String(partner.id) === header.partner_id);
     if (nextType === "transfer" || nextType === "adjustment") {
-      setHeader({ ...header, document_type: nextType, partner_id: "", destination_warehouse_id: nextType === "transfer" ? header.destination_warehouse_id : "" });
+      setHeader({ ...header, document_type: nextType, partner_id: "", destination_warehouse_id: nextType === "transfer" ? header.destination_warehouse_id : "", currency_code: "RUB_PMR", exchange_rate: "1" });
       return;
     }
     if (!isPartnerAllowed(currentPartner, nextType)) {
-      setHeader({ ...header, document_type: nextType, partner_id: "", destination_warehouse_id: "" });
+      setHeader({ ...header, document_type: nextType, partner_id: "", destination_warehouse_id: "", currency_code: nextType === "incoming" ? header.currency_code : "RUB_PMR", exchange_rate: nextType === "incoming" ? header.exchange_rate : "1" });
       setError(t("invalidPartnerForDocument"));
       showToast("warning", t("invalidPartnerForDocument"));
       return;
     }
-    setHeader({ ...header, document_type: nextType, destination_warehouse_id: "" });
+    setHeader({ ...header, document_type: nextType, destination_warehouse_id: "", currency_code: nextType === "incoming" ? header.currency_code : "RUB_PMR", exchange_rate: nextType === "incoming" ? header.exchange_rate : "1" });
+  }
+
+  function setCurrency(nextCurrency: string) {
+    setHeader({ ...header, currency_code: nextCurrency, exchange_rate: nextCurrency === "RUB_PMR" ? "1" : header.exchange_rate });
+    if (nextCurrency !== "RUB_PMR") {
+      api.latestExchangeRate(nextCurrency, header.document_date).then((rate) => {
+        setHeader((current) => current.currency_code === nextCurrency ? { ...current, exchange_rate: rate.rate_to_base } : current);
+      }).catch(() => {
+        showToast("warning", t("exchangeRateRequired"));
+      });
+    }
   }
 
   function handleError(exc: unknown) {
@@ -135,8 +167,13 @@ export function DocumentEditor() {
       showToast("warning", t("invalidPrice"));
       return;
     }
+    if (isIncoming && Number(header.exchange_rate) <= 0) {
+      setError(t("invalidExchangeRate"));
+      showToast("warning", t("invalidExchangeRate"));
+      return;
+    }
     api
-      .addDocumentLine(documentId, { product_id: Number(productId), quantity, price })
+      .addDocumentLine(documentId, { product_id: Number(productId), quantity, price: isIncoming ? "0" : price, foreign_price: isIncoming ? price : null })
       .then(() => {
         showToast("success", t("saved"));
         load();
@@ -154,6 +191,8 @@ export function DocumentEditor() {
         warehouse_id: header.warehouse_id ? Number(header.warehouse_id) : null,
         destination_warehouse_id: header.destination_warehouse_id ? Number(header.destination_warehouse_id) : null,
         partner_id: header.partner_id ? Number(header.partner_id) : null,
+        currency_code: isIncoming ? header.currency_code : "RUB_PMR",
+        exchange_rate: isIncoming ? header.exchange_rate : "1",
         note: header.note || null
       })
       .then((doc) => {
@@ -289,6 +328,18 @@ export function DocumentEditor() {
           </select>
         </div>
         <div className="field"><label>{t("total")}</label><input value={formatMoney(document?.total_amount ?? "0")} readOnly /></div>
+        {header.document_type === "incoming" ? (
+          <>
+            <div className="field">
+              <label>{t("currency")}</label>
+              <select value={header.currency_code} onChange={(event) => setCurrency(event.target.value)} disabled={!isDraft}>
+                {currencies.map((currency) => <option key={currency.code} value={currency.code}>{currency.code} - {currency.name}</option>)}
+              </select>
+            </div>
+            <div className="field"><label>{t("exchangeRate")}</label><input value={header.exchange_rate} onChange={(event) => setHeader({ ...header, exchange_rate: event.target.value })} disabled={!isDraft || header.currency_code === "RUB_PMR"} /></div>
+            <div className="field"><label>{t("foreignTotal")}</label><input value={`${formatMoney(document?.foreign_total_amount ?? "0")} ${document?.currency_code ?? header.currency_code}`} readOnly /></div>
+          </>
+        ) : null}
         <div className="field"><label>{t("note")}</label><input value={header.note} onChange={(event) => setHeader({ ...header, note: event.target.value })} disabled={!isDraft} /></div>
         <div className="field"><label>{t("warehouse")}</label><input value={document?.warehouse_name ?? ""} readOnly /></div>
         <div className="field"><label>{t("destinationWarehouse")}</label><input value={document?.destination_warehouse_name ?? ""} readOnly /></div>
@@ -308,11 +359,17 @@ export function DocumentEditor() {
           </select>
         </div>
         <div className="field"><label>{t("quantity")}</label><input value={quantity} onChange={(event) => setQuantity(event.target.value)} disabled={!isDraft} /></div>
-        <div className="field"><label>{t("price")}</label><input value={price} onChange={(event) => setPrice(event.target.value)} disabled={!isDraft} /></div>
-        <div className="field"><label>{t("sum")}</label><input value={lineSum.toFixed(2)} readOnly /></div>
+        <div className="field"><label>{isIncoming ? t("foreignPrice") : t("price")}</label><input value={price} onChange={(event) => setPrice(event.target.value)} disabled={!isDraft} /></div>
+        <div className="field"><label>{isIncoming ? t("foreignSum") : t("sum")}</label><input value={lineSum.toFixed(2)} readOnly /></div>
+        {isIncoming ? <div className="field"><label>{t("baseSum")}</label><input value={baseLineSum.toFixed(2)} readOnly /></div> : null}
         <div className="field"><label>{t("stockBalance")}</label><input value={stockBalance ?? ""} readOnly /></div>
         <div className="field"><label>&nbsp;</label><button className="button primary" title={!can("documents.update") ? t("noPermission") : ""} disabled={!can("documents.update") || !isDraft} onClick={addLine}>{t("addLine")}</button></div>
       </div>
+      {salePriceReview ? (
+        <div className="panel" style={{ padding: 10, color: "#7a4b00", background: "#fff7e6", borderColor: "#f0c36d", fontSize: 13 }}>
+          {t("salePriceReviewHint")} {t(salePriceReview.direction === "higher" ? "purchasePriceHigher" : "purchasePriceLower")} {t("currentSalePrice")}: {formatMoney(salePriceReview.salePrice.toFixed(2))}; {t("newBasePurchasePrice")}: {formatMoney(salePriceReview.baseUnitCost.toFixed(2))}.
+        </div>
+      ) : null}
 
       <DataTable
         rows={document?.lines ?? []}
@@ -321,7 +378,9 @@ export function DocumentEditor() {
         columns={[
           { key: "product_name", header: t("product"), sortable: true },
           { key: "quantity", header: t("quantity"), sortable: true },
+          ...(document?.document_type === "incoming" ? [{ key: "foreign_price", header: t("foreignPrice"), sortable: true, render: (row: any) => row.foreign_price ? `${formatMoney(row.foreign_price)} ${document.currency_code}` : "" }] : []),
           { key: "price", header: t("price"), sortable: true, render: (row) => formatMoney(row.price) },
+          ...(document?.document_type === "incoming" ? [{ key: "foreign_line_total", header: t("foreignSum"), sortable: true, render: (row: any) => row.foreign_line_total ? `${formatMoney(row.foreign_line_total)} ${document.currency_code}` : "" }] : []),
           { key: "line_total", header: t("sum"), sortable: true, render: (row) => formatMoney(row.line_total) },
           {
             key: "actions",

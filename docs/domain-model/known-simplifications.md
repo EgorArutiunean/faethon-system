@@ -13,7 +13,7 @@ Not implemented in this stage:
 - returns/refunds with legacy-compatible direction rules;
 - VAT;
 - discounts;
-- currencies;
+- foreign-currency supplier debt and exchange-rate gain/loss;
 - price lists;
 - period closing;
 - advanced permissions beyond simple role/object/action checks;

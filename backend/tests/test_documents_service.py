@@ -290,6 +290,37 @@ def test_document_total_recalculates_after_adding_line(db: Session) -> None:
     assert document.total_amount == Decimal("8.00")
 
 
+def test_incoming_document_converts_foreign_price_to_base_amount(db: Session) -> None:
+    product, warehouse, partner = seed_catalog(db)
+    document = create_document(
+        db,
+        DocumentCreate(
+            document_type=Document.TYPE_INCOMING,
+            document_date=date(2026, 5, 1),
+            warehouse_id=warehouse.id,
+            partner_id=partner.id,
+            currency_code="USD",
+            exchange_rate=Decimal("16.200000"),
+        ),
+    )
+
+    line = add_document_line(
+        db,
+        document.id,
+        DocumentLineCreate(product_id=product.id, quantity=Decimal("2"), foreign_price=Decimal("10.00")),
+    )
+
+    db.refresh(document)
+    assert line.foreign_price == Decimal("10.00")
+    assert line.foreign_line_total == Decimal("20.00")
+    assert line.price == Decimal("162.00")
+    assert line.line_total == Decimal("324.00")
+    assert document.currency_code == "USD"
+    assert document.exchange_rate == Decimal("16.200000")
+    assert document.foreign_total_amount == Decimal("20.00")
+    assert document.total_amount == Decimal("324.00")
+
+
 def test_document_total_recalculates_after_updating_line(db: Session) -> None:
     product, warehouse, partner = seed_catalog(db)
     document = make_document(db, Document.TYPE_INCOMING, warehouse.id, partner.id)

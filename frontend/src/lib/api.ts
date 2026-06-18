@@ -42,7 +42,9 @@ export type DocumentLine = {
   product_name?: string | null;
   quantity: string;
   price: string;
+  foreign_price?: string | null;
   line_total: string;
+  foreign_line_total?: string | null;
 };
 
 export type Document = {
@@ -58,8 +60,29 @@ export type Document = {
   destination_warehouse_id?: number | null;
   destination_warehouse_name?: string | null;
   total_amount: string;
+  currency_code: string;
+  exchange_rate: string;
+  foreign_total_amount: string;
   note?: string | null;
   lines?: DocumentLine[];
+};
+
+export type Currency = {
+  id: number;
+  code: string;
+  name: string;
+  symbol?: string | null;
+  is_base: boolean;
+  is_active: boolean;
+};
+
+export type ExchangeRate = {
+  id: number;
+  currency_id: number;
+  currency_code?: string | null;
+  rate_date: string;
+  rate_to_base: string;
+  note?: string | null;
 };
 
 export type StockBalance = {
@@ -330,8 +353,14 @@ export const api = {
     request<Document>("/documents", { method: "POST", body: JSON.stringify(payload) }),
   updateDocument: (id: number, payload: Partial<Document>) =>
     request<Document>(`/documents/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
-  addDocumentLine: (documentId: number, payload: { product_id: number; quantity: string; price: string }) =>
+  addDocumentLine: (documentId: number, payload: { product_id: number; quantity: string; price?: string; foreign_price?: string | null }) =>
     request<DocumentLine>(`/documents/${documentId}/lines`, { method: "POST", body: JSON.stringify(payload) }),
+  currencies: () => request<Currency[]>("/currencies"),
+  exchangeRates: (currencyCode?: string) => request<ExchangeRate[]>(`/currencies/rates${currencyCode ? `?currency_code=${encodeURIComponent(currencyCode)}` : ""}`),
+  createExchangeRate: (payload: { currency_code: string; rate_date: string; rate_to_base: string; note?: string | null }) =>
+    request<ExchangeRate>("/currencies/rates", { method: "POST", body: JSON.stringify(payload) }),
+  latestExchangeRate: (currencyCode: string, onDate?: string) =>
+    request<{ currency_code: string; rate_to_base: string }>(`/currencies/rates/latest?currency_code=${encodeURIComponent(currencyCode)}${onDate ? `&on_date=${encodeURIComponent(onDate)}` : ""}`),
   postDocument: (documentId: number) => request<Document>(`/documents/${documentId}/post`, { method: "POST" }),
   cancelDocument: (documentId: number) => request<Document>(`/documents/${documentId}/cancel`, { method: "POST" }),
   deleteDocument: (documentId: number) => request<void>(`/documents/${documentId}`, { method: "DELETE" }),

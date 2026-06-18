@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import audit, auth, cash, documents, health, imports, partners, payments, product_groups, products, reports, stock, users, warehouses
+from app.api.routes import audit, auth, cash, currencies, documents, health, imports, partners, payments, product_groups, products, reports, stock, users, warehouses
 from app.core.config import get_settings
 import app.db.base  # noqa: F401
 
@@ -20,6 +20,7 @@ app = FastAPI(
         {"name": "stock", "description": "Stock balances and movements"},
         {"name": "payments", "description": "Payments, partner balances, and debt statements"},
         {"name": "cash", "description": "Cash operations, cash balance, and cash book"},
+        {"name": "currencies", "description": "Currencies and historical exchange rates"},
         {"name": "reports", "description": "BuySell-like operational reports"},
         {"name": "import", "description": "CSV/XLSX import templates, dry-run validation, and apply"},
         {"name": "audit", "description": "Read-only operational audit log"},
@@ -45,6 +46,7 @@ app.include_router(documents.router, prefix=settings.api_prefix)
 app.include_router(stock.router, prefix=settings.api_prefix)
 app.include_router(payments.router, prefix=settings.api_prefix)
 app.include_router(cash.router, prefix=settings.api_prefix)
+app.include_router(currencies.router, prefix=settings.api_prefix)
 app.include_router(reports.router, prefix=settings.api_prefix)
 app.include_router(imports.router, prefix=settings.api_prefix)
 app.include_router(audit.router, prefix=settings.api_prefix)

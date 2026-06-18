@@ -302,7 +302,7 @@ Expected result: basic CRUD is available for directories, used rows are protecte
 
 ## Known Manual QA Limits
 
-- VAT, discounts, currencies, debts aging, and full cash book workflows are not implemented.
+- VAT, discounts, foreign-currency debts, exchange-rate differences, debts aging, and full cash book workflows are not implemented.
 - Server-side PDF generation, advanced print forms, and custom report builder are not implemented.
 - Advanced keyboard workflows, saved filters, and configurable tables are not implemented.
 - Automatic legacy database import and complex ETL are not implemented.

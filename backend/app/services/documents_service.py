@@ -9,6 +9,7 @@ from app.models.documents import Document, DocumentLine
 from app.models.partners import Partner
 from app.models.stock import StockBalance, StockMovement
 from app.schemas.documents import DocumentCreate, DocumentLineCreate, DocumentLineUpdate, DocumentUpdate
+from app.services.currency_service import BASE_CURRENCY_CODE, get_currency
 
 
 class DocumentRulesError(ValueError):
@@ -16,7 +17,20 @@ class DocumentRulesError(ValueError):
 
 
 def _line_total(quantity: Decimal, price: Decimal) -> Decimal:
-    return quantity * price
+    return (quantity * price).quantize(Decimal("0.01"))
+
+
+def _normalize_rate(value: Decimal | None) -> Decimal:
+    rate = value or Decimal("1")
+    if rate <= 0:
+        raise HTTPException(status_code=422, detail="Exchange rate must be greater than zero")
+    return rate
+
+
+def _base_price(document: Document, price: Decimal, foreign_price: Decimal | None) -> Decimal:
+    if document.document_type == Document.TYPE_INCOMING:
+        return ((foreign_price if foreign_price is not None else price) * document.exchange_rate).quantize(Decimal("0.01"))
+    return price.quantize(Decimal("0.01"))
 
 
 def _document_prefix(document_type: str) -> str:
@@ -89,6 +103,7 @@ def _audit(db: Session, entity_type: str, entity_id: int, action: str, details: 
 
 def _recalculate_total(document: Document) -> None:
     document.total_amount = sum((line.line_total for line in document.lines), Decimal("0"))
+    document.foreign_total_amount = sum((line.foreign_line_total or line.line_total for line in document.lines), Decimal("0"))
 
 
 def recalculate_document_total(document: Document) -> None:
@@ -125,11 +140,24 @@ def _validate_document_partner(db: Session, document_type: str, partner_id: int 
         raise HTTPException(status_code=409, detail="Outgoing document requires customer partner")
 
 
+def _normalize_document_currency(db: Session, document_type: str, currency_code: str | None, exchange_rate: Decimal | None) -> tuple[str, Decimal]:
+    if document_type != Document.TYPE_INCOMING:
+        return BASE_CURRENCY_CODE, Decimal("1")
+    code = currency_code or BASE_CURRENCY_CODE
+    currency = get_currency(db, code)
+    rate = Decimal("1") if currency.is_base else _normalize_rate(exchange_rate)
+    if currency.is_base and exchange_rate not in {None, Decimal("1")}:
+        raise HTTPException(status_code=422, detail="Base currency rate must be 1")
+    return currency.code, rate
+
+
 def create_document(db: Session, payload: DocumentCreate) -> Document:
     if payload.document_type not in _valid_document_types():
         raise HTTPException(status_code=422, detail="Invalid document type")
     _validate_document_partner(db, payload.document_type, payload.partner_id)
     values = payload.model_dump(exclude={"status"})
+    values["currency_code"], values["exchange_rate"] = _normalize_document_currency(db, payload.document_type, payload.currency_code, payload.exchange_rate)
+    values["foreign_total_amount"] = Decimal("0")
     if not values.get("number"):
         values["number"] = _generate_document_number(db, payload.document_type)
     document = Document(**values, status=Document.STATUS_DRAFT)
@@ -144,12 +172,16 @@ def create_document(db: Session, payload: DocumentCreate) -> Document:
 def add_document_line(db: Session, document_id: int, payload: DocumentLineCreate) -> DocumentLine:
     document = _load_document(db, document_id)
     _ensure_draft(document)
+    price = _base_price(document, payload.price, payload.foreign_price)
+    foreign_price = payload.foreign_price if document.document_type == Document.TYPE_INCOMING else None
     line = DocumentLine(
         document=document,
         product_id=payload.product_id,
         quantity=payload.quantity,
-        price=payload.price,
-        line_total=_line_total(payload.quantity, payload.price),
+        price=price,
+        line_total=_line_total(payload.quantity, price),
+        foreign_price=foreign_price,
+        foreign_line_total=_line_total(payload.quantity, foreign_price) if foreign_price is not None else None,
     )
     db.add(line)
     db.flush()
@@ -169,6 +201,14 @@ def update_document_line(db: Session, document_id: int, line_id: int, payload: D
     values = payload.model_dump(exclude_unset=True)
     for key, value in values.items():
         setattr(line, key, value)
+    if document.document_type == Document.TYPE_INCOMING:
+        line.foreign_price = line.foreign_price if line.foreign_price is not None else line.price
+        line.price = _base_price(document, line.price, line.foreign_price)
+        line.foreign_line_total = _line_total(line.quantity, line.foreign_price)
+    else:
+        line.foreign_price = None
+        line.foreign_line_total = None
+        line.price = line.price.quantize(Decimal("0.01"))
     line.line_total = _line_total(line.quantity, line.price)
     _recalculate_total(document)
     _audit(db, "document", document.id, "update_line", f"line_id={line.id}")
@@ -186,8 +226,26 @@ def update_document_header(db: Session, document_id: int, payload: DocumentUpdat
     next_type = values.get("document_type", document.document_type)
     next_partner_id = values.get("partner_id", document.partner_id)
     _validate_document_partner(db, next_type, next_partner_id)
+    if "document_type" in values or "currency_code" in values or "exchange_rate" in values:
+        values["currency_code"], values["exchange_rate"] = _normalize_document_currency(
+            db,
+            next_type,
+            values.get("currency_code", document.currency_code),
+            values.get("exchange_rate", document.exchange_rate),
+        )
     for key, value in values.items():
         setattr(document, key, value)
+    for line in document.lines:
+        if document.document_type == Document.TYPE_INCOMING:
+            line.foreign_price = line.foreign_price if line.foreign_price is not None else line.price
+            line.price = _base_price(document, line.price, line.foreign_price)
+            line.foreign_line_total = _line_total(line.quantity, line.foreign_price)
+        else:
+            line.foreign_price = None
+            line.foreign_line_total = None
+            line.price = line.price.quantize(Decimal("0.01"))
+        line.line_total = _line_total(line.quantity, line.price)
+    _recalculate_total(document)
     _audit(db, "document", document.id, "update_header", ",".join(sorted(values.keys())))
     db.commit()
     db.refresh(document)

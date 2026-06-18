@@ -28,6 +28,9 @@ class Document(TimestampMixin, Base):
     warehouse_id: Mapped[int | None] = mapped_column(ForeignKey("warehouses.id"))
     destination_warehouse_id: Mapped[int | None] = mapped_column(ForeignKey("warehouses.id"))
     total_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=0)
+    currency_code: Mapped[str] = mapped_column(String(12), default="RUB_PMR")
+    exchange_rate: Mapped[Decimal] = mapped_column(Numeric(14, 6), default=1)
+    foreign_total_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=0)
     note: Mapped[str | None] = mapped_column(Text)
 
     partner = relationship("Partner", back_populates="documents")
@@ -57,6 +60,8 @@ class DocumentLine(TimestampMixin, Base):
     quantity: Mapped[Decimal] = mapped_column(Numeric(14, 3))
     price: Mapped[Decimal] = mapped_column(Numeric(14, 2))
     line_total: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=0)
+    foreign_price: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    foreign_line_total: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
 
     document = relationship("Document", back_populates="lines")
     product = relationship("Product", back_populates="document_lines")

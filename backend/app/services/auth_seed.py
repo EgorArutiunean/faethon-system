@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.core.security import hash_password
 from app.models.identity import Permission, Role, User
+from app.services.currency_service import seed_default_currencies
 
 
 PERMISSIONS = [
@@ -89,6 +90,8 @@ ROLE_PERMISSIONS = {
 
 
 def seed_auth_defaults(db: Session) -> User:
+    seed_default_currencies(db)
+
     permissions_by_code: dict[str, Permission] = {}
     for code in PERMISSIONS:
         permission = db.scalar(select(Permission).where(Permission.code == code))

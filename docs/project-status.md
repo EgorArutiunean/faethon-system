@@ -44,6 +44,7 @@ Implemented:
 - legacy-oriented HTML outgoing invoice print view with protected `documents.read` access, matched to the old program screenshot for releasing goods from own warehouse to a customer;
 - PDF invoice export with embedded DejaVu font for readable Russian text, protected by `documents.read`, and available from the document editor;
 - operator UX improvements for document editing, product search, current stock display, validations, confirmations, toasts, status badges, and basic table search/sort/pagination;
+- incoming documents can store foreign purchase currency, exchange rate, foreign totals, RUB PMR totals, and sale-price review hints;
 - CSV/XLSX Import Lite for products, partners, warehouses, opening stock, and opening partner balances with dry-run validation;
 - product import standard includes explicit category assignment and raw old-program name preservation through `legacy_name`;
 - controlled data-preparation tool for converting the known old price-list export into Buy Modern standard product and opening-stock import templates;
@@ -82,12 +83,12 @@ See `docs/development-setup.md` for the PostgreSQL/Docker workflow.
 Latest checks:
 
 - Import Lite and data-preparation targeted tests: `12 passed` on 2026-06-18;
-- backend tests: `109 passed` on 2026-06-18 after the data-preparation tool was added;
+- backend tests: `112 passed` on 2026-06-19 after multicurrency incoming document work;
 - print form targeted tests: `10 passed` on 2026-06-18 after PDF invoice export;
 - product category targeted tests: `4 passed` on 2026-06-18;
 - backend compileall: successful on 2026-06-17;
 - frontend TypeScript check: successful on 2026-06-17;
-- frontend production build: successful on 2026-06-17;
+- frontend production build: successful on 2026-06-19 after multicurrency incoming document work;
 - Docker Compose smoke: successful on 2026-05-03;
 - Production Docker Compose smoke: successful on 2026-05-03.
 

@@ -21,6 +21,7 @@ Goal: prepare Buy Modern for the fastest safe company transition from the old Bu
 13. Old price-list sample from `E:\primer.xlsx` was inspected: product code, name, unit, quantity, and price data are available; category-like data is embedded in the product name.
 14. Buy Modern product import standard now includes explicit `category` and `legacy_name` fields.
 15. A controlled data-preparation tool converts the known old price-list XLSX shape into Buy Modern `products.xlsx` and `opening-stock.xlsx` templates.
+16. Incoming documents support foreign purchase currency, fixed exchange rate, base RUB PMR conversion, and sale-price review hints.
 
 ## Before Release
 
@@ -40,11 +41,12 @@ Goal: prepare Buy Modern for the fastest safe company transition from the old Bu
 1. Product import standard fields and price-list data preparation are covered by targeted tests: `12 passed`.
 2. Backend test suite passed after the data-preparation tool was added: `109 passed`.
 3. Product category targeted tests passed.
-4. Print form targeted tests passed.
-5. Frontend production build passed after category work.
-6. Browser smoke for `/products` confirmed Russian category UI with no console errors.
-7. Live API accepted UTF-8 Russian category and product names.
-8. Local stack is running at `http://127.0.0.1:5173` and `http://127.0.0.1:8000`.
+4. Currency and incoming document conversion tests passed.
+5. Print form targeted tests passed.
+6. Frontend production build passed after currency work.
+7. Browser smoke for `/products` confirmed Russian category UI with no console errors.
+8. Live API accepted UTF-8 Russian category and product names.
+9. Local stack is running at `http://127.0.0.1:5173` and `http://127.0.0.1:8000`.
 
 ## Current Priority
 
@@ -52,4 +54,5 @@ Goal: prepare Buy Modern for the fastest safe company transition from the old Bu
 2. Define or manually prepare the category map for old product names.
 3. Run the data-preparation tool against the real old price-list export and inspect generated standard templates.
 4. Run Import Lite dry-run for generated `products.xlsx` and `opening-stock.xlsx`.
-5. Run full acceptance smoke after import improvements.
+5. Run operator smoke for incoming goods in MDL/USD with sale-price review hint.
+6. Run full acceptance smoke after import improvements.

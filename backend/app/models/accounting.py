@@ -1,7 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import Date, ForeignKey, Numeric, String, Text
+from sqlalchemy import Boolean, Date, ForeignKey, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -12,8 +12,27 @@ class Currency(TimestampMixin, Base):
     __tablename__ = "currencies"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    code: Mapped[str] = mapped_column(String(3), unique=True)
+    code: Mapped[str] = mapped_column(String(12), unique=True)
     name: Mapped[str] = mapped_column(String(80))
+    symbol: Mapped[str | None] = mapped_column(String(12))
+    is_base: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class ExchangeRate(TimestampMixin, Base):
+    __tablename__ = "exchange_rates"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    currency_id: Mapped[int] = mapped_column(ForeignKey("currencies.id"), index=True)
+    rate_date: Mapped[date] = mapped_column(Date, index=True)
+    rate_to_base: Mapped[Decimal] = mapped_column(Numeric(14, 6))
+    note: Mapped[str | None] = mapped_column(Text)
+
+    currency = relationship("Currency")
+
+    @property
+    def currency_code(self) -> str | None:
+        return self.currency.code if self.currency else None
 
 
 class Price(TimestampMixin, Base):

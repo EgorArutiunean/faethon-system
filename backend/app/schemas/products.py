@@ -15,6 +15,25 @@ class ProductBase(BaseModel):
     is_active: bool = True
 
 
+class ProductGroupBase(BaseModel):
+    name: str
+    parent_id: int | None = None
+
+
+class ProductGroupCreate(ProductGroupBase):
+    pass
+
+
+class ProductGroupUpdate(BaseModel):
+    name: str | None = None
+    parent_id: int | None = None
+
+
+class ProductGroupRead(ProductGroupBase, Timestamped):
+    id: int
+    parent_name: str | None = None
+
+
 class ProductCreate(ProductBase):
     pass
 
@@ -31,3 +50,4 @@ class ProductUpdate(BaseModel):
 
 class ProductRead(ProductBase, Timestamped):
     id: int
+    group_name: str | None = None

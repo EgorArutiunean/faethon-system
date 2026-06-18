@@ -17,6 +17,10 @@ class ProductGroup(TimestampMixin, Base):
     parent = relationship("ProductGroup", remote_side=[id])
     products = relationship("Product", back_populates="group")
 
+    @property
+    def parent_name(self) -> str | None:
+        return self.parent.name if self.parent else None
+
 
 class Unit(TimestampMixin, Base):
     __tablename__ = "units"
@@ -43,3 +47,7 @@ class Product(TimestampMixin, Base):
     group = relationship("ProductGroup", back_populates="products")
     unit = relationship("Unit", back_populates="products")
     document_lines = relationship("DocumentLine", back_populates="product")
+
+    @property
+    def group_name(self) -> str | None:
+        return self.group.name if self.group else None

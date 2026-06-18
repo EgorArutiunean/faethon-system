@@ -4,8 +4,19 @@ export type Product = {
   id: number;
   sku?: string | null;
   name: string;
+  group_id?: number | null;
+  group_name?: string | null;
   base_price?: string | null;
   is_active: boolean;
+};
+
+export type ProductGroup = {
+  id: number;
+  name: string;
+  parent_id?: number | null;
+  parent_name?: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type Partner = {
@@ -290,6 +301,12 @@ export const api = {
   updateUser: (id: number, payload: { email?: string; password?: string; full_name?: string | null; is_active?: boolean; role_names?: string[] }) =>
     request<ManagedUser>(`/users/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
   products: () => request<Product[]>("/products"),
+  productGroups: () => request<ProductGroup[]>("/product-groups"),
+  createProductGroup: (payload: Partial<ProductGroup>) =>
+    request<ProductGroup>("/product-groups", { method: "POST", body: JSON.stringify(payload) }),
+  updateProductGroup: (id: number, payload: Partial<ProductGroup>) =>
+    request<ProductGroup>(`/product-groups/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  deleteProductGroup: (id: number) => request<void>(`/product-groups/${id}`, { method: "DELETE" }),
   createProduct: (payload: Partial<Product>) =>
     request<Product>("/products", { method: "POST", body: JSON.stringify(payload) }),
   updateProduct: (id: number, payload: Partial<Product>) =>

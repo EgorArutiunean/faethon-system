@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.orm import Session, selectinload
 
 from app.db.session import get_db
 from app.api.deps import require_permission
@@ -19,7 +20,10 @@ def list_products(
     limit: int = Query(default=100, le=500),
     search: str | None = None,
 ):
-    return service.list(db, skip=skip, limit=limit, search=search)
+    stmt = select(Product).options(selectinload(Product.group)).offset(skip).limit(limit)
+    if search:
+        stmt = stmt.where(Product.name.ilike(f"%{search}%"))
+    return list(db.scalars(stmt).all())
 
 
 @router.post("", response_model=ProductRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_permission("products.create"))])

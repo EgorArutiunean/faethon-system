@@ -20,6 +20,7 @@ Implemented MVP:
 
 - authentication with demo roles and permissions;
 - products, warehouses, and partners;
+- product categories in the product directory;
 - draft/posted/cancelled documents;
 - document lines, totals, stock posting, warehouse transfer, and cancellation;
 - stock balances and movements;
@@ -38,6 +39,7 @@ Known limits:
 - dashboard metrics are live for products, partners, documents, draft payments, stock positions, and cash balance;
 - draft payments can be edited and deleted before posting;
 - core frontend tables and selectors show human-readable Russian labels for document, payment, cash, partner, movement, status, and Import Lite enum values;
+- product categories can be created, edited, deleted when unused, assigned to products, and shown in the products table;
 - audit log viewer is available to users with `audit.read`;
 - user management UI is available to admins with `users.manage`;
 - outgoing invoice print form follows the observed old program layout from the 2026-06-17 screenshot for releasing goods from own warehouse to a customer;
@@ -98,6 +100,7 @@ Start production data from manual sources and opening balances.
 Required data:
 
 - products;
+- product categories;
 - warehouses;
 - partners;
 - opening stock by product and warehouse;
@@ -120,6 +123,7 @@ Close MVP gaps that affect real daily work.
 High priority:
 
 - confirm final legacy wording for enum labels where old-program terminology differs from current Russian labels;
+- extend Import Lite for old price-list workbooks such as `пример.xlsx`, including product category assignment and preserving raw legacy product names;
 - finish legacy-compatible print forms for remaining confirmed document types;
 - confirm whether the generated invoice PDF is visually close enough to the old printed form or requires pixel-level tuning;
 - confirm final production user list and role assignment before launch;

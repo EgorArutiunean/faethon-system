@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { DataTable } from "../components/DataTable";
@@ -7,22 +7,84 @@ import { useAuth } from "../auth";
 import { formatCode, formatDate, formatMoney, StatusBadge } from "../format";
 import { useI18n } from "../i18n";
 import { useToast } from "../toast";
-import { Document, api } from "../lib/api";
+import { Document, Partner, Warehouse, api } from "../lib/api";
+
+type DraftDocumentType = "incoming" | "outgoing" | "adjustment" | "transfer";
+
+const today = new Date().toISOString().slice(0, 10);
 
 export function Documents() {
   const { t } = useI18n();
   const { showToast } = useToast();
   const { can } = useAuth();
   const [rows, setRows] = useState<Document[]>([]);
+  const [partners, setPartners] = useState<Partner[]>([]);
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [error, setError] = useState("");
+  const [draftForm, setDraftForm] = useState({
+    document_type: "incoming" as DraftDocumentType,
+    number: "",
+    document_date: today,
+    warehouse_id: "",
+    destination_warehouse_id: "",
+    partner_id: ""
+  });
   const navigate = useNavigate();
 
+  const partnersForType = useMemo(() => {
+    if (draftForm.document_type === "incoming") {
+      return partners.filter((partner) => partner.partner_type === "supplier" || partner.partner_type === "both");
+    }
+    if (draftForm.document_type === "outgoing") {
+      return partners.filter((partner) => partner.partner_type === "customer" || partner.partner_type === "both");
+    }
+    return [];
+  }, [draftForm.document_type, partners]);
+
+  function setDocumentType(documentType: DraftDocumentType) {
+    setDraftForm((current) => ({
+      ...current,
+      document_type: documentType,
+      partner_id: "",
+      destination_warehouse_id: documentType === "transfer" ? current.destination_warehouse_id : ""
+    }));
+  }
+
+  function failValidation(message: string) {
+    setError(message);
+    showToast("error", message);
+  }
+
   function createDraft() {
+    setError("");
+    if (!draftForm.warehouse_id) {
+      failValidation(t("selectWarehouse"));
+      return;
+    }
+    if ((draftForm.document_type === "incoming" || draftForm.document_type === "outgoing") && !draftForm.partner_id) {
+      failValidation(t("selectPartner"));
+      return;
+    }
+    if (draftForm.document_type === "transfer") {
+      if (!draftForm.destination_warehouse_id) {
+        failValidation(t("selectDestinationWarehouse"));
+        return;
+      }
+      if (draftForm.destination_warehouse_id === draftForm.warehouse_id) {
+        failValidation(t("differentWarehousesRequired"));
+        return;
+      }
+    }
+
     api
       .createDocument({
-        document_type: "incoming",
-        document_date: new Date().toISOString().slice(0, 10),
+        document_type: draftForm.document_type,
+        number: draftForm.number.trim() || null,
+        document_date: draftForm.document_date,
         status: "draft",
+        partner_id: draftForm.partner_id ? Number(draftForm.partner_id) : null,
+        warehouse_id: Number(draftForm.warehouse_id),
+        destination_warehouse_id: draftForm.destination_warehouse_id ? Number(draftForm.destination_warehouse_id) : null,
         total_amount: "0"
       })
       .then((doc) => {
@@ -56,6 +118,14 @@ export function Documents() {
     api.documents().then(setRows).catch((exc) => {
       setRows([]);
       setError(exc instanceof Error ? exc.message : t("apiLoadDocumentsError"));
+    });
+    api.partners().then(setPartners).catch((exc) => {
+      const message = exc instanceof Error ? exc.message : t("apiLoadPartnersError");
+      setError(message);
+    });
+    api.warehouses().then(setWarehouses).catch((exc) => {
+      const message = exc instanceof Error ? exc.message : t("apiLoadWarehousesError");
+      setError(message);
     });
   }
 
@@ -94,10 +164,58 @@ export function Documents() {
   return (
     <PageScaffold title={t("documents")}>
       <div className="panel form-grid" style={{ marginBottom: 10 }}>
-        <div className="field"><label>{t("type")}</label><select><option>{t("incoming")}</option><option>{t("outgoing")}</option><option>{t("adjustment")}</option><option>{t("transfer")}</option></select></div>
-        <div className="field"><label>{t("number")}</label><input /></div>
-        <div className="field"><label>{t("date")}</label><input type="date" /></div>
-        <div className="field"><label>{t("status")}</label><select><option>{t("draft")}</option><option>{t("posted")}</option><option>{t("cancelled")}</option></select></div>
+        <div className="field">
+          <label>{t("type")}</label>
+          <select value={draftForm.document_type} onChange={(event) => setDocumentType(event.target.value as DraftDocumentType)}>
+            <option value="incoming">{t("incoming")}</option>
+            <option value="outgoing">{t("outgoing")}</option>
+            <option value="adjustment">{t("adjustment")}</option>
+            <option value="transfer">{t("transfer")}</option>
+          </select>
+        </div>
+        <div className="field">
+          <label>{t("number")}</label>
+          <input value={draftForm.number} onChange={(event) => setDraftForm({ ...draftForm, number: event.target.value })} />
+        </div>
+        <div className="field">
+          <label>{t("date")}</label>
+          <input type="date" value={draftForm.document_date} onChange={(event) => setDraftForm({ ...draftForm, document_date: event.target.value })} />
+        </div>
+        <div className="field">
+          <label>{t("status")}</label>
+          <input value={t("draft")} readOnly />
+        </div>
+        <div className="field">
+          <label>{draftForm.document_type === "transfer" ? t("sourceWarehouse") : t("warehouse")}</label>
+          <select value={draftForm.warehouse_id} onChange={(event) => setDraftForm({ ...draftForm, warehouse_id: event.target.value })}>
+            <option value="">{t("selectWarehouse")}</option>
+            {warehouses.map((warehouse) => (
+              <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>
+            ))}
+          </select>
+        </div>
+        {draftForm.document_type === "transfer" ? (
+          <div className="field">
+            <label>{t("destinationWarehouse")}</label>
+            <select value={draftForm.destination_warehouse_id} onChange={(event) => setDraftForm({ ...draftForm, destination_warehouse_id: event.target.value })}>
+              <option value="">{t("selectDestinationWarehouse")}</option>
+              {warehouses.map((warehouse) => (
+                <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>
+              ))}
+            </select>
+          </div>
+        ) : null}
+        {draftForm.document_type === "incoming" || draftForm.document_type === "outgoing" ? (
+          <div className="field">
+            <label>{draftForm.document_type === "incoming" ? t("supplier") : t("customer")}</label>
+            <select value={draftForm.partner_id} onChange={(event) => setDraftForm({ ...draftForm, partner_id: event.target.value })}>
+              <option value="">{t("selectPartner")}</option>
+              {partnersForType.map((partner) => (
+                <option key={partner.id} value={partner.id}>{partner.name}</option>
+              ))}
+            </select>
+          </div>
+        ) : null}
       </div>
       <div className="toolbar">
         <button className="button primary" title={!can("documents.create") ? t("noPermission") : ""} disabled={!can("documents.create")} onClick={createDraft}>{t("createDocument")}</button>

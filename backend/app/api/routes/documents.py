@@ -50,6 +50,16 @@ def print_document(item_id: int, db: Session = Depends(get_db)):
     return Response(content=html, media_type="text/html; charset=utf-8")
 
 
+@router.get("/{item_id}/print.pdf", dependencies=[Depends(require_permission("documents.read"))])
+def print_document_pdf(item_id: int, db: Session = Depends(get_db)):
+    content = documents_print_service.get_invoice_pdf(db, item_id)
+    return Response(
+        content=content,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="document-{item_id}.pdf"'},
+    )
+
+
 @router.patch("/{item_id}", response_model=DocumentRead, dependencies=[Depends(require_permission("documents.update"))])
 def update_document(item_id: int, payload: DocumentUpdate, db: Session = Depends(get_db)):
     return documents_service.update_document_header(db, item_id, payload)

@@ -140,6 +140,45 @@ def test_print_existing_document_returns_200(client: TestClient, db: Session) ->
     assert response.headers["content-type"].startswith("text/html")
 
 
+def test_print_pdf_requires_auth(client: TestClient, db: Session) -> None:
+    document_id = make_document(db)
+
+    response = client.get(f"/api/v1/documents/{document_id}/print.pdf")
+
+    assert response.status_code == 401
+
+
+def test_print_pdf_requires_documents_read(client: TestClient, db: Session) -> None:
+    create_user_without_documents_read(db)
+    document_id = make_document(db)
+
+    response = client.get(
+        f"/api/v1/documents/{document_id}/print.pdf",
+        headers=auth_header(client, "no-docs@example.com", "password"),
+    )
+
+    assert response.status_code == 403
+
+
+def test_print_pdf_existing_document_returns_pdf(client: TestClient, db: Session) -> None:
+    document_id = make_document(db)
+
+    response = client.get(f"/api/v1/documents/{document_id}/print.pdf", headers=auth_header(client))
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/pdf")
+    assert response.headers["content-disposition"] == f'attachment; filename="document-{document_id}.pdf"'
+    assert response.content.startswith(b"%PDF-")
+    assert b"%%EOF" in response.content
+    assert len(response.content) > 1000
+
+
+def test_print_pdf_missing_document_returns_404(client: TestClient) -> None:
+    response = client.get("/api/v1/documents/9999/print.pdf", headers=auth_header(client))
+
+    assert response.status_code == 404
+
+
 def test_print_missing_document_returns_404(client: TestClient) -> None:
     response = client.get("/api/v1/documents/9999/print", headers=auth_header(client))
 

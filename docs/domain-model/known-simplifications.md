@@ -17,7 +17,6 @@ Not implemented in this stage:
 - price lists;
 - period closing;
 - advanced permissions beyond simple role/object/action checks;
-- PDF print forms;
 - PDF report export;
 - configurable report builder;
 - advanced keyboard-first operator workflow;
@@ -50,7 +49,7 @@ Temporary assumptions:
 - no role hierarchy, sharing rules, field-level security, permission sets, or approval workflows;
 - reports are simple fixed BuySell-like views over current MVP tables;
 - XLSX/CSV exports use simple technical layouts, not legacy print forms;
-- document invoice print form is HTML/browser-print first, not server-side PDF;
+- document invoice print form has HTML/browser-print and server-side PDF output;
 - invoice print layout is a simple BuySell-like placeholder pending legacy confirmation;
 - table search/sort/pagination is client-side over currently loaded rows;
 - current stock shown in Document Editor is informational and does not replace posting validation;

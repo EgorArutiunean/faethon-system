@@ -1,5 +1,6 @@
 from decimal import Decimal
 from html import escape
+from io import BytesIO
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -11,6 +12,11 @@ from app.models.products import Product
 
 
 TEMPLATE_PATH = Path(__file__).resolve().parents[1] / "templates" / "invoice.html"
+FONT_CANDIDATES = [
+    Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+    Path("/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed.ttf"),
+    Path("C:/Windows/Fonts/arial.ttf"),
+]
 
 ONES = {
     0: "",
@@ -155,7 +161,7 @@ def _watermark(document: Document) -> str:
     return ""
 
 
-def get_invoice_html(db: Session, document_id: int) -> str:
+def _load_print_document(db: Session, document_id: int) -> Document:
     document = db.scalar(
         select(Document)
         .where(Document.id == document_id)
@@ -168,6 +174,11 @@ def get_invoice_html(db: Session, document_id: int) -> str:
     )
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found")
+    return document
+
+
+def get_invoice_html(db: Session, document_id: int) -> str:
+    document = _load_print_document(db, document_id)
 
     template = TEMPLATE_PATH.read_text(encoding="utf-8")
     values = {
@@ -185,3 +196,110 @@ def get_invoice_html(db: Session, document_id: int) -> str:
     for key, value in values.items():
         template = template.replace(f"{{{{{key}}}}}", value)
     return template
+
+
+def _pdf_font_path() -> Path:
+    for path in FONT_CANDIDATES:
+        if path.exists():
+            return path
+    raise HTTPException(status_code=500, detail="PDF font not found")
+
+
+def get_invoice_pdf(db: Session, document_id: int) -> bytes:
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.pdfgen import canvas
+
+    document = _load_print_document(db, document_id)
+    buffer = BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
+    font_name = "BuyDejaVu"
+    if font_name not in pdfmetrics.getRegisteredFontNames():
+        pdfmetrics.registerFont(TTFont(font_name, str(_pdf_font_path())))
+
+    def draw_text(x: float, y: float, text: object, size: int = 10, align: str = "left", max_width: float | None = None) -> None:
+        value = "" if text is None else str(text)
+        pdf.setFont(font_name, size)
+        if max_width is not None:
+            while value and pdfmetrics.stringWidth(value, font_name, size) > max_width:
+                value = value[:-1]
+            if value != ("" if text is None else str(text)):
+                value = value[:-1] + "."
+        text_width = pdfmetrics.stringWidth(value, font_name, size)
+        if align == "center":
+            x -= text_width / 2
+        elif align == "right":
+            x -= text_width
+        pdf.drawString(x, y, value)
+
+    pdf.setLineWidth(0.7)
+    title = f"{_document_title(document)} № {_document_number(document)}"
+    draw_text(width / 2, height - 52, title, 14, align="center")
+
+    y = height - 84
+    draw_text(44, y, "Дата:", 10)
+    draw_text(110, y, _document_date(document), 10)
+    y -= 18
+    draw_text(44, y, "Поставщик:", 10)
+    draw_text(110, y, document.warehouse_name or "", 10, max_width=420)
+    y -= 18
+    draw_text(44, y, "Покупатель:", 10)
+    draw_text(122, y, document.partner_name or "", 10, max_width=223)
+    draw_text(362, y, "Доверенность №:", 10)
+    draw_text(480, y, "от:", 10)
+    y -= 18
+    draw_text(44, y, "Отпущено:", 10)
+    draw_text(110, y, document.note or "", 10, max_width=420)
+
+    table_x = 34
+    table_y = height - 174
+    row_h = 20
+    col_widths = [28, 58, 250, 36, 48, 64, 70]
+    headers = ["№", "Код", "Товар", "Ед.", "Кол.", "Цена", "Сумма"]
+    x = table_x
+    for width, header in zip(col_widths, headers):
+        pdf.rect(x, table_y, width, row_h)
+        draw_text(x + width / 2, table_y + 7, header, 8, align="center")
+        x += width
+
+    current_y = table_y - row_h
+    for index, line in enumerate(document.lines, start=1):
+        product = line.product
+        row_values = [
+            str(index),
+            product.sku if product else line.product_id,
+            line.product_name or line.product_id,
+            product.unit.short_name if product and product.unit else "шт",
+            _quantity(line.quantity),
+            _price(line.price),
+            _money(line.line_total),
+        ]
+        x = table_x
+        max_widths = [20, 50, 238, 28, 40, 56, 62]
+        aligns = ["center", "center", "left", "center", "right", "right", "right"]
+        for width, value, max_width, align in zip(col_widths, row_values, max_widths, aligns):
+            pdf.rect(x, current_y, width, row_h)
+            text_x = x + 4 if align == "left" else x + width / 2 if align == "center" else x + width - 4
+            draw_text(text_x, current_y + 7, value, 8, align=align, max_width=max_width)
+            x += width
+        current_y -= row_h
+
+    if not document.lines:
+        pdf.rect(table_x, current_y, sum(col_widths), row_h)
+        draw_text(width / 2, current_y + 7, "Нет строк", 8, align="center")
+        current_y -= row_h
+
+    total_y = current_y - 16
+    draw_text(120, total_y, "Итого:", 10, align="right")
+    draw_text(555, total_y, _money(document.total_amount), 10, align="right")
+    draw_text(88, total_y - 22, _amount_words(document.total_amount), 10, max_width=430)
+    draw_text(72, total_y - 112, "Отпустил", 10)
+    pdf.line(140, total_y - 110, 260, total_y - 110)
+    draw_text(340, total_y - 112, "Получил", 10)
+    pdf.line(405, total_y - 110, 525, total_y - 110)
+
+    pdf.showPage()
+    pdf.save()
+    return buffer.getvalue()

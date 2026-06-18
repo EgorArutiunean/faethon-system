@@ -320,6 +320,7 @@ export const api = {
   deleteDocument: (documentId: number) => request<void>(`/documents/${documentId}`, { method: "DELETE" }),
   deleteDocumentLine: (documentId: number, lineId: number) => request<void>(`/documents/${documentId}/lines/${lineId}`, { method: "DELETE" }),
   printDocument: (documentId: number) => download(`/documents/${documentId}/print.html`),
+  printDocumentPdf: (documentId: number) => download(`/documents/${documentId}/print.pdf`),
   stockBalances: (params = "") => request<StockBalance[]>(`/stock/balances${params}`),
   stockMovements: (params = "") => request<StockMovement[]>(`/stock/movements${params}`),
   payments: () => request<Payment[]>("/payments"),

@@ -214,6 +214,21 @@ export function DocumentEditor() {
       .catch(handleError);
   }
 
+  function downloadPdf() {
+    setError("");
+    api.printDocumentPdf(documentId)
+      .then((blob) => {
+        const url = URL.createObjectURL(blob);
+        const link = window.document.createElement("a");
+        link.href = url;
+        link.download = `document-${documentId}.pdf`;
+        link.click();
+        window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        showToast("success", t("pdfDownloaded"));
+      })
+      .catch(handleError);
+  }
+
   const isDraft = document?.status === "draft";
   const isPosted = document?.status === "posted";
   const isCancelled = document?.status === "cancelled";
@@ -229,6 +244,7 @@ export function DocumentEditor() {
         <button className="button" title={!can("documents.cancel") ? t("noPermission") : ""} disabled={!can("documents.cancel") || !isPosted} onClick={cancel}>{t("cancel")}</button>
         <button className="button" title={!can("documents.delete") ? t("noPermission") : ""} disabled={!can("documents.delete") || !isDraft} onClick={deleteDraft}>{t("deleteDraft")}</button>
         <button className="button" title={!can("documents.read") ? t("noPermission") : ""} disabled={!can("documents.read")} onClick={print}>{t("print")}</button>
+        <button className="button" title={!can("documents.read") ? t("noPermission") : ""} disabled={!can("documents.read")} onClick={downloadPdf}>{t("downloadPdf")}</button>
       </div>
       {error ? <div className="panel error-panel">{error}</div> : null}
       {readOnlyReason ? <div className="panel" style={{ padding: 10, color: "#52616f", fontSize: 13 }}>{readOnlyReason}</div> : null}

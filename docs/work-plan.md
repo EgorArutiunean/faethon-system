@@ -41,7 +41,8 @@ Known limits:
 - audit log viewer is available to users with `audit.read`;
 - user management UI is available to admins with `users.manage`;
 - outgoing invoice print form follows the observed old program layout from the 2026-06-17 screenshot for releasing goods from own warehouse to a customer;
-- PDF generation/export is not implemented;
+- document invoice PDF export is implemented for the current invoice layout;
+- PDF report export is not implemented;
 - advanced reports, saved filters, configurable columns, VAT, discounts, currencies, and period closing are not implemented.
 
 ## Phase 1: Behavior Reconstruction
@@ -119,7 +120,8 @@ Close MVP gaps that affect real daily work.
 High priority:
 
 - confirm final legacy wording for enum labels where old-program terminology differs from current Russian labels;
-- finish legacy-compatible print forms for all confirmed document types and add PDF output if required;
+- finish legacy-compatible print forms for remaining confirmed document types;
+- confirm whether the generated invoice PDF is visually close enough to the old printed form or requires pixel-level tuning;
 - confirm final production user list and role assignment before launch;
 - confirm whether non-admin roles need audit access before launch.
 

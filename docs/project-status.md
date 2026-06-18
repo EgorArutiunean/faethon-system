@@ -41,6 +41,7 @@ Implemented:
 - XLSX/CSV export for core reports using the same filters as on-screen reports.
 - frontend enum labels for core document, payment, cash, partner, movement, status, and Import Lite values.
 - legacy-oriented HTML outgoing invoice print view with protected `documents.read` access, matched to the old program screenshot for releasing goods from own warehouse to a customer.
+- PDF invoice export with embedded DejaVu font for readable Russian text, protected by `documents.read`, and available from the document editor.
 - operator UX improvements for document editing, product search, current stock display, validations, confirmations, toasts, status badges, and basic table search/sort/pagination.
 - CSV/XLSX Import Lite for products, partners, warehouses, opening stock, and opening partner balances with dry-run validation.
 - business logic/CRUD audit for core entities;
@@ -78,6 +79,7 @@ Latest checks:
 
 - backend tests: `99 passed` on 2026-06-17;
 - print form targeted tests: `6 passed` on 2026-06-17 after legacy outgoing invoice layout update;
+- print form targeted tests: `10 passed` on 2026-06-18 after PDF invoice export;
 - backend compileall: successful on 2026-06-17;
 - frontend TypeScript check: successful on 2026-06-17;
 - frontend production build: successful on 2026-06-17.

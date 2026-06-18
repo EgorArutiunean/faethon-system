@@ -11,17 +11,52 @@ from sqlalchemy.orm import Session
 from app.models.accounting import AuditLog
 from app.models.documents import Document
 from app.models.partners import Partner
-from app.models.products import Product
+from app.models.products import Product, ProductGroup
 from app.models.stock import StockBalance, StockMovement, Warehouse
 from app.schemas.imports import ImportIssue, ImportSummary
 
 
 TEMPLATES: dict[str, list[str]] = {
-    "products": ["sku", "name", "base_price", "description"],
+    "products": ["sku", "name", "category", "base_price", "description", "legacy_name"],
     "partners": ["name", "partner_type", "code", "phone"],
     "warehouses": ["name", "code", "address"],
     "opening-stock": ["product_sku", "product_name", "warehouse_name", "quantity"],
     "opening-partner-balances": ["partner_name", "balance"],
+}
+
+HEADER_ALIASES: dict[str, str] = {
+    "Code": "sku",
+    "code": "sku",
+    "SKU": "sku",
+    "Код": "sku",
+    "Артикул": "sku",
+    "Product": "name",
+    "product": "name",
+    "Наименование": "name",
+    "Товар": "name",
+    "Category": "category",
+    "category_name": "category",
+    "product_category": "category",
+    "Категория": "category",
+    "Группа": "category",
+    "legacy_name": "legacy_name",
+    "Старое наименование": "legacy_name",
+    "Исходное наименование": "legacy_name",
+    "Цена": "base_price",
+    "Цена ост.": "base_price",
+    "Цена Розн.": "base_price",
+    "Цена Розн.у.е.": "base_price",
+    "Ед.": "unit_short_name",
+    "Ед": "unit_short_name",
+    "Кол-во": "quantity",
+    "Количество": "quantity",
+    "Склад": "warehouse_name",
+}
+
+KNOWN_HEADERS = set(HEADER_ALIASES) | {column for columns in TEMPLATES.values() for column in columns} | {
+    "quantity",
+    "unit_short_name",
+    "warehouse_name",
 }
 
 REQUIRED: dict[str, list[str]] = {
@@ -45,6 +80,36 @@ def build_template(import_type: str) -> bytes:
     return output.getvalue()
 
 
+def _canonical_header(value: object) -> str:
+    header = str(value or "").strip()
+    return HEADER_ALIASES.get(header, header)
+
+
+def _recognized_header_count(row: tuple[object, ...]) -> int:
+    count = 0
+    for value in row:
+        header = str(value or "").strip()
+        if header in KNOWN_HEADERS or _canonical_header(header) in KNOWN_HEADERS:
+            count += 1
+    return count
+
+
+def _header_row_index(rows: list[tuple[object, ...]]) -> int:
+    candidates = rows[: min(5, len(rows))]
+    best_index = 0
+    best_count = 0
+    for index, row in enumerate(candidates):
+        count = _recognized_header_count(row)
+        if count > best_count:
+            best_index = index
+            best_count = count
+    return best_index
+
+
+def _compact_row(row: dict[str, str]) -> dict[str, str]:
+    return {key: value for key, value in row.items() if key}
+
+
 def _parse_file(content: bytes, filename: str) -> tuple[list[dict[str, str]], list[ImportIssue]]:
     if filename.lower().endswith(".xlsx"):
         workbook = load_workbook(BytesIO(content), read_only=True, data_only=True)
@@ -52,15 +117,28 @@ def _parse_file(content: bytes, filename: str) -> tuple[list[dict[str, str]], li
         rows = list(sheet.iter_rows(values_only=True))
         if not rows:
             return [], [ImportIssue(row=1, field=None, message="File is empty")]
-        headers = [str(value or "").strip() for value in rows[0]]
+        header_index = _header_row_index(rows)
+        raw_headers = [str(value or "").strip() for value in rows[header_index]]
+        headers = [_canonical_header(value) for value in raw_headers]
+        is_legacy_price_list = any(header in {"Код", "Товар", "Ед.", "Кол-во", "Цена ост."} for header in raw_headers)
         parsed = []
-        for values in rows[1:]:
-            parsed.append({header: "" if value is None else str(value).strip() for header, value in zip(headers, values)})
+        for values in rows[header_index + 1 :]:
+            row = _compact_row({header: "" if value is None else str(value).strip() for header, value in zip(headers, values)})
+            if not any(row.values()):
+                continue
+            if is_legacy_price_list and row.get("name") and not row.get("legacy_name"):
+                row["legacy_name"] = row["name"]
+            parsed.append(row)
         return parsed, []
 
     text = content.decode("utf-8-sig")
     reader = csv.DictReader(StringIO(text))
-    return [{key: (value or "").strip() for key, value in row.items()} for row in reader], []
+    parsed = []
+    for row in reader:
+        normalized = _compact_row({_canonical_header(key): (value or "").strip() for key, value in row.items()})
+        if any(normalized.values()):
+            parsed.append(normalized)
+    return parsed, []
 
 
 def _decimal(value: str, row: int, field: str, errors: list[ImportIssue], *, allow_negative: bool = False) -> Decimal | None:
@@ -188,13 +266,48 @@ def _find_warehouse(db: Session, name: str | None) -> Warehouse | None:
     return db.scalar(select(Warehouse).where(Warehouse.name == name)) if name else None
 
 
+def _find_product_group(db: Session, name: str | None) -> ProductGroup | None:
+    return db.scalar(select(ProductGroup).where(ProductGroup.name == name)) if name else None
+
+
+def _get_or_create_product_group(db: Session, name: str | None) -> ProductGroup | None:
+    if not name:
+        return None
+    group = _find_product_group(db, name)
+    if group:
+        return group
+    group = ProductGroup(name=name)
+    db.add(group)
+    db.flush()
+    return group
+
+
+def _product_description(row: dict[str, str]) -> str | None:
+    parts = []
+    if row.get("description"):
+        parts.append(row["description"])
+    if row.get("legacy_name"):
+        parts.append(f"legacy_name: {row['legacy_name']}")
+    return "\n".join(parts) or None
+
+
 def _apply_products(db: Session, rows: list[dict[str, str]]) -> tuple[int, int]:
     created = skipped = 0
     for row in rows:
         if _find_product(db, row.get("sku"), row.get("name")):
             skipped += 1
             continue
-        db.add(Product(sku=row.get("sku") or None, name=row["name"], base_price=Decimal(row["base_price"] or "0"), description=row.get("description") or None, is_active=True))
+        group = _get_or_create_product_group(db, row.get("category"))
+        db.add(
+            Product(
+                sku=row.get("sku") or None,
+                name=row["name"],
+                group_id=group.id if group else None,
+                base_price=Decimal(row.get("base_price") or "0"),
+                description=_product_description(row),
+                is_active=True,
+            )
+        )
         created += 1
     return created, skipped
 

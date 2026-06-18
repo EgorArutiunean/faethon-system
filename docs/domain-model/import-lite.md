@@ -24,11 +24,25 @@ Template columns:
 
 | Import | Columns |
 | --- | --- |
-| Products | `sku`, `name`, `base_price`, `description` |
+| Products | `sku`, `name`, `category`, `base_price`, `description`, `legacy_name` |
 | Partners | `name`, `partner_type`, `code`, `phone` |
 | Warehouses | `name`, `code`, `address` |
 | Opening stock | `product_sku`, `product_name`, `warehouse_name`, `quantity` |
 | Opening partner balances | `partner_name`, `balance` |
+
+## Product Import
+
+Product import accepts the normal template and a controlled old price-list shape.
+
+Supported old price-list details:
+
+- a title row before the actual header row is allowed;
+- Russian headers are normalized: `Код` to `sku`, `Товар` to `name`, `Цена ост.` to `base_price`, `Категория` or `Группа` to `category`;
+- when an old price-list row is detected, the raw old product name is saved as `legacy_name` in the product description;
+- if `category` is provided, the product group is found by name or created automatically;
+- category is not guessed from the product name yet, because that would affect operational data and needs a confirmed rule.
+
+Current price assumption: for old price-list files, `Цена ост.` is imported into `base_price`. This is an operational seed value, not a final legacy price-list model.
 
 ## Dry Run
 
@@ -77,6 +91,7 @@ Apply behavior:
 - the operation is transactional;
 - an `audit_log` row is created;
 - existing products are matched by `sku` or `name` and skipped;
+- product categories from product import are created when missing;
 - existing partners are matched by `name` and skipped;
 - existing warehouses are matched by `name` and skipped.
 
@@ -102,6 +117,7 @@ TODO LEGACY_RULE_REQUIRED: replace this representation with confirmed legacy-com
 - No `BUY.GDB` reader.
 - No automatic mapping of all legacy tables.
 - No fuzzy matching.
+- No automatic category inference from embedded old product names.
 - No update/overwrite mode.
 - No background import jobs.
 - No import rollback UI after apply.

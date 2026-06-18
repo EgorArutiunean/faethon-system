@@ -2,12 +2,12 @@ import {
   BarChart3,
   Boxes,
   Building2,
-  CircleDollarSign,
-  ClipboardList,
   ChevronsLeft,
   ChevronsRight,
-  History,
+  CircleDollarSign,
+  ClipboardList,
   FileText,
+  History,
   Home,
   Package,
   PanelLeftClose,
@@ -18,7 +18,9 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
+
 import { useAuth } from "../auth";
+import { formatCode } from "../format";
 import { useI18n } from "../i18n";
 
 const nav = [
@@ -58,6 +60,10 @@ export function AppLayout() {
 
   const isCollapsed = sidebarMode === "collapsed";
   const isHidden = sidebarMode === "hidden";
+  const roleLabel = user?.role_names[0] ? formatCode(user.role_names[0], t) : "";
+  const collapseLabel = isCollapsed ? "\u0420\u0430\u0437\u0432\u0435\u0440\u043d\u0443\u0442\u044c \u043c\u0435\u043d\u044e" : "\u0421\u0432\u0435\u0440\u043d\u0443\u0442\u044c \u043c\u0435\u043d\u044e";
+  const hideLabel = "\u0421\u043a\u0440\u044b\u0442\u044c \u043c\u0435\u043d\u044e";
+  const showLabel = "\u041f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u043c\u0435\u043d\u044e";
 
   return (
     <div className={`app-shell sidebar-${sidebarMode}`}>
@@ -70,17 +76,17 @@ export function AppLayout() {
             </div>
             <div className="sidebar-controls">
               <button
-                aria-label={isCollapsed ? "Развернуть меню" : "Свернуть меню"}
+                aria-label={collapseLabel}
                 className="sidebar-icon-button"
-                title={isCollapsed ? "Развернуть меню" : "Свернуть меню"}
+                title={collapseLabel}
                 onClick={() => setSidebarMode(isCollapsed ? "expanded" : "collapsed")}
               >
                 {isCollapsed ? <ChevronsRight size={17} /> : <ChevronsLeft size={17} />}
               </button>
               <button
-                aria-label="Скрыть меню"
+                aria-label={hideLabel}
                 className="sidebar-icon-button"
-                title="Скрыть меню"
+                title={hideLabel}
                 onClick={() => setSidebarMode("hidden")}
               >
                 <PanelLeftClose size={17} />
@@ -106,9 +112,9 @@ export function AppLayout() {
           <div className="header-title">
             {isHidden ? (
               <button
-                aria-label="Показать меню"
+                aria-label={showLabel}
                 className="layout-icon-button"
-                title="Показать меню"
+                title={showLabel}
                 onClick={() => setSidebarMode("collapsed")}
               >
                 <PanelLeftOpen size={18} />
@@ -118,7 +124,7 @@ export function AppLayout() {
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <span style={{ fontSize: 13, color: "#52616f" }}>
-              {user?.email} {user?.role_names[0] ? `(${t("role")}: ${user.role_names[0]})` : ""}
+              {user?.email} {roleLabel ? `(${t("role")}: ${roleLabel})` : ""}
             </span>
             <button className="button">{t("sync")}</button>
             <button className="button" onClick={logout}>{t("logout")}</button>

@@ -19,12 +19,12 @@ Goal: prepare Buy Modern for the fastest safe company transition from the old Bu
 11. Invoice PDF export with readable Russian text is implemented.
 12. Import Lite supports reference data and opening balances.
 13. Old price-list sample from `E:\primer.xlsx` was inspected: product code, name, unit, quantity, and price data are available; category-like data is embedded in the product name.
-14. Import Lite can now import products from the old price-list shape, create explicit categories, and preserve raw legacy product names.
+14. Buy Modern product import standard now includes explicit `category` and `legacy_name` fields.
 
 ## Before Release
 
 1. Confirm final document, stock, debt, payment, and cash rules from old-program behavior.
-2. Extend Import Lite for old price-list workbooks: units and opening stock from the same old price-list shape.
+2. Prepare old price-list data into Buy Modern standard templates: products, categories, units, prices, and opening stock.
 3. Prepare and reconcile production opening data: products, categories, warehouses, partners, stock, debts, and cash.
 4. Confirm remaining print forms and whether invoice PDF needs visual tuning against the old form.
 5. Confirm production user list, roles, and whether non-admin users need audit access.
@@ -36,10 +36,10 @@ Goal: prepare Buy Modern for the fastest safe company transition from the old Bu
 
 ## Verified
 
-1. Import Lite targeted tests passed: `12 passed`.
-2. Backend test suite passed: `109 passed`.
-3. Product category targeted tests passed: `4 passed`.
-4. Print form targeted tests passed: `10 passed`.
+1. Product import standard fields are covered by targeted tests: `11 passed`.
+2. Backend test suite passed after the Import Lite standard update: `108 passed`.
+3. Product category targeted tests passed.
+4. Print form targeted tests passed.
 5. Frontend production build passed after category work.
 6. Browser smoke for `/products` confirmed Russian category UI with no console errors.
 7. Live API accepted UTF-8 Russian category and product names.
@@ -47,6 +47,7 @@ Goal: prepare Buy Modern for the fastest safe company transition from the old Bu
 
 ## Current Priority
 
-1. Add reconciliation-friendly opening stock import from the same old price-list shape.
-2. Decide the category inference rule for old product names, if explicit category columns are not available.
-3. Run full acceptance smoke after import improvements.
+1. Build a controlled data-preparation workflow that converts old price-list exports into Buy Modern standard templates.
+2. Define the category extraction rule for old product names before using it on production data.
+3. Add reconciliation-friendly opening stock import data preparation from the same old price-list source.
+4. Run full acceptance smoke after import improvements.

@@ -24,41 +24,6 @@ TEMPLATES: dict[str, list[str]] = {
     "opening-partner-balances": ["partner_name", "balance"],
 }
 
-HEADER_ALIASES: dict[str, str] = {
-    "Code": "sku",
-    "code": "sku",
-    "SKU": "sku",
-    "Код": "sku",
-    "Артикул": "sku",
-    "Product": "name",
-    "product": "name",
-    "Наименование": "name",
-    "Товар": "name",
-    "Category": "category",
-    "category_name": "category",
-    "product_category": "category",
-    "Категория": "category",
-    "Группа": "category",
-    "legacy_name": "legacy_name",
-    "Старое наименование": "legacy_name",
-    "Исходное наименование": "legacy_name",
-    "Цена": "base_price",
-    "Цена ост.": "base_price",
-    "Цена Розн.": "base_price",
-    "Цена Розн.у.е.": "base_price",
-    "Ед.": "unit_short_name",
-    "Ед": "unit_short_name",
-    "Кол-во": "quantity",
-    "Количество": "quantity",
-    "Склад": "warehouse_name",
-}
-
-KNOWN_HEADERS = set(HEADER_ALIASES) | {column for columns in TEMPLATES.values() for column in columns} | {
-    "quantity",
-    "unit_short_name",
-    "warehouse_name",
-}
-
 REQUIRED: dict[str, list[str]] = {
     "products": ["name"],
     "partners": ["name", "partner_type"],
@@ -80,32 +45,6 @@ def build_template(import_type: str) -> bytes:
     return output.getvalue()
 
 
-def _canonical_header(value: object) -> str:
-    header = str(value or "").strip()
-    return HEADER_ALIASES.get(header, header)
-
-
-def _recognized_header_count(row: tuple[object, ...]) -> int:
-    count = 0
-    for value in row:
-        header = str(value or "").strip()
-        if header in KNOWN_HEADERS or _canonical_header(header) in KNOWN_HEADERS:
-            count += 1
-    return count
-
-
-def _header_row_index(rows: list[tuple[object, ...]]) -> int:
-    candidates = rows[: min(5, len(rows))]
-    best_index = 0
-    best_count = 0
-    for index, row in enumerate(candidates):
-        count = _recognized_header_count(row)
-        if count > best_count:
-            best_index = index
-            best_count = count
-    return best_index
-
-
 def _compact_row(row: dict[str, str]) -> dict[str, str]:
     return {key: value for key, value in row.items() if key}
 
@@ -117,25 +56,19 @@ def _parse_file(content: bytes, filename: str) -> tuple[list[dict[str, str]], li
         rows = list(sheet.iter_rows(values_only=True))
         if not rows:
             return [], [ImportIssue(row=1, field=None, message="File is empty")]
-        header_index = _header_row_index(rows)
-        raw_headers = [str(value or "").strip() for value in rows[header_index]]
-        headers = [_canonical_header(value) for value in raw_headers]
-        is_legacy_price_list = any(header in {"Код", "Товар", "Ед.", "Кол-во", "Цена ост."} for header in raw_headers)
+        headers = [str(value or "").strip() for value in rows[0]]
         parsed = []
-        for values in rows[header_index + 1 :]:
+        for values in rows[1:]:
             row = _compact_row({header: "" if value is None else str(value).strip() for header, value in zip(headers, values)})
-            if not any(row.values()):
-                continue
-            if is_legacy_price_list and row.get("name") and not row.get("legacy_name"):
-                row["legacy_name"] = row["name"]
-            parsed.append(row)
+            if any(row.values()):
+                parsed.append(row)
         return parsed, []
 
     text = content.decode("utf-8-sig")
     reader = csv.DictReader(StringIO(text))
     parsed = []
     for row in reader:
-        normalized = _compact_row({_canonical_header(key): (value or "").strip() for key, value in row.items()})
+        normalized = _compact_row({key: (value or "").strip() for key, value in row.items()})
         if any(normalized.values()):
             parsed.append(normalized)
     return parsed, []
@@ -375,7 +308,7 @@ def _apply_opening_partner_balances(db: Session, rows: list[dict[str, str]]) -> 
         balance = Decimal(row["balance"])
         if balance == 0:
             continue
-        # TODO LEGACY_RULE_REQUIRED: replace this special posted document with confirmed legacy opening debt representation.
+        # TODO LEGACY_RULE_REQUIRED: replace this special posted document with confirmed legacy-compatible opening debt behavior.
         document_type = Document.TYPE_OUTGOING if balance > 0 else Document.TYPE_INCOMING
         db.add(
             Document(

@@ -32,17 +32,18 @@ Template columns:
 
 ## Product Import
 
-Product import accepts the normal template and a controlled old price-list shape.
+Product import accepts the Buy Modern product template only. Old price-list exports must be prepared into this standard before upload.
 
-Supported old price-list details:
+Standard product fields:
 
-- a title row before the actual header row is allowed;
-- Russian headers are normalized: `Код` to `sku`, `Товар` to `name`, `Цена ост.` to `base_price`, `Категория` or `Группа` to `category`;
-- when an old price-list row is detected, the raw old product name is saved as `legacy_name` in the product description;
-- if `category` is provided, the product group is found by name or created automatically;
-- category is not guessed from the product name yet, because that would affect operational data and needs a confirmed rule.
+- `sku`: product code/article;
+- `name`: final product name in Buy Modern;
+- `category`: final product category name; the category is found by name or created automatically;
+- `base_price`: initial operational price;
+- `description`: operator-visible notes;
+- `legacy_name`: raw old-program name for traceability.
 
-Current price assumption: for old price-list files, `Цена ост.` is imported into `base_price`. This is an operational seed value, not a final legacy price-list model.
+The application does not guess product categories from embedded old names and does not normalize arbitrary old price-list headers. That transformation belongs to a controlled data-preparation step before Import Lite dry-run.
 
 ## Dry Run
 
@@ -116,6 +117,7 @@ TODO LEGACY_RULE_REQUIRED: replace this representation with confirmed legacy-com
 
 - No `BUY.GDB` reader.
 - No automatic mapping of all legacy tables.
+- No direct import of arbitrary old price-list layouts.
 - No fuzzy matching.
 - No automatic category inference from embedded old product names.
 - No update/overwrite mode.

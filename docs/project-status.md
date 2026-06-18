@@ -45,8 +45,8 @@ Implemented:
 - PDF invoice export with embedded DejaVu font for readable Russian text, protected by `documents.read`, and available from the document editor;
 - operator UX improvements for document editing, product search, current stock display, validations, confirmations, toasts, status badges, and basic table search/sort/pagination;
 - CSV/XLSX Import Lite for products, partners, warehouses, opening stock, and opening partner balances with dry-run validation;
-- old price-list product import: title-row detection, Russian header mapping, explicit category creation, base price import from rest price, and raw legacy product name preservation;
-- old price-list sample from `E:\primer.xlsx` inspected: `BuyData` has 353 product rows with product code, name, unit, quantity, and price fields; category-like values are embedded in product names and still need a controlled inference rule before automatic parsing;
+- product import standard includes explicit category assignment and raw old-program name preservation through `legacy_name`;
+- old price-list sample from `E:\primer.xlsx` inspected: `BuyData` has 353 product rows with product code, name, unit, quantity, and price fields; this data must be prepared into Buy Modern standard templates before import;
 - business logic/CRUD audit for core entities;
 - partner split into `customer`, `supplier`, and `both` with document/payment validation and UI filters;
 - production deployment prep: `docker-compose.prod.yml`, production Dockerfiles, nginx SPA/API proxy config, env template, and PostgreSQL backup/restore scripts;
@@ -80,8 +80,8 @@ See `docs/development-setup.md` for the PostgreSQL/Docker workflow.
 
 Latest checks:
 
-- Import Lite targeted tests: `12 passed` on 2026-06-18 after old price-list product import support;
-- backend tests: `109 passed` on 2026-06-18 after the latest Import Lite extension;
+- Import Lite targeted tests: `11 passed` on 2026-06-18 after the product import standard update;
+- backend tests: `108 passed` on 2026-06-18 after the latest Import Lite standard update;
 - print form targeted tests: `10 passed` on 2026-06-18 after PDF invoice export;
 - product category targeted tests: `4 passed` on 2026-06-18;
 - backend compileall: successful on 2026-06-17;

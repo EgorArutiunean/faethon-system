@@ -29,7 +29,7 @@ Implemented MVP:
 - fixed reports with CSV/XLSX export;
 - HTML document print form;
 - Import Lite for products, partners, warehouses, opening stock, and opening partner balances;
-- Import Lite product import from old price-list workbook shape with explicit categories and preserved raw legacy names;
+- Import Lite product template with explicit categories and preserved raw legacy names;
 - Docker Compose development and production configuration;
 - GitHub publication to `EgorArutiunean/faethon-system`.
 
@@ -124,7 +124,7 @@ Close MVP gaps that affect real daily work.
 High priority:
 
 - confirm final legacy wording for enum labels where old-program terminology differs from current Russian labels;
-- extend Import Lite for old price-list workbooks: next focus is units and opening stock from the same old price-list shape;
+- prepare old price-list data into Buy Modern standard import templates for products, units, prices, categories, and opening stock;
 - finish legacy-compatible print forms for remaining confirmed document types;
 - confirm whether the generated invoice PDF is visually close enough to the old printed form or requires pixel-level tuning;
 - confirm final production user list and role assignment before launch;

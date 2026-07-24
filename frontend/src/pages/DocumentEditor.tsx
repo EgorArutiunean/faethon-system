@@ -358,12 +358,12 @@ export function DocumentEditor() {
             {filteredProducts.map((product) => <option key={product.id} value={product.id}>{product.name}{product.sku ? ` (${product.sku})` : ""}</option>)}
           </select>
         </div>
-        <div className="field"><label>{t("quantity")}</label><input value={quantity} onChange={(event) => setQuantity(event.target.value)} disabled={!isDraft} /></div>
+        <div className="field"><label>{t("quantity")}</label><input data-testid="document-line-quantity" value={quantity} onChange={(event) => setQuantity(event.target.value)} disabled={!isDraft} /></div>
         <div className="field"><label>{isIncoming ? t("foreignPrice") : t("price")}</label><input data-testid="document-line-price" value={price} onChange={(event) => setPrice(event.target.value)} disabled={!isDraft} /></div>
         <div className="field"><label>{isIncoming ? t("foreignSum") : t("sum")}</label><input value={lineSum.toFixed(2)} readOnly /></div>
         {isIncoming ? <div className="field"><label>{t("baseSum")}</label><input value={baseLineSum.toFixed(2)} readOnly /></div> : null}
         <div className="field"><label>{t("stockBalance")}</label><input value={stockBalance ?? ""} readOnly /></div>
-        <div className="field"><label>&nbsp;</label><button className="button primary" title={!can("documents.update") ? t("noPermission") : ""} disabled={!can("documents.update") || !isDraft} onClick={addLine}>{t("addLine")}</button></div>
+        <div className="field"><label>&nbsp;</label><button data-testid="document-line-add" className="button primary" title={!can("documents.update") ? t("noPermission") : ""} disabled={!can("documents.update") || !isDraft} onClick={addLine}>{t("addLine")}</button></div>
       </div>
       {salePriceReview ? (
         <div className="panel" style={{ padding: 10, color: "#7a4b00", background: "#fff7e6", borderColor: "#f0c36d", fontSize: 13 }}>

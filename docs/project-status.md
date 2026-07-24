@@ -83,6 +83,7 @@ See `docs/development-setup.md` for the PostgreSQL/Docker workflow.
 Latest checks:
 
 - manager workflow Playwright tests: `3 passed` on 2026-07-24 for M01, M02, and M04;
+- real manager sale M03 against isolated PostgreSQL: `1 passed` on 2026-07-24;
 - backend tests: `114 passed` on 2026-07-24 after adding exchange-rate immutability and atomic failed-posting checks;
 - frontend TypeScript check: successful on 2026-07-24;
 - frontend production build: successful on 2026-07-24;

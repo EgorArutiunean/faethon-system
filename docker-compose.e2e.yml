@@ -1,0 +1,38 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: buy_modern_e2e
+      POSTGRES_USER: buy_e2e
+      POSTGRES_PASSWORD: buy_e2e
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U buy_e2e -d buy_modern_e2e"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    image: buy-modern-backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://buy_e2e:buy_e2e@postgres:5432/buy_modern_e2e
+      AUTH_SECRET_KEY: e2e-only-secret-key
+      ACCESS_TOKEN_MINUTES: 30
+      CORS_ORIGINS: http://127.0.0.1:4174
+    command:
+      - sh
+      - -c
+      - alembic upgrade head && python scripts/seed_e2e.py && uvicorn app.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "18000:8000"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 2s
+      timeout: 3s
+      retries: 30

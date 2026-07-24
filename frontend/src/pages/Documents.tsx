@@ -166,7 +166,7 @@ export function Documents() {
       <div className="panel form-grid" style={{ marginBottom: 10 }}>
         <div className="field">
           <label>{t("type")}</label>
-          <select value={draftForm.document_type} onChange={(event) => setDocumentType(event.target.value as DraftDocumentType)}>
+          <select data-testid="draft-document-type" value={draftForm.document_type} onChange={(event) => setDocumentType(event.target.value as DraftDocumentType)}>
             <option value="incoming">{t("incoming")}</option>
             <option value="outgoing">{t("outgoing")}</option>
             <option value="adjustment">{t("adjustment")}</option>
@@ -187,7 +187,7 @@ export function Documents() {
         </div>
         <div className="field">
           <label>{draftForm.document_type === "transfer" ? t("sourceWarehouse") : t("warehouse")}</label>
-          <select value={draftForm.warehouse_id} onChange={(event) => setDraftForm({ ...draftForm, warehouse_id: event.target.value })}>
+          <select data-testid="draft-document-warehouse" value={draftForm.warehouse_id} onChange={(event) => setDraftForm({ ...draftForm, warehouse_id: event.target.value })}>
             <option value="">{t("selectWarehouse")}</option>
             {warehouses.map((warehouse) => (
               <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>
@@ -208,7 +208,7 @@ export function Documents() {
         {draftForm.document_type === "incoming" || draftForm.document_type === "outgoing" ? (
           <div className="field">
             <label>{draftForm.document_type === "incoming" ? t("supplier") : t("customer")}</label>
-            <select value={draftForm.partner_id} onChange={(event) => setDraftForm({ ...draftForm, partner_id: event.target.value })}>
+            <select data-testid="draft-document-partner" value={draftForm.partner_id} onChange={(event) => setDraftForm({ ...draftForm, partner_id: event.target.value })}>
               <option value="">{t("selectPartner")}</option>
               {partnersForType.map((partner) => (
                 <option key={partner.id} value={partner.id}>{partner.name}</option>
@@ -218,7 +218,7 @@ export function Documents() {
         ) : null}
       </div>
       <div className="toolbar">
-        <button className="button primary" title={!can("documents.create") ? t("noPermission") : ""} disabled={!can("documents.create")} onClick={createDraft}>{t("createDocument")}</button>
+        <button data-testid="draft-document-create" className="button primary" title={!can("documents.create") ? t("noPermission") : ""} disabled={!can("documents.create")} onClick={createDraft}>{t("createDocument")}</button>
       </div>
       {error ? <div className="panel error-panel">{error}</div> : null}
       <DataTable<Document>

@@ -94,6 +94,26 @@ make test      # backend tests
 make smoke     # docker compose ps
 ```
 
+## Manager Workflow Tests
+
+Deterministic frontend workflow tests:
+
+```powershell
+cd frontend
+npm run test:e2e
+```
+
+Real sale workflow against an isolated PostgreSQL database:
+
+```powershell
+cd frontend
+npm run test:e2e:real
+```
+
+The real E2E command uses `docker-compose.e2e.yml`, applies migrations, runs the
+browser scenario, and removes the temporary containers and data after the run.
+It does not modify the regular development database.
+
 ## Publication Status
 
 Current target:

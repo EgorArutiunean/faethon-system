@@ -11,6 +11,10 @@ release gates are maintained in
 `docs/production-readiness-and-manager-acceptance-plan.md`. That document is the
 source of truth for execution order and release acceptance.
 
+Role responsibilities and end-to-end workflows for the manager, proposed
+logistics role, administrator, and cashier boundary are maintained in
+`docs/role-workflows.md`.
+
 ## Working Protocol
 
 - Predict and implement behavior when it is obvious, low-risk, and does not affect money, stock, debts, permissions, or legal documents.

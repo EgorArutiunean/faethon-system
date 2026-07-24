@@ -1,6 +1,6 @@
 # Role-Based QA
 
-Date: 2026-05-02
+Date: 2026-07-24
 
 Scope: Simple Auth & Permissions smoke QA for current MVP roles. No Reports/Export/Print Forms work was added.
 
@@ -25,7 +25,7 @@ Scope: Simple Auth & Permissions smoke QA for current MVP roles. No Reports/Expo
 | Warehouses create/update | Yes | Yes | No | No |
 | Partners read | Yes | Yes | Yes | Yes |
 | Partners create/update | Yes | Yes | No | No |
-| Documents read | Yes | Yes | No | Yes |
+| Documents read | Yes | Yes | Yes | Yes |
 | Documents create/update | Yes | Yes | No | No |
 | Documents post/cancel | Yes | Yes | No | No |
 | Stock read | Yes | Yes | No | Yes |
@@ -57,6 +57,7 @@ Cashier:
 
 - Login and `/auth/me` return role `cashier`.
 - Can read partners.
+- Can read documents for linking payments, but cannot change or post them.
 - Can create payments.
 - Can create cash operations.
 - Document posting returns HTTP 403.

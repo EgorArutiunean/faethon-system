@@ -279,7 +279,7 @@ export function DocumentEditor() {
         <h1 style={{ fontSize: 20, margin: "0 12px 0 0" }}>{t("documentEditorTitle")} #{documentId}</h1>
         <Link className="button" to="/documents">{t("backToDocuments")}</Link>
         <button className="button" title={!can("documents.update") ? t("noPermission") : ""} disabled={!can("documents.update")} onClick={saveHeader}>{t("save")}</button>
-        <button className="button primary" title={!can("documents.post") ? t("noPermission") : ""} disabled={!can("documents.post") || !isDraft} onClick={post}>{t("post")}</button>
+        <button data-testid="document-post" className="button primary" title={!can("documents.post") ? t("noPermission") : ""} disabled={!can("documents.post") || !isDraft} onClick={post}>{t("post")}</button>
         <button className="button" title={!can("documents.cancel") ? t("noPermission") : ""} disabled={!can("documents.cancel") || !isPosted} onClick={cancel}>{t("cancel")}</button>
         <button className="button" title={!can("documents.delete") ? t("noPermission") : ""} disabled={!can("documents.delete") || !isDraft} onClick={deleteDraft}>{t("deleteDraft")}</button>
         <button className="button" title={!can("documents.read") ? t("noPermission") : ""} disabled={!can("documents.read")} onClick={print}>{t("print")}</button>
@@ -332,11 +332,11 @@ export function DocumentEditor() {
           <>
             <div className="field">
               <label>{t("currency")}</label>
-              <select value={header.currency_code} onChange={(event) => setCurrency(event.target.value)} disabled={!isDraft}>
+              <select data-testid="document-currency" value={header.currency_code} onChange={(event) => setCurrency(event.target.value)} disabled={!isDraft}>
                 {currencies.map((currency) => <option key={currency.code} value={currency.code}>{currency.code} - {currency.name}</option>)}
               </select>
             </div>
-            <div className="field"><label>{t("exchangeRate")}</label><input value={header.exchange_rate} onChange={(event) => setHeader({ ...header, exchange_rate: event.target.value })} disabled={!isDraft || header.currency_code === "RUB_PMR"} /></div>
+            <div className="field"><label>{t("exchangeRate")}</label><input data-testid="document-exchange-rate" value={header.exchange_rate} onChange={(event) => setHeader({ ...header, exchange_rate: event.target.value })} disabled={!isDraft || header.currency_code === "RUB_PMR"} /></div>
             <div className="field"><label>{t("foreignTotal")}</label><input value={`${formatMoney(document?.foreign_total_amount ?? "0")} ${document?.currency_code ?? header.currency_code}`} readOnly /></div>
           </>
         ) : null}
@@ -353,13 +353,13 @@ export function DocumentEditor() {
         </div>
         <div className="field">
           <label>{t("product")}</label>
-          <select value={productId} onChange={(event) => setSelectedProduct(event.target.value)} disabled={!isDraft}>
+          <select data-testid="document-product" value={productId} onChange={(event) => setSelectedProduct(event.target.value)} disabled={!isDraft}>
             <option value="">{t("selectProduct")}</option>
             {filteredProducts.map((product) => <option key={product.id} value={product.id}>{product.name}{product.sku ? ` (${product.sku})` : ""}</option>)}
           </select>
         </div>
         <div className="field"><label>{t("quantity")}</label><input value={quantity} onChange={(event) => setQuantity(event.target.value)} disabled={!isDraft} /></div>
-        <div className="field"><label>{isIncoming ? t("foreignPrice") : t("price")}</label><input value={price} onChange={(event) => setPrice(event.target.value)} disabled={!isDraft} /></div>
+        <div className="field"><label>{isIncoming ? t("foreignPrice") : t("price")}</label><input data-testid="document-line-price" value={price} onChange={(event) => setPrice(event.target.value)} disabled={!isDraft} /></div>
         <div className="field"><label>{isIncoming ? t("foreignSum") : t("sum")}</label><input value={lineSum.toFixed(2)} readOnly /></div>
         {isIncoming ? <div className="field"><label>{t("baseSum")}</label><input value={baseLineSum.toFixed(2)} readOnly /></div> : null}
         <div className="field"><label>{t("stockBalance")}</label><input value={stockBalance ?? ""} readOnly /></div>
@@ -389,9 +389,6 @@ export function DocumentEditor() {
           }
         ]}
       />
-      <p style={{ color: "#52616f", fontSize: 13 }}>
-        TODO LEGACY_RULE_REQUIRED: final posting, cancellation, accounting, pricing, VAT, and debt rules.
-      </p>
     </div>
   );
 }

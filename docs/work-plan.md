@@ -6,6 +6,11 @@ Goal: rebuild the old BuySell program behavior in the modern web app without dir
 
 `BUY.GDB` is no longer treated as a required source. The new source of truth is observed behavior: old program screens, reports, printed forms, operator knowledge, manual exports, screenshots, and confirmed business rules.
 
+Production readiness, manager workflow scenarios, automated test layers, and
+release gates are maintained in
+`docs/production-readiness-and-manager-acceptance-plan.md`. That document is the
+source of truth for execution order and release acceptance.
+
 ## Working Protocol
 
 - Predict and implement behavior when it is obvious, low-risk, and does not affect money, stock, debts, permissions, or legal documents.
@@ -178,7 +183,9 @@ Acceptance criteria:
 
 ## Operating Backlog
 
-Use this order unless Egor changes priority:
+Use the priority order and release gates from
+`docs/production-readiness-and-manager-acceptance-plan.md`. The legacy
+reconstruction backlog below remains the input to that plan:
 
 1. Build `docs/legacy-behavior-reconstruction.md`.
 2. Resolve document and stock questions.

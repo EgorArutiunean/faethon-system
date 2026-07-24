@@ -184,9 +184,6 @@ export function Payments() {
           }
         ]}
       />
-      <p style={{ color: "#52616f", fontSize: 13 }}>
-        TODO LEGACY_RULE_REQUIRED: payment matching, refund direction, and cash book behavior are simplified.
-      </p>
     </PageScaffold>
   );
 }

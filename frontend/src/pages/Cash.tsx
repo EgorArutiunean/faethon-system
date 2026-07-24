@@ -102,9 +102,6 @@ export function Cash() {
           }
         ]}
       />
-      <p className="muted-note">
-        {t("correctionTodo")}
-      </p>
     </PageScaffold>
   );
 }

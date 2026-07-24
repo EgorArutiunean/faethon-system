@@ -47,9 +47,6 @@ export function PartnerStatement() {
           { key: "status", header: t("status"), render: (row) => formatCode(row.status, t) }
         ]}
       />
-      <p style={{ color: "#52616f", fontSize: 13 }}>
-        TODO LEGACY_RULE_REQUIRED: statement ordering, signs, and document-payment matching must be validated against legacy behavior.
-      </p>
     </PageScaffold>
   );
 }

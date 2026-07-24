@@ -25,16 +25,16 @@ import { useI18n } from "../i18n";
 
 const nav = [
   { to: "/", labelKey: "dashboard", icon: Home },
-  { to: "/products", labelKey: "products", icon: Package },
-  { to: "/partners", labelKey: "partners", icon: Users },
-  { to: "/warehouses", labelKey: "warehouses", icon: Building2 },
-  { to: "/documents", labelKey: "documents", icon: ClipboardList },
-  { to: "/stock", labelKey: "stock", icon: Boxes },
-  { to: "/payments", labelKey: "payments", icon: WalletCards },
-  { to: "/cash", labelKey: "cash", icon: CircleDollarSign },
-  { to: "/reports", labelKey: "reports", icon: BarChart3 },
-  { to: "/audit", labelKey: "auditLog", icon: History },
-  { to: "/settings", labelKey: "settings", icon: Settings }
+  { to: "/products", labelKey: "products", icon: Package, permission: "products.read" },
+  { to: "/partners", labelKey: "partners", icon: Users, permission: "partners.read" },
+  { to: "/warehouses", labelKey: "warehouses", icon: Building2, permission: "warehouses.read" },
+  { to: "/documents", labelKey: "documents", icon: ClipboardList, permission: "documents.read" },
+  { to: "/stock", labelKey: "stock", icon: Boxes, permission: "stock.read" },
+  { to: "/payments", labelKey: "payments", icon: WalletCards, permission: "payments.read" },
+  { to: "/cash", labelKey: "cash", icon: CircleDollarSign, permission: "cash.read" },
+  { to: "/reports", labelKey: "reports", icon: BarChart3, permission: "reports.read" },
+  { to: "/audit", labelKey: "auditLog", icon: History, permission: "audit.read" },
+  { to: "/settings", labelKey: "settings", icon: Settings, permission: "settings.manage" }
 ];
 
 type SidebarMode = "expanded" | "collapsed" | "hidden";
@@ -48,11 +48,7 @@ export function AppLayout() {
   const { t } = useI18n();
   const { user, logout, can } = useAuth();
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>(loadSidebarMode);
-  const visibleNav = nav.filter((item) => {
-    if (item.to === "/settings") return can("settings.manage");
-    if (item.to === "/audit") return can("audit.read");
-    return true;
-  });
+  const visibleNav = nav.filter((item) => !item.permission || can(item.permission));
 
   useEffect(() => {
     localStorage.setItem("buy-modern-sidebar-mode", sidebarMode);

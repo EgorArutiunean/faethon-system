@@ -321,6 +321,62 @@ def test_incoming_document_converts_foreign_price_to_base_amount(db: Session) ->
     assert document.total_amount == Decimal("324.00")
 
 
+def test_posted_foreign_incoming_keeps_original_exchange_rate(db: Session) -> None:
+    product, warehouse, partner = seed_catalog(db)
+    document = create_document(
+        db,
+        DocumentCreate(
+            document_type=Document.TYPE_INCOMING,
+            document_date=date(2026, 5, 1),
+            warehouse_id=warehouse.id,
+            partner_id=partner.id,
+            currency_code="USD",
+            exchange_rate=Decimal("16.200000"),
+        ),
+    )
+    add_document_line(
+        db,
+        document.id,
+        DocumentLineCreate(product_id=product.id, quantity=Decimal("2"), foreign_price=Decimal("10.00")),
+    )
+    post_document(db, document.id)
+
+    with pytest.raises(HTTPException) as exc:
+        update_document_header(db, document.id, DocumentUpdate(exchange_rate=Decimal("17.000000")))
+
+    db.refresh(document)
+    assert exc.value.status_code == 409
+    assert document.exchange_rate == Decimal("16.200000")
+    assert document.total_amount == Decimal("324.00")
+    assert balance_quantity(db, product.id, warehouse.id) == Decimal("2.000")
+
+
+def test_failed_multiline_outgoing_rolls_back_all_stock_changes(db: Session) -> None:
+    first_product, warehouse, partner = seed_catalog(db)
+    second_product = Product(name="Cable", sku="CABLE")
+    db.add(second_product)
+    db.commit()
+
+    incoming = make_document(db, Document.TYPE_INCOMING, warehouse.id, partner.id)
+    add_line(db, incoming.id, first_product.id, "5")
+    post_document(db, incoming.id)
+
+    outgoing = make_document(db, Document.TYPE_OUTGOING, warehouse.id, partner.id)
+    add_line(db, outgoing.id, first_product.id, "2")
+    add_line(db, outgoing.id, second_product.id, "1")
+    movement_count_before = len(list(db.scalars(select(StockMovement))))
+
+    with pytest.raises(HTTPException) as exc:
+        post_document(db, outgoing.id)
+
+    db.refresh(outgoing)
+    assert exc.value.status_code == 409
+    assert outgoing.status == Document.STATUS_DRAFT
+    assert balance_quantity(db, first_product.id, warehouse.id) == Decimal("5.000")
+    assert balance_quantity(db, second_product.id, warehouse.id) == Decimal("0")
+    assert len(list(db.scalars(select(StockMovement)))) == movement_count_before
+
+
 def test_document_total_recalculates_after_updating_line(db: Session) -> None:
     product, warehouse, partner = seed_catalog(db)
     document = make_document(db, Document.TYPE_INCOMING, warehouse.id, partner.id)

@@ -88,9 +88,6 @@ export function Stock() {
           ]}
         />
       )}
-      <p style={{ color: "#52616f", fontSize: 13 }}>
-        TODO LEGACY_RULE_REQUIRED: balance source of truth and recalculation rules.
-      </p>
     </PageScaffold>
   );
 }

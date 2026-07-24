@@ -27,12 +27,12 @@ export function Login() {
         <h1>{t("loginTitle")}</h1>
         <p className="muted-note">{t("loginHint")}</p>
         <div className="field">
-          <label>{t("email")}</label>
-          <input value={email} onChange={(event) => setEmail(event.target.value)} />
+          <label htmlFor="login-email">{t("email")}</label>
+          <input id="login-email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} />
         </div>
         <div className="field">
-          <label>{t("password")}</label>
-          <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
+          <label htmlFor="login-password">{t("password")}</label>
+          <input id="login-password" autoComplete="current-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
         </div>
         {error ? <div className="panel error-panel">{error}</div> : null}
         <button className="button primary" type="submit">{t("signIn")}</button>

@@ -67,7 +67,13 @@ def posted_document(db: Session, document_type: str, total_qty: str = "2") -> tu
     return document, partner
 
 
-def make_payment(db: Session, partner_id: int, amount: str, payment_type: str = Payment.TYPE_CUSTOMER_PAYMENT) -> Payment:
+def make_payment(
+    db: Session,
+    partner_id: int,
+    amount: str,
+    payment_type: str = Payment.TYPE_CUSTOMER_PAYMENT,
+    document_id: int | None = None,
+) -> Payment:
     return create_payment(
         db,
         PaymentCreate(
@@ -76,6 +82,7 @@ def make_payment(db: Session, partner_id: int, amount: str, payment_type: str = 
             payment_type=payment_type,
             amount=Decimal(amount),
             method="cash",
+            document_id=document_id,
         ),
     )
 
@@ -89,12 +96,13 @@ def test_outgoing_document_creates_partner_debt(db: Session) -> None:
 
 
 def test_customer_payment_reduces_debt(db: Session) -> None:
-    _document, partner = posted_document(db, Document.TYPE_OUTGOING)
-    payment = make_payment(db, partner.id, "7.50")
+    document, partner = posted_document(db, Document.TYPE_OUTGOING)
+    payment = make_payment(db, partner.id, "7.50", document_id=document.id)
 
     post_payment(db, payment.id)
 
     assert get_partner_balance(db, partner.id).balance == Decimal("12.50")
+    assert payment.document_id == document.id
 
 
 def test_overpayment_is_credit_balance(db: Session) -> None:
@@ -207,5 +215,51 @@ def test_update_payment_validates_partner_type(db: Session) -> None:
 
     with pytest.raises(HTTPException) as exc:
         update_payment(db, payment.id, PaymentUpdate(partner_id=supplier.id, payment_type=Payment.TYPE_CUSTOMER_PAYMENT))
+
+    assert exc.value.status_code == 409
+
+
+def test_payment_rejects_document_of_another_partner(db: Session) -> None:
+    document, partner = posted_document(db, Document.TYPE_OUTGOING)
+    other_customer = Partner(name="Other Customer", code="OTHER", partner_type=Partner.TYPE_CUSTOMER)
+    db.add(other_customer)
+    db.commit()
+
+    with pytest.raises(HTTPException) as exc:
+        make_payment(db, other_customer.id, "5.00", document_id=document.id)
+
+    assert exc.value.status_code == 409
+
+
+def test_customer_payment_rejects_incoming_document(db: Session) -> None:
+    document, partner = posted_document(db, Document.TYPE_INCOMING)
+    partner.partner_type = Partner.TYPE_BOTH
+    db.commit()
+
+    with pytest.raises(HTTPException) as exc:
+        make_payment(db, partner.id, "5.00", document_id=document.id)
+
+    assert exc.value.status_code == 409
+
+
+def test_payment_rejects_unposted_document(db: Session) -> None:
+    product, warehouse, partner = seed(db)
+    document = create_document(
+        db,
+        DocumentCreate(
+            document_type=Document.TYPE_OUTGOING,
+            document_date=date(2026, 5, 2),
+            warehouse_id=warehouse.id,
+            partner_id=partner.id,
+        ),
+    )
+    add_document_line(
+        db,
+        document.id,
+        DocumentLineCreate(product_id=product.id, quantity=Decimal("1"), price=Decimal("10")),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        make_payment(db, partner.id, "5.00", document_id=document.id)
 
     assert exc.value.status_code == 409

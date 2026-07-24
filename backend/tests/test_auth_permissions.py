@@ -156,6 +156,18 @@ def test_cashier_can_post_payment(client: TestClient, db: Session) -> None:
     assert response.json()["status"] == "posted"
 
 
+def test_cashier_can_read_documents_but_cannot_post_them(client: TestClient, db: Session) -> None:
+    create_user(db, "cashier@example.com", "cashier")
+    document_id = make_draft_document(db)
+    headers = auth_header(client, "cashier@example.com", "password")
+
+    list_response = client.get("/api/v1/documents", headers=headers)
+    post_response = client.post(f"/api/v1/documents/{document_id}/post", headers=headers)
+
+    assert list_response.status_code == 200
+    assert post_response.status_code == 403
+
+
 def test_viewer_cannot_access_cash_create_or_cancel(client: TestClient, db: Session) -> None:
     create_user(db, "viewer3@example.com", "viewer")
     headers = auth_header(client, "viewer3@example.com", "password")

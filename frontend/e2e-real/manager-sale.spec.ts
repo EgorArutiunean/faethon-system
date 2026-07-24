@@ -32,29 +32,29 @@ async function loginToken(api: APIRequestContext, email: string, password: strin
   return (await response.json()).access_token as string;
 }
 
-async function prepareStock(): Promise<SeededSaleData> {
+async function prepareStock(key = "SALE"): Promise<SeededSaleData> {
   const api = await request.newContext({ baseURL: apiBaseUrl });
   const token = await loginToken(api, "manager@example.com", "manager123");
 
   const warehouse = await postJson(api, "/warehouses", token, {
-    code: "E2E-MAIN",
+    code: `E2E-${key}-MAIN`,
     name: "E2E Основной склад",
     address: "Тестовый адрес",
   });
   const product = await postJson(api, "/products", token, {
-    sku: "E2E-PRODUCT",
+    sku: `E2E-${key}-PRODUCT`,
     name: "E2E Контрольный товар",
     base_price: "150.00",
     is_active: true,
   });
   const supplier = await postJson(api, "/partners", token, {
-    code: "E2E-SUPPLIER",
+    code: `E2E-${key}-SUPPLIER`,
     name: "E2E Поставщик",
     partner_type: "supplier",
     is_active: true,
   });
   const customer = await postJson(api, "/partners", token, {
-    code: "E2E-CUSTOMER",
+    code: `E2E-${key}-CUSTOMER`,
     name: "E2E Клиент",
     partner_type: "customer",
     is_active: true,
@@ -97,6 +97,14 @@ async function loginAsManager(page: Page) {
   await expect(page.getByText("Роль: Менеджер")).toBeVisible();
 }
 
+async function loginAsCashier(page: Page) {
+  await page.goto("/login", { waitUntil: "domcontentloaded" });
+  await page.getByLabel("Email").fill("cashier@example.com");
+  await page.getByLabel("Пароль").fill("cashier123");
+  await page.getByRole("button", { name: "Войти" }).click();
+  await expect(page.getByText("Роль: Кассир")).toBeVisible();
+}
+
 async function createDraftThroughUi(
   page: Page,
   documentType: "incoming" | "outgoing" | "transfer",
@@ -118,6 +126,54 @@ async function createDraftThroughUi(
   const documentId = Number(page.url().match(/\/documents\/(\d+)$/)?.[1]);
   expect(documentId).toBeGreaterThan(0);
   return documentId;
+}
+
+async function createAndPostPaymentThroughUi(
+  page: Page,
+  api: APIRequestContext,
+  token: string,
+  paymentType: "customer_payment" | "supplier_payment",
+  partnerId: number,
+  documentId: number,
+  amount: string,
+) {
+  if (!new URL(page.url()).pathname.endsWith("/payments")) {
+    await page.goto("/payments", { waitUntil: "domcontentloaded" });
+  }
+  await page.getByTestId("payment-type").selectOption(paymentType);
+  await page.getByTestId("payment-partner").selectOption(String(partnerId));
+  await page.getByTestId("payment-document").selectOption(String(documentId));
+  await page.getByTestId("payment-amount").fill(amount);
+  await page.getByTestId("payment-save").click();
+
+  let paymentId = 0;
+  await expect.poll(async () => {
+    const response = await api.get("payments", { headers: { Authorization: `Bearer ${token}` } });
+    if (!response.ok()) return 0;
+    const payments = await response.json();
+    const payment = payments.find((row: {
+      partner_id: number;
+      document_id: number | null;
+      payment_type: string;
+      amount: string;
+      status: string;
+    }) => (
+      row.partner_id === partnerId
+      && row.document_id === documentId
+      && row.payment_type === paymentType
+      && Number(row.amount) === Number(amount)
+      && row.status === "draft"
+    ));
+    paymentId = payment?.id ?? 0;
+    return paymentId;
+  }).toBeGreaterThan(0);
+
+  await page.getByTestId(`payment-post-${paymentId}`).click();
+  await expect.poll(async () => {
+    const response = await api.get(`payments/${paymentId}`, { headers: { Authorization: `Bearer ${token}` } });
+    return response.ok() ? (await response.json()).status : "";
+  }).toBe("posted");
+  return paymentId;
 }
 
 test("M03: продажа через интерфейс согласует документ, склад, долг и отчет", async ({ page }) => {
@@ -342,5 +398,141 @@ test("M05: перемещение сохраняет общий остаток �
   expect(movements).toHaveLength(2);
   expect(movements.map((row: { quantity_delta: string }) => row.quantity_delta).sort()).toEqual(["-2.000", "2.000"]);
   expect(report.total_quantity).toBe("5.000");
+  await api.dispose();
+});
+
+test("M06: partial customer payment updates debt, cash and statement", async ({ page }) => {
+  const seeded = await prepareStock("M06");
+  const api = await request.newContext({ baseURL: apiBaseUrl });
+  const cashierToken = await loginToken(api, "cashier@example.com", "cashier123");
+  const outgoing = await postJson(api, "/documents", seeded.token, {
+    document_type: "outgoing",
+    document_date: "2026-07-24",
+    partner_id: seeded.customerId,
+    warehouse_id: seeded.warehouseId,
+  });
+  await postJson(api, `/documents/${outgoing.id}/lines`, seeded.token, {
+    product_id: seeded.productId,
+    quantity: "2",
+    price: "150.00",
+  });
+  await postJson(api, `/documents/${outgoing.id}/post`, seeded.token, {});
+
+  const headers = { Authorization: `Bearer ${cashierToken}` };
+  const initialCash = Number((await (await api.get("cash/balance", { headers })).json()).balance);
+  await loginAsCashier(page);
+  const paymentId = await createAndPostPaymentThroughUi(
+    page,
+    api,
+    cashierToken,
+    "customer_payment",
+    seeded.customerId,
+    outgoing.id,
+    "120.00",
+  );
+
+  const [balanceResponse, cashResponse, statementResponse, cashBookResponse] = await Promise.all([
+    api.get(`partners/${seeded.customerId}/balance`, { headers }),
+    api.get("cash/balance", { headers }),
+    api.get(`partners/${seeded.customerId}/statement`, { headers }),
+    api.get("cash/book", { headers }),
+  ]);
+  const balance = await balanceResponse.json();
+  const cash = await cashResponse.json();
+  const statement = await statementResponse.json();
+  const cashBook = await cashBookResponse.json();
+
+  expect(balance.balance).toBe("180.00");
+  expect(Number(cash.balance)).toBe(initialCash + 120);
+  expect(statement).toEqual(expect.arrayContaining([
+    expect.objectContaining({
+      source_type: "payment",
+      source_id: paymentId,
+      credit: "120.00",
+      balance: "180.00",
+    }),
+  ]));
+  expect(cashBook).toEqual(expect.arrayContaining([
+    expect.objectContaining({
+      payment_id: paymentId,
+      document_id: outgoing.id,
+      operation_type: "cash_in",
+      amount: "120.00",
+      status: "posted",
+    }),
+  ]));
+  await api.dispose();
+});
+
+test("M07: supplier partial, full and overpayment update debt and cash", async ({ page }) => {
+  const api = await request.newContext({ baseURL: apiBaseUrl });
+  const managerToken = await loginToken(api, "manager@example.com", "manager123");
+  const cashierToken = await loginToken(api, "cashier@example.com", "cashier123");
+  const warehouse = await postJson(api, "/warehouses", managerToken, {
+    code: "E2E-PAYMENT-WAREHOUSE",
+    name: "E2E Payment Warehouse",
+  });
+  const product = await postJson(api, "/products", managerToken, {
+    sku: "E2E-PAYMENT-PRODUCT",
+    name: "E2E Payment Product",
+    base_price: "500.00",
+    is_active: true,
+  });
+  const supplier = await postJson(api, "/partners", managerToken, {
+    code: "E2E-PAYMENT-SUPPLIER",
+    name: "E2E Payment Supplier",
+    partner_type: "supplier",
+    is_active: true,
+  });
+  const incoming = await postJson(api, "/documents", managerToken, {
+    document_type: "incoming",
+    document_date: "2026-07-24",
+    partner_id: supplier.id,
+    warehouse_id: warehouse.id,
+  });
+  await postJson(api, `/documents/${incoming.id}/lines`, managerToken, {
+    product_id: product.id,
+    quantity: "1",
+    price: "400.00",
+  });
+  await postJson(api, `/documents/${incoming.id}/post`, managerToken, {});
+
+  const headers = { Authorization: `Bearer ${cashierToken}` };
+  const initialCash = Number((await (await api.get("cash/balance", { headers })).json()).balance);
+  await loginAsCashier(page);
+
+  const partialPaymentId = await createAndPostPaymentThroughUi(
+    page, api, cashierToken, "supplier_payment", supplier.id, incoming.id, "100.00"
+  );
+  expect((await (await api.get(`partners/${supplier.id}/balance`, { headers })).json()).balance).toBe("-300.00");
+
+  const fullPaymentId = await createAndPostPaymentThroughUi(
+    page, api, cashierToken, "supplier_payment", supplier.id, incoming.id, "300.00"
+  );
+  expect((await (await api.get(`partners/${supplier.id}/balance`, { headers })).json()).balance).toBe("0.00");
+
+  const overpaymentId = await createAndPostPaymentThroughUi(
+    page, api, cashierToken, "supplier_payment", supplier.id, incoming.id, "50.00"
+  );
+  const [balanceResponse, cashResponse, statementResponse, cashBookResponse] = await Promise.all([
+    api.get(`partners/${supplier.id}/balance`, { headers }),
+    api.get("cash/balance", { headers }),
+    api.get(`partners/${supplier.id}/statement`, { headers }),
+    api.get("cash/book", { headers }),
+  ]);
+  const balance = await balanceResponse.json();
+  const cash = await cashResponse.json();
+  const statement = await statementResponse.json();
+  const cashBook = await cashBookResponse.json();
+  const paymentIds = [partialPaymentId, fullPaymentId, overpaymentId];
+
+  expect(balance.balance).toBe("50.00");
+  expect(Number(cash.balance)).toBe(initialCash - 450);
+  expect(statement.filter((row: { source_type: string; source_id: number }) => (
+    row.source_type === "payment" && paymentIds.includes(row.source_id)
+  ))).toHaveLength(3);
+  expect(cashBook.filter((row: { payment_id: number; operation_type: string }) => (
+    paymentIds.includes(row.payment_id) && row.operation_type === "cash_out"
+  ))).toHaveLength(3);
   await api.dispose();
 });

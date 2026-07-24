@@ -39,7 +39,7 @@ This account is for local development only and must be changed before any real d
 
 - `admin`: all permissions;
 - `manager`: products, warehouses, partners, documents, stock, reports;
-- `cashier`: partner read, payments, cash, reports read;
+- `cashier`: partner and document read, payments, cash, reports read;
 - `viewer`: read-only access to main operational objects.
 
 ## Permissions

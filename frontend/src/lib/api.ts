@@ -347,7 +347,7 @@ export const api = {
   updateWarehouse: (id: number, payload: Partial<Warehouse>) =>
     request<Warehouse>(`/warehouses/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
   deleteWarehouse: (id: number) => request<void>(`/warehouses/${id}`, { method: "DELETE" }),
-  documents: () => request<Document[]>("/documents"),
+  documents: (params = "") => request<Document[]>(`/documents${params}`),
   document: (id: number) => request<Document>(`/documents/${id}`),
   createDocument: (payload: Partial<Document>) =>
     request<Document>("/documents", { method: "POST", body: JSON.stringify(payload) }),

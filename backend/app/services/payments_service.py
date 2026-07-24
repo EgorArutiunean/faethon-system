@@ -64,6 +64,29 @@ def _validate_payment_partner(db: Session, payment_type: str, partner_id: int) -
     # TODO LEGACY_RULE_REQUIRED: refund partner direction must be confirmed against legacy payment rules.
 
 
+def _validate_payment_document(
+    db: Session,
+    payment_type: str,
+    partner_id: int,
+    document_id: int | None,
+) -> None:
+    if document_id is None:
+        return
+    document = db.get(Document, document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if document.status != Document.STATUS_POSTED:
+        raise HTTPException(status_code=409, detail="Payment requires posted document")
+    if document.partner_id != partner_id:
+        raise HTTPException(status_code=409, detail="Payment partner must match document partner")
+    expected_document_type = {
+        Payment.TYPE_CUSTOMER_PAYMENT: Document.TYPE_OUTGOING,
+        Payment.TYPE_SUPPLIER_PAYMENT: Document.TYPE_INCOMING,
+    }.get(payment_type)
+    if expected_document_type and document.document_type != expected_document_type:
+        raise HTTPException(status_code=409, detail="Document type does not match payment type")
+
+
 def _valid_payment_types() -> set[str]:
     return {
         Payment.TYPE_CUSTOMER_PAYMENT,
@@ -81,6 +104,7 @@ def create_payment(db: Session, payload: PaymentCreate) -> Payment:
     if payload.payment_type not in _valid_payment_types():
         raise HTTPException(status_code=422, detail="Invalid payment type")
     _validate_payment_partner(db, payload.payment_type, payload.partner_id)
+    _validate_payment_document(db, payload.payment_type, payload.partner_id, payload.document_id)
     payment = Payment(**payload.model_dump(exclude={"status"}), status=Payment.STATUS_DRAFT)
     db.add(payment)
     db.flush()
@@ -98,7 +122,9 @@ def update_payment(db: Session, payment_id: int, payload: PaymentUpdate) -> Paym
         raise HTTPException(status_code=422, detail="Invalid payment type")
     next_payment_type = values.get("payment_type", payment.payment_type)
     next_partner_id = values.get("partner_id", payment.partner_id)
+    next_document_id = values.get("document_id", payment.document_id)
     _validate_payment_partner(db, next_payment_type, next_partner_id)
+    _validate_payment_document(db, next_payment_type, next_partner_id, next_document_id)
     for key, value in values.items():
         setattr(payment, key, value)
     _audit(db, "payment", payment.id, "update", ",".join(sorted(values.keys())))
@@ -121,6 +147,7 @@ def post_payment(db: Session, payment_id: int) -> Payment:
     if payment.status != Payment.STATUS_DRAFT:
         raise HTTPException(status_code=409, detail="Only draft payments can be posted")
     _validate_payment_partner(db, payment.payment_type, payment.partner_id)
+    _validate_payment_document(db, payment.payment_type, payment.partner_id, payment.document_id)
     payment.status = Payment.STATUS_POSTED
     # TODO LEGACY_RULE_REQUIRED: refund cash direction must be confirmed against legacy cash rules.
     cash_operation_type = CashOperation.TYPE_CASH_IN

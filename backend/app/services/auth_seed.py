@@ -65,6 +65,7 @@ ROLE_PERMISSIONS = {
     ],
     "cashier": [
         "partners.read",
+        "documents.read",
         "payments.read",
         "payments.create",
         "payments.update",

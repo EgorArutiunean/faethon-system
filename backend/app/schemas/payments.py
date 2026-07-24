@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.schemas.common import Timestamped
 
@@ -16,7 +16,7 @@ class PaymentBase(BaseModel):
     payment_date: date
     payment_type: str = "customer_payment"
     status: str = "draft"
-    amount: Decimal
+    amount: Decimal = Field(gt=0)
     method: str | None = "cash"
     note: str | None = None
 
@@ -30,7 +30,7 @@ class PaymentUpdate(BaseModel):
     document_id: int | None = None
     payment_date: date | None = None
     payment_type: str | None = None
-    amount: Decimal | None = None
+    amount: Decimal | None = Field(default=None, gt=0)
     method: str | None = None
     note: str | None = None
 

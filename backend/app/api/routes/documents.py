@@ -21,15 +21,28 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 
 
 @router.get("", response_model=list[DocumentRead], dependencies=[Depends(require_permission("documents.read"))])
-def list_documents(db: Session = Depends(get_db), skip: int = 0, limit: int = Query(default=100, le=500), search: str | None = None):
+def list_documents(
+    db: Session = Depends(get_db),
+    skip: int = 0,
+    limit: int = Query(default=100, le=500),
+    search: str | None = None,
+    partner_id: int | None = None,
+    document_type: str | None = None,
+    status: str | None = None,
+):
     stmt = (
         select(Document)
         .options(selectinload(Document.partner), selectinload(Document.warehouse), selectinload(Document.destination_warehouse))
-        .offset(skip)
-        .limit(limit)
     )
     if search:
         stmt = stmt.where(Document.number.ilike(f"%{search}%"))
+    if partner_id is not None:
+        stmt = stmt.where(Document.partner_id == partner_id)
+    if document_type:
+        stmt = stmt.where(Document.document_type == document_type)
+    if status:
+        stmt = stmt.where(Document.status == status)
+    stmt = stmt.order_by(Document.document_date.desc(), Document.id.desc()).offset(skip).limit(limit)
     return list(db.scalars(stmt).all())
 
 

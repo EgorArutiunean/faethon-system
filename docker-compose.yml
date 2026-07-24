@@ -27,6 +27,7 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app
+      - ./migration:/migration:ro
     depends_on:
       postgres:
         condition: service_healthy

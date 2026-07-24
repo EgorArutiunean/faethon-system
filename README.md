@@ -103,8 +103,8 @@ cd frontend
 npm run test:e2e
 ```
 
-Real incoming, sale, insufficient-stock, and transfer workflows against an
-isolated PostgreSQL database:
+Real incoming, sale, insufficient-stock, transfer, customer-payment, and
+supplier-payment workflows against an isolated PostgreSQL database:
 
 ```powershell
 cd frontend

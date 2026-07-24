@@ -78,30 +78,44 @@ export function DocumentEditor() {
     return true;
   }
 
+  function applyDocument(doc: Document) {
+    setDocument(doc);
+    setHeader({
+      document_type: doc.document_type,
+      number: doc.number ?? "",
+      document_date: doc.document_date,
+      warehouse_id: doc.warehouse_id ? String(doc.warehouse_id) : "",
+      destination_warehouse_id: doc.destination_warehouse_id ? String(doc.destination_warehouse_id) : "",
+      partner_id: doc.partner_id ? String(doc.partner_id) : "",
+      currency_code: doc.currency_code ?? "RUB_PMR",
+      exchange_rate: doc.exchange_rate ?? "1",
+      note: doc.note ?? ""
+    });
+  }
+
   function load() {
     if (!documentId) return;
-    api.document(documentId).then((doc) => {
-      setDocument(doc);
-      setHeader({
-        document_type: doc.document_type,
-        number: doc.number ?? "",
-        document_date: doc.document_date,
-        warehouse_id: doc.warehouse_id ? String(doc.warehouse_id) : "",
-        destination_warehouse_id: doc.destination_warehouse_id ? String(doc.destination_warehouse_id) : "",
-        partner_id: doc.partner_id ? String(doc.partner_id) : "",
-        currency_code: doc.currency_code ?? "RUB_PMR",
-        exchange_rate: doc.exchange_rate ?? "1",
-        note: doc.note ?? ""
-      });
-    }).catch((exc) => setError(String(exc)));
+    api.document(documentId).then(applyDocument).catch((exc) => setError(String(exc)));
   }
 
   useEffect(() => {
-    load();
-    api.products().then(setProducts).catch(() => setProducts([]));
-    api.partners().then(setPartners).catch(() => setPartners([]));
-    api.warehouses().then(setWarehouses).catch(() => setWarehouses([]));
-    api.currencies().then(setCurrencies).catch(() => setCurrencies([]));
+    let active = true;
+    if (documentId) {
+      api.document(documentId)
+        .then((doc) => {
+          if (active) applyDocument(doc);
+        })
+        .catch((exc) => {
+          if (active) setError(String(exc));
+        });
+    }
+    api.products().then((rows) => active && setProducts(rows)).catch(() => active && setProducts([]));
+    api.partners().then((rows) => active && setPartners(rows)).catch(() => active && setPartners([]));
+    api.warehouses().then((rows) => active && setWarehouses(rows)).catch(() => active && setWarehouses([]));
+    api.currencies().then((rows) => active && setCurrencies(rows)).catch(() => active && setCurrencies([]));
+    return () => {
+      active = false;
+    };
   }, [documentId]);
 
   useEffect(() => {
@@ -155,6 +169,27 @@ export function DocumentEditor() {
     showToast(message.includes("409") ? "warning" : "error", friendly);
   }
 
+  function headerPayload() {
+    return {
+      document_type: header.document_type,
+      number: header.number || null,
+      document_date: header.document_date,
+      warehouse_id: header.warehouse_id ? Number(header.warehouse_id) : null,
+      destination_warehouse_id: header.destination_warehouse_id ? Number(header.destination_warehouse_id) : null,
+      partner_id: header.partner_id ? Number(header.partner_id) : null,
+      currency_code: isIncoming ? header.currency_code : "RUB_PMR",
+      exchange_rate: isIncoming ? header.exchange_rate : "1",
+      note: header.note || null
+    };
+  }
+
+  function persistHeader() {
+    return api.updateDocument(documentId, headerPayload()).then((doc) => {
+      setDocument(doc);
+      return doc;
+    });
+  }
+
   function addLine() {
     setError("");
     if (Number(quantity) <= 0) {
@@ -172,8 +207,8 @@ export function DocumentEditor() {
       showToast("warning", t("invalidExchangeRate"));
       return;
     }
-    api
-      .addDocumentLine(documentId, { product_id: Number(productId), quantity, price: isIncoming ? "0" : price, foreign_price: isIncoming ? price : null })
+    persistHeader()
+      .then(() => api.addDocumentLine(documentId, { product_id: Number(productId), quantity, price: isIncoming ? "0" : price, foreign_price: isIncoming ? price : null }))
       .then(() => {
         showToast("success", t("saved"));
         load();
@@ -183,20 +218,8 @@ export function DocumentEditor() {
 
   function saveHeader() {
     setError("");
-    api
-      .updateDocument(documentId, {
-        document_type: header.document_type,
-        number: header.number || null,
-        document_date: header.document_date,
-        warehouse_id: header.warehouse_id ? Number(header.warehouse_id) : null,
-        destination_warehouse_id: header.destination_warehouse_id ? Number(header.destination_warehouse_id) : null,
-        partner_id: header.partner_id ? Number(header.partner_id) : null,
-        currency_code: isIncoming ? header.currency_code : "RUB_PMR",
-        exchange_rate: isIncoming ? header.exchange_rate : "1",
-        note: header.note || null
-      })
+    persistHeader()
       .then((doc) => {
-        setDocument(doc);
         showToast("success", t("saved"));
         load();
       })
@@ -206,11 +229,14 @@ export function DocumentEditor() {
   function post() {
     setError("");
     if (!window.confirm(t("postConfirm"))) return;
-    api.postDocument(documentId).then((doc) => {
-      setDocument(doc);
-      showToast("success", t("postedSuccess"));
-      load();
-    }).catch(handleError);
+    persistHeader()
+      .then(() => api.postDocument(documentId))
+      .then((doc) => {
+        setDocument(doc);
+        showToast("success", t("postedSuccess"));
+        load();
+      })
+      .catch(handleError);
   }
 
   function cancel() {

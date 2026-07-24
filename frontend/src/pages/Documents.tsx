@@ -197,7 +197,7 @@ export function Documents() {
         {draftForm.document_type === "transfer" ? (
           <div className="field">
             <label>{t("destinationWarehouse")}</label>
-            <select value={draftForm.destination_warehouse_id} onChange={(event) => setDraftForm({ ...draftForm, destination_warehouse_id: event.target.value })}>
+            <select data-testid="draft-document-destination" value={draftForm.destination_warehouse_id} onChange={(event) => setDraftForm({ ...draftForm, destination_warehouse_id: event.target.value })}>
               <option value="">{t("selectDestinationWarehouse")}</option>
               {warehouses.map((warehouse) => (
                 <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>

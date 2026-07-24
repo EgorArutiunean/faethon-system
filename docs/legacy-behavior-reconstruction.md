@@ -90,6 +90,7 @@ These questions must be answered before changing accounting rules for documents 
 | --- | --- | --- | --- | --- | --- |
 | AUTH-001 | P2 | What real roles exist in the business? | admin, manager, cashier, viewer | question | Seed data, permissions, UI |
 | AUTH-002 | P2 | Is user/role management required before launch? | Missing and listed as high priority if needed | question | New admin UI/API |
+| AUTH-003 | P1 | Which prices can the logistics role see? | Sales price only; purchase price, cost, purchase currency, and exchange rate are hidden | confirmed | Logistics API schema, UI, and permission tests |
 | AUDIT-001 | P2 | Who needs to view audit history? | Audit rows exist, viewer UI missing | question | Audit API/UI |
 | UX-001 | P2 | Which keyboard shortcuts or operator workflows are mandatory? | Basic mouse-first UI | question | Frontend workflow changes |
 | UI-001 | P2 | What language must the interface use? | Russian only | confirmed | Disable English switching; keep Russian as active language |

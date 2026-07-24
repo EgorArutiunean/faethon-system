@@ -218,6 +218,8 @@ export type CurrentUser = {
   full_name?: string | null;
   role_names: string[];
   permissions: string[];
+  warehouse_ids: number[];
+  warehouse_names: string[];
 };
 
 export type Role = {
@@ -234,8 +236,33 @@ export type ManagedUser = {
   full_name?: string | null;
   is_active: boolean;
   role_names: string[];
+  warehouse_ids: number[];
+  warehouse_names: string[];
   created_at: string;
   updated_at: string;
+};
+
+export type LogisticsDocumentLine = {
+  id: number;
+  product_id: number;
+  product_name?: string | null;
+  quantity: string;
+  sale_price: string;
+  sale_total: string;
+};
+
+export type LogisticsDocument = {
+  id: number;
+  document_type: string;
+  number?: string | null;
+  document_date: string;
+  status: string;
+  partner_name?: string | null;
+  warehouse_id?: number | null;
+  warehouse_name?: string | null;
+  destination_warehouse_id?: number | null;
+  destination_warehouse_name?: string | null;
+  lines: LogisticsDocumentLine[];
 };
 
 export type LoginResponse = {
@@ -319,9 +346,9 @@ export const api = {
   me: () => request<CurrentUser>("/auth/me"),
   users: () => request<ManagedUser[]>("/users"),
   roles: () => request<Role[]>("/users/roles"),
-  createUser: (payload: { email?: string; password: string; full_name?: string | null; is_active?: boolean; role_names?: string[] }) =>
+  createUser: (payload: { email?: string; password: string; full_name?: string | null; is_active?: boolean; role_names?: string[]; warehouse_ids?: number[] }) =>
     request<ManagedUser>("/users", { method: "POST", body: JSON.stringify(payload) }),
-  updateUser: (id: number, payload: { email?: string; password?: string; full_name?: string | null; is_active?: boolean; role_names?: string[] }) =>
+  updateUser: (id: number, payload: { email?: string; password?: string; full_name?: string | null; is_active?: boolean; role_names?: string[]; warehouse_ids?: number[] }) =>
     request<ManagedUser>(`/users/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
   products: () => request<Product[]>("/products"),
   productGroups: () => request<ProductGroup[]>("/product-groups"),
@@ -386,6 +413,8 @@ export const api = {
   cancelCashOperation: (operationId: number) => request<CashOperation>(`/cash/operations/${operationId}/cancel`, { method: "POST" }),
   cashBalance: () => request<CashBalance>("/cash/balance"),
   cashBook: () => request<CashBookRow[]>("/cash/book"),
+  logisticsDocuments: (status = "") =>
+    request<LogisticsDocument[]>(`/logistics/documents${status ? `?status=${encodeURIComponent(status)}` : ""}`),
   reportStockBalances: (params = "") => request<StockBalancesReport>(`/reports/stock-balances${params}`),
   reportStockMovements: (params = "") => request<StockMovementsReport>(`/reports/stock-movements${params}`),
   reportPartnerDebts: (params = "") => request<PartnerDebtsReport>(`/reports/partner-debts${params}`),

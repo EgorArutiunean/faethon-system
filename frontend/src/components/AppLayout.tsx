@@ -13,6 +13,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
+  Truck,
   Users,
   WalletCards
 } from "lucide-react";
@@ -30,6 +31,7 @@ const nav = [
   { to: "/warehouses", labelKey: "warehouses", icon: Building2, permission: "warehouses.read" },
   { to: "/documents", labelKey: "documents", icon: ClipboardList, permission: "documents.read" },
   { to: "/stock", labelKey: "stock", icon: Boxes, permission: "stock.read" },
+  { to: "/logistics", labelKey: "logistics", icon: Truck, permission: "logistics.read" },
   { to: "/payments", labelKey: "payments", icon: WalletCards, permission: "payments.read" },
   { to: "/cash", labelKey: "cash", icon: CircleDollarSign, permission: "cash.read" },
   { to: "/reports", labelKey: "reports", icon: BarChart3, permission: "reports.read" },

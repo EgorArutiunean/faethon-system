@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class LoginRequest(BaseModel):
@@ -17,3 +17,5 @@ class CurrentUserRead(BaseModel):
     full_name: str | None = None
     role_names: list[str]
     permissions: list[str]
+    warehouse_ids: list[int] = Field(default_factory=list)
+    warehouse_names: list[str] = Field(default_factory=list)

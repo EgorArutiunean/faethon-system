@@ -19,6 +19,13 @@ user_roles = Table(
     Column("role_id", ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True),
 )
 
+user_warehouses = Table(
+    "user_warehouses",
+    Base.metadata,
+    Column("user_id", ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+    Column("warehouse_id", ForeignKey("warehouses.id", ondelete="CASCADE"), primary_key=True),
+)
+
 
 class User(TimestampMixin, Base):
     __tablename__ = "users"
@@ -30,6 +37,7 @@ class User(TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     roles: Mapped[list["Role"]] = relationship(secondary=user_roles, back_populates="users")
+    warehouses: Mapped[list["Warehouse"]] = relationship(secondary=user_warehouses, back_populates="users")
 
     @property
     def email(self) -> str:
@@ -45,6 +53,14 @@ class User(TimestampMixin, Base):
         for role in self.roles:
             codes.update(permission.code for permission in role.permissions)
         return sorted(codes)
+
+    @property
+    def warehouse_ids(self) -> list[int]:
+        return [warehouse.id for warehouse in self.warehouses]
+
+    @property
+    def warehouse_names(self) -> list[str]:
+        return [warehouse.name for warehouse in self.warehouses]
 
 
 class Role(TimestampMixin, Base):

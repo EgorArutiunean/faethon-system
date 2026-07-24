@@ -155,8 +155,9 @@ Backend и API должны проверять:
 
 Рабочие процессы и границы ответственности менеджера, логиста и администратора
 зафиксированы в `docs/role-workflows.md`. Роль логиста является целевой и пока
-не реализована. Для логиста подтверждено отображение только продажной цены:
-закупочная цена, себестоимость, валюта закупки и курс должны быть скрыты.
+реализована в безопасном режиме чтения назначенных складов. Для логиста
+отображается только продажная цена: закупочная цена, себестоимость, валюта
+закупки и курс исключены из отдельного API-контракта.
 
 #### Сценарий M01. Начало дня
 
@@ -389,11 +390,11 @@ Production-деплой выполняется только после ручн�
 
 Результаты:
 
-- backend: `118 passed`;
+- backend: `123 passed`;
 - frontend TypeScript: passed;
 - frontend production build: passed;
 - Playwright Chromium: `3 passed` (M01, M02, M04).
-- Playwright Chromium + real API + PostgreSQL: `6 passed` (M02-M07);
+- Playwright Chromium + real API + PostgreSQL: `7 passed` (M02-M07, LOG-01);
 - npm dependency audit: `0 vulnerabilities` after compatible security updates.
 
 Ограничения прогона:

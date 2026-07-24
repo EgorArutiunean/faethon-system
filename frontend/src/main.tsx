@@ -16,6 +16,7 @@ import { Products } from "./pages/Products";
 import { Reports } from "./pages/Reports";
 import { Settings } from "./pages/Settings";
 import { Login } from "./pages/Login";
+import { Logistics } from "./pages/Logistics";
 import { Stock } from "./pages/Stock";
 import { Warehouses } from "./pages/Warehouses";
 import { I18nProvider } from "./i18n";
@@ -40,6 +41,7 @@ const router = createBrowserRouter([
           { path: "documents", element: <Documents /> },
           { path: "documents/:id", element: <DocumentEditor /> },
           { path: "stock", element: <Stock /> },
+          { path: "logistics", element: <Logistics /> },
           { path: "payments", element: <Payments /> },
           { path: "cash", element: <Cash /> },
           { path: "reports", element: <Reports /> },

@@ -66,7 +66,7 @@ def test_admin_can_list_roles_and_users(client: TestClient) -> None:
     users = client.get("/api/v1/users", headers=headers)
 
     assert roles.status_code == 200
-    assert {role["name"] for role in roles.json()} >= {"admin", "manager", "cashier", "viewer"}
+    assert {role["name"] for role in roles.json()} >= {"admin", "manager", "cashier", "logist", "viewer"}
     assert users.status_code == 200
     assert any(user["email"] == "admin@example.com" for user in users.json())
 
@@ -107,3 +107,73 @@ def test_admin_cannot_deactivate_self(client: TestClient, db: Session) -> None:
     response = client.patch(f"/api/v1/users/{admin.id}", headers=headers, json={"is_active": False})
 
     assert response.status_code == 409
+
+
+def test_logistics_user_requires_assigned_warehouse(client: TestClient) -> None:
+    headers = auth_header(client)
+
+    response = client.post(
+        "/api/v1/users",
+        headers=headers,
+        json={
+            "email": "logist@example.com",
+            "password": "logist123",
+            "full_name": "Logistics Operator",
+            "is_active": True,
+            "role_names": ["logist"],
+            "warehouse_ids": [],
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Logistics user requires at least one warehouse"
+
+
+def test_logistics_role_cannot_be_combined_with_other_roles(client: TestClient) -> None:
+    headers = auth_header(client)
+    warehouse = client.post(
+        "/api/v1/warehouses",
+        headers=headers,
+        json={"code": "LOG-ONLY", "name": "Logistics Only Warehouse"},
+    ).json()
+
+    response = client.post(
+        "/api/v1/users",
+        headers=headers,
+        json={
+            "email": "unsafe-logist@example.com",
+            "password": "logist123",
+            "role_names": ["logist", "manager"],
+            "warehouse_ids": [warehouse["id"]],
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Logistics role cannot be combined with other roles"
+
+
+def test_admin_assigns_warehouses_to_logistics_user(client: TestClient) -> None:
+    headers = auth_header(client)
+    warehouse = client.post(
+        "/api/v1/warehouses",
+        headers=headers,
+        json={"code": "LOG-USERS", "name": "Logistics Users Warehouse"},
+    ).json()
+
+    response = client.post(
+        "/api/v1/users",
+        headers=headers,
+        json={
+            "email": "logist@example.com",
+            "password": "logist123",
+            "full_name": "Logistics Operator",
+            "is_active": True,
+            "role_names": ["logist"],
+            "warehouse_ids": [warehouse["id"]],
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["role_names"] == ["logist"]
+    assert response.json()["warehouse_ids"] == [warehouse["id"]]
+    assert response.json()["warehouse_names"] == ["Logistics Users Warehouse"]

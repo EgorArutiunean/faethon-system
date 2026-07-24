@@ -51,6 +51,8 @@ Implemented:
 - old price-list sample from `E:\primer.xlsx` inspected: `BuyData` has 353 product rows with product code, name, unit, quantity, and price fields; this data must be prepared into Buy Modern standard templates before import;
 - business logic/CRUD audit for core entities;
 - partner split into `customer`, `supplier`, and `both` with document/payment validation and UI filters;
+- read-only logistics role with assigned warehouses, server-side document scope,
+  sales-price-only responses, admin warehouse assignment, and Russian logistics UI;
 - production deployment prep: `docker-compose.prod.yml`, production Dockerfiles, nginx SPA/API proxy config, env template, and PostgreSQL backup/restore scripts;
 - production Docker/PostgreSQL smoke completed successfully on 2026-05-03.
 
@@ -83,8 +85,8 @@ See `docs/development-setup.md` for the PostgreSQL/Docker workflow.
 Latest checks:
 
 - manager workflow Playwright tests: `3 passed` on 2026-07-24 for M01, M02, and M04;
-- real role-based workflows M02-M07 against isolated PostgreSQL: `6 passed` on 2026-07-24;
-- backend tests: `118 passed` on 2026-07-24 after adding payment-document and cashier permission checks;
+- real role-based workflows M02-M07 and LOG-01 against isolated PostgreSQL: `7 passed` on 2026-07-24;
+- backend tests: `123 passed` on 2026-07-24 after adding logistics access, price-visibility, and exclusive-role checks;
 - frontend TypeScript check: successful on 2026-07-24;
 - frontend production build: successful on 2026-07-24;
 - frontend npm audit: `0 vulnerabilities` on 2026-07-24 after compatible dependency updates;

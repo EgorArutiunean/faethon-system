@@ -4,6 +4,7 @@ from sqlalchemy import ForeignKey, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
+from app.models.identity import user_warehouses
 from app.models.mixins import TimestampMixin
 
 
@@ -17,6 +18,7 @@ class Warehouse(TimestampMixin, Base):
 
     stock_balances = relationship("StockBalance", back_populates="warehouse")
     stock_movements = relationship("StockMovement", back_populates="warehouse")
+    users = relationship("User", secondary=user_warehouses, back_populates="warehouses")
 
 
 class StockMovement(TimestampMixin, Base):

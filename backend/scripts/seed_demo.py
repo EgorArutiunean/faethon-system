@@ -8,18 +8,20 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.security import hash_password
 from app.db import base  # noqa: F401
 from app.db.session import Base, SessionLocal, engine
 from app.models.accounting import CashOperation, Payment
 from app.models.documents import Document
+from app.models.identity import Role, User
 from app.models.partners import Partner
 from app.models.products import Product
 from app.models.stock import Warehouse
-from app.schemas.documents import DocumentCreate, DocumentLineCreate
 from app.schemas.cash import CashOperationCreate
+from app.schemas.documents import DocumentCreate, DocumentLineCreate
 from app.schemas.payments import PaymentCreate
-from app.services.cash_service import create_cash_operation, get_cash_balance
 from app.services.auth_seed import seed_auth_defaults
+from app.services.cash_service import create_cash_operation, get_cash_balance
 from app.services.documents_service import add_document_line, create_document, post_document
 from app.services.payments_service import create_payment, get_partner_statement, post_payment
 
@@ -81,6 +83,24 @@ def seed() -> None:
 
         main = _get_or_create_warehouse(db, "DEMO-MAIN", "Demo Main Warehouse")
         retail = _get_or_create_warehouse(db, "DEMO-RETAIL", "Demo Retail Warehouse")
+
+        logistics_role = db.scalar(select(Role).where(Role.name == "logist"))
+        assert logistics_role is not None
+        logistics_user = db.scalar(select(User).where(User.username == "logist@example.com"))
+        if logistics_user is None:
+            logistics_user = User(
+                username="logist@example.com",
+                full_name="Demo Logistics Operator",
+                hashed_password=hash_password("logist123"),
+                is_active=True,
+            )
+            db.add(logistics_user)
+        else:
+            logistics_user.hashed_password = hash_password("logist123")
+            logistics_user.is_active = True
+        logistics_user.roles = [logistics_role]
+        logistics_user.warehouses = [main, retail]
+        db.commit()
 
         supplier = _get_or_create_partner(db, "DEMO-SUP", "Demo Supplier", Partner.TYPE_SUPPLIER)
         customer = _get_or_create_partner(db, "DEMO-CUST", "Demo Customer", Partner.TYPE_CUSTOMER)
@@ -192,6 +212,7 @@ def seed() -> None:
         print("Demo admin: admin@example.com / admin123")
         print("Demo manager: manager@example.com / manager123")
         print("Demo cashier: cashier@example.com / cashier123")
+        print("Demo logist: logist@example.com / logist123")
         print("Demo viewer: viewer@example.com / viewer123")
         print(f"Products: {bolt.sku}, {cable.sku}, {lamp.sku}")
         print(f"Warehouses: {main.code}, {retail.code}")

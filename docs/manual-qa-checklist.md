@@ -236,7 +236,8 @@ Expected result: cancelling posted records works; cancelling draft records fails
 ## Reports
 
 - Open Reports as admin, manager, cashier, and viewer.
-- Verify all four roles can read reports because they have `reports.read`.
+- Verify these four report-enabled roles can read reports because they have `reports.read`.
+- Verify the logistics role cannot open reports.
 - Open each tab: Stock Balances, Stock Movements, Debts, Cash Book, Documents Register.
 - Apply filters by date, warehouse ID, product ID, partner ID, document ID, type, status, and `only_with_balance` where applicable.
 - Verify tables show display names where available: product, warehouse, partner, document number.

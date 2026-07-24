@@ -105,6 +105,14 @@ async function loginAsCashier(page: Page) {
   await expect(page.getByText("Роль: Кассир")).toBeVisible();
 }
 
+async function loginAsLogist(page: Page) {
+  await page.goto("/login", { waitUntil: "domcontentloaded" });
+  await page.getByLabel("Email").fill("logist-e2e@example.com");
+  await page.getByLabel("Пароль").fill("logist123");
+  await page.getByRole("button", { name: "Войти" }).click();
+  await expect(page.getByText("Роль: Логист")).toBeVisible();
+}
+
 async function createDraftThroughUi(
   page: Page,
   documentType: "incoming" | "outgoing" | "transfer",
@@ -534,5 +542,72 @@ test("M07: supplier partial, full and overpayment update debt and cash", async (
   expect(cashBook.filter((row: { payment_id: number; operation_type: string }) => (
     paymentIds.includes(row.payment_id) && row.operation_type === "cash_out"
   ))).toHaveLength(3);
+  await api.dispose();
+});
+
+test("LOG-01: logist sees assigned warehouse and sale price only", async ({ page }) => {
+  const api = await request.newContext({ baseURL: apiBaseUrl });
+  const managerToken = await loginToken(api, "manager@example.com", "manager123");
+  const adminToken = await loginToken(api, "admin@example.com", "admin123");
+  const warehouse = await postJson(api, "/warehouses", managerToken, {
+    code: "E2E-LOGISTICS-WAREHOUSE",
+    name: "E2E Logistics Warehouse",
+  });
+  const product = await postJson(api, "/products", managerToken, {
+    sku: "E2E-LOGISTICS-PRODUCT",
+    name: "E2E Logistics Product",
+    base_price: "150.00",
+    is_active: true,
+  });
+  const supplier = await postJson(api, "/partners", managerToken, {
+    code: "E2E-LOGISTICS-SUPPLIER",
+    name: "E2E Logistics Supplier",
+    partner_type: "supplier",
+    is_active: true,
+  });
+  const incoming = await postJson(api, "/documents", managerToken, {
+    document_type: "incoming",
+    document_date: "2026-07-24",
+    partner_id: supplier.id,
+    warehouse_id: warehouse.id,
+  });
+  await postJson(api, `/documents/${incoming.id}/lines`, managerToken, {
+    product_id: product.id,
+    quantity: "2",
+    price: "80.00",
+  });
+  await postJson(api, `/documents/${incoming.id}/post`, managerToken, {});
+  await postJson(api, "/users", adminToken, {
+    email: "logist-e2e@example.com",
+    password: "logist123",
+    full_name: "E2E Logistics Operator",
+    role_names: ["logist"],
+    warehouse_ids: [warehouse.id],
+  });
+  const logistToken = await loginToken(api, "logist-e2e@example.com", "logist123");
+
+  await loginAsLogist(page);
+  const navigation = page.getByRole("navigation");
+  await expect(navigation.getByRole("link", { name: "Логистика" })).toBeVisible();
+  await expect(navigation.getByRole("link", { name: "Документы" })).toHaveCount(0);
+  await expect(navigation.getByRole("link", { name: "Оплаты" })).toHaveCount(0);
+  await page.goto("/logistics", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("heading", { name: "Логистика" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "E2E Logistics Product" })).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Продажная цена" })).toBeVisible();
+  await expect(page.getByText("E2E Logistics Warehouse", { exact: false }).first()).toBeVisible();
+
+  const response = await api.get("logistics/documents", {
+    headers: { Authorization: `Bearer ${logistToken}` },
+  });
+  expect(response.ok()).toBeTruthy();
+  const logisticsDocuments = await response.json();
+  const logisticsDocument = logisticsDocuments.find((document: { id: number }) => document.id === incoming.id);
+  expect(logisticsDocument.lines[0].sale_price).toBe("150.00");
+  expect(logisticsDocument.lines[0].sale_total).toBe("300.00");
+  expect(logisticsDocument.lines[0]).not.toHaveProperty("price");
+  expect(logisticsDocument.lines[0]).not.toHaveProperty("foreign_price");
+  expect(logisticsDocument).not.toHaveProperty("currency_code");
+  expect(logisticsDocument).not.toHaveProperty("exchange_rate");
   await api.dispose();
 });

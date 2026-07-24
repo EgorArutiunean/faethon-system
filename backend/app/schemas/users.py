@@ -15,6 +15,8 @@ class UserRead(Timestamped):
     full_name: str | None = None
     is_active: bool
     role_names: list[str]
+    warehouse_ids: list[int] = Field(default_factory=list)
+    warehouse_names: list[str] = Field(default_factory=list)
 
 
 class UserCreate(BaseModel):
@@ -23,6 +25,7 @@ class UserCreate(BaseModel):
     full_name: str | None = None
     is_active: bool = True
     role_names: list[str]
+    warehouse_ids: list[int] = Field(default_factory=list)
 
 
 class UserUpdate(BaseModel):
@@ -31,3 +34,4 @@ class UserUpdate(BaseModel):
     full_name: str | None = None
     is_active: bool | None = None
     role_names: list[str] | None = None
+    warehouse_ids: list[int] | None = None

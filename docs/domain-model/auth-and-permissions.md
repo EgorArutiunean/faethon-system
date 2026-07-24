@@ -40,7 +40,13 @@ This account is for local development only and must be changed before any real d
 - `admin`: all permissions;
 - `manager`: products, warehouses, partners, documents, stock, reports;
 - `cashier`: partner and document read, payments, cash, reports read;
+- `logist`: warehouse-scoped read-only logistics documents with sales prices only;
 - `viewer`: read-only access to main operational objects.
+
+Users can be assigned to one or more warehouses. A logistics user must have at
+least one warehouse. The `logist` role is exclusive and cannot be combined with
+another role, preventing broader permissions from exposing purchase data. The
+logistics API enforces the warehouse scope at record level.
 
 ## Permissions
 
@@ -96,6 +102,7 @@ System:
 - `audit.read`
 - `users.manage`
 - `settings.manage`
+- `logistics.read`
 
 ## Frontend Behavior
 

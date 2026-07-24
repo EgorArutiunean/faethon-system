@@ -11,30 +11,34 @@ Scope: Simple Auth & Permissions smoke QA for current MVP roles. No Reports/Expo
 | `admin@example.com` | `admin123` | `admin` |
 | `manager@example.com` | `manager123` | `manager` |
 | `cashier@example.com` | `cashier123` | `cashier` |
+| `logist@example.com` | `logist123` | `logist` |
 | `viewer@example.com` | `viewer123` | `viewer` |
 
 `seed_demo.py` creates or updates these users and resets their demo passwords on each seed run.
+The logistics demo user is assigned to the demo main and retail warehouses.
 
 ## Permission Matrix
 
-| Area / Action | Admin | Manager | Cashier | Viewer |
-| --- | --- | --- | --- | --- |
-| Products read | Yes | Yes | No | Yes |
-| Products create/update | Yes | Yes | No | No |
-| Warehouses read | Yes | Yes | No | Yes |
-| Warehouses create/update | Yes | Yes | No | No |
-| Partners read | Yes | Yes | Yes | Yes |
-| Partners create/update | Yes | Yes | No | No |
-| Documents read | Yes | Yes | Yes | Yes |
-| Documents create/update | Yes | Yes | No | No |
-| Documents post/cancel | Yes | Yes | No | No |
-| Stock read | Yes | Yes | No | Yes |
-| Payments read | Yes | No | Yes | Yes |
-| Payments create/post/cancel | Yes | No | Yes | No |
-| Cash read | Yes | No | Yes | Yes |
-| Cash create/cancel | Yes | No | Yes | No |
-| Reports read | Yes | Yes | Yes | Yes |
-| Settings/users manage | Yes | No | No | No |
+| Area / Action | Admin | Manager | Cashier | Logist | Viewer |
+| --- | --- | --- | --- | --- | --- |
+| Products read | Yes | Yes | No | No | Yes |
+| Products create/update | Yes | Yes | No | No | No |
+| Warehouses read | Yes | Yes | No | No | Yes |
+| Warehouses create/update | Yes | Yes | No | No | No |
+| Partners read | Yes | Yes | Yes | No | Yes |
+| Partners create/update | Yes | Yes | No | No | No |
+| Documents read | Yes | Yes | Yes | Assigned warehouses, safe view | Yes |
+| Documents create/update | Yes | Yes | No | No | No |
+| Documents post/cancel | Yes | Yes | No | No | No |
+| Stock read | Yes | Yes | No | No | Yes |
+| Payments read | Yes | No | Yes | No | Yes |
+| Payments create/post/cancel | Yes | No | Yes | No | No |
+| Cash read | Yes | No | Yes | No | Yes |
+| Cash create/cancel | Yes | No | Yes | No | No |
+| Reports read | Yes | Yes | Yes | No | Yes |
+| Logistics read | Yes | No | No | Assigned warehouses | No |
+| Purchase cost/currency/rate | Yes | Yes | No | No | No |
+| Settings/users manage | Yes | No | No | No | No |
 
 ## API Smoke Checked
 
@@ -62,6 +66,15 @@ Cashier:
 - Can create cash operations.
 - Document posting returns HTTP 403.
 
+Logist:
+
+- Login and `/auth/me` return role `logist` and assigned warehouses.
+- Can read logistics documents only when a source or destination warehouse is assigned.
+- Receives sales price and sales total, but not purchase price, cost, purchase currency, or exchange rate.
+- Cannot use the ordinary documents API or create, post, and cancel documents.
+- A logistics user cannot be created without at least one assigned warehouse.
+- The `logist` role cannot be combined with another role.
+
 Viewer:
 
 - Login and `/auth/me` return role `viewer`.
@@ -88,6 +101,8 @@ Verified by route/source smoke against the current frontend implementation:
 - Document post action is disabled without `documents.post`.
 - Payment post action is disabled without `payments.post`.
 - Cash operation creation is disabled without `cash.create`.
+- Logistics navigation is visible only with `logistics.read`.
+- The logistics screen contains sales-price columns and no purchase-price, currency, or exchange-rate columns.
 
 ## Findings
 
@@ -95,9 +110,9 @@ No P0/P1 role-permission defects were found during this pass.
 
 P2 / follow-up:
 
-- Add automated browser-level role tests when the frontend E2E test harness is introduced.
+- Add write workflows only after receipt, picking, transfer, and inventory confirmation rules are approved.
 - Keep role labels and permission wording aligned with BuySell terminology as screens evolve.
 
 ## Result
 
-Role-based API smoke passed for all four demo roles. Frontend route/action restrictions match the current permission model at source level. Existing backend and frontend checks pass.
+Role-based API smoke passed for all five demo roles. `LOG-01` verifies the logistics boundary through the real frontend, API, and PostgreSQL. Existing backend and frontend checks pass.

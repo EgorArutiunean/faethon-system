@@ -39,6 +39,7 @@ PERMISSIONS = [
     "audit.read",
     "users.manage",
     "settings.manage",
+    "logistics.read",
 ]
 
 
@@ -76,6 +77,9 @@ ROLE_PERMISSIONS = {
         "cash.create",
         "cash.cancel",
         "reports.read",
+    ],
+    "logist": [
+        "logistics.read",
     ],
     "viewer": [
         "products.read",

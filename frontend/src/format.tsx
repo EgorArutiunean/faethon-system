@@ -48,6 +48,7 @@ const CODE_LABEL_KEYS: Record<string, string> = {
   incoming: "incoming",
   import: "importLite",
   manager: "managerRole",
+  logist: "logistRole",
   "opening-partner-balances": "importOpeningPartnerBalances",
   "opening-stock": "importOpeningStock",
   outgoing: "outgoing",

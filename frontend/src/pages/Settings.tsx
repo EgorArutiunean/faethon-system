@@ -5,7 +5,7 @@ import { PageScaffold } from "../components/PageScaffold";
 import { useAuth } from "../auth";
 import { formatCode } from "../format";
 import { useI18n } from "../i18n";
-import { ImportSummary, ManagedUser, Role, api } from "../lib/api";
+import { ImportSummary, ManagedUser, Role, Warehouse, api } from "../lib/api";
 import { useToast } from "../toast";
 
 const importTypes = [
@@ -24,20 +24,23 @@ export function Settings() {
   const [summaries, setSummaries] = useState<Record<string, ImportSummary | null>>({});
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [editingUserId, setEditingUserId] = useState<number | null>(null);
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
   const [password, setPassword] = useState("");
   const [isActive, setIsActive] = useState(true);
   const [roleNames, setRoleNames] = useState<string[]>(["viewer"]);
+  const [warehouseIds, setWarehouseIds] = useState<number[]>([]);
   const [error, setError] = useState("");
 
   function loadUsers() {
     if (!can("users.manage")) return;
-    Promise.all([api.users(), api.roles()])
-      .then(([nextUsers, nextRoles]) => {
+    Promise.all([api.users(), api.roles(), api.warehouses()])
+      .then(([nextUsers, nextRoles, nextWarehouses]) => {
         setUsers(nextUsers);
         setRoles(nextRoles);
+        setWarehouses(nextWarehouses);
       })
       .catch((exc) => {
         const message = exc instanceof Error ? exc.message : String(exc);
@@ -53,6 +56,7 @@ export function Settings() {
     setPassword("");
     setIsActive(true);
     setRoleNames(["viewer"]);
+    setWarehouseIds([]);
   }
 
   function editUser(row: ManagedUser) {
@@ -62,16 +66,30 @@ export function Settings() {
     setPassword("");
     setIsActive(row.is_active);
     setRoleNames(row.role_names.length ? row.role_names : ["viewer"]);
+    setWarehouseIds(row.warehouse_ids);
   }
 
   function toggleRole(roleName: string) {
+    if (roleName === "logist") {
+      setRoleNames([roleName]);
+      return;
+    }
     setRoleNames((current) => {
-      if (current.includes(roleName)) {
-        const next = current.filter((name) => name !== roleName);
+      const withoutLogist = current.filter((name) => name !== "logist");
+      if (withoutLogist.includes(roleName)) {
+        const next = withoutLogist.filter((name) => name !== roleName);
         return next.length ? next : current;
       }
-      return [...current, roleName];
+      return [...withoutLogist, roleName];
     });
+  }
+
+  function toggleWarehouse(warehouseId: number) {
+    setWarehouseIds((current) => (
+      current.includes(warehouseId)
+        ? current.filter((id) => id !== warehouseId)
+        : [...current, warehouseId]
+    ));
   }
 
   function saveUser() {
@@ -79,11 +97,16 @@ export function Settings() {
       showToast("warning", t("selectRoles"));
       return;
     }
+    if (roleNames.includes("logist") && warehouseIds.length === 0) {
+      showToast("warning", t("selectWarehouse"));
+      return;
+    }
     const payload = {
       email,
       full_name: fullName || null,
       is_active: isActive,
       role_names: roleNames,
+      warehouse_ids: warehouseIds,
       ...(password ? { password } : {}),
     };
     const request = editingUserId
@@ -187,6 +210,23 @@ export function Settings() {
                 ))}
               </div>
             </div>
+            {roleNames.includes("logist") ? (
+              <div className="field" style={{ minWidth: 240 }}>
+                <label>{t("assignedWarehouses")}</label>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", paddingTop: 4 }}>
+                  {warehouses.map((warehouse) => (
+                    <label key={warehouse.id} style={{ display: "flex", gap: 4, alignItems: "center", fontSize: 13 }}>
+                      <input
+                        type="checkbox"
+                        checked={warehouseIds.includes(warehouse.id)}
+                        onChange={() => toggleWarehouse(warehouse.id)}
+                      />
+                      {warehouse.name}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             <div className="field">
               <label>&nbsp;</label>
               <div style={{ display: "flex", gap: 6 }}>
@@ -203,6 +243,7 @@ export function Settings() {
               { key: "email", header: t("email"), sortable: true },
               { key: "full_name", header: t("name"), sortable: true },
               { key: "role_names", header: t("roles"), render: (row) => row.role_names.map((role) => formatCode(role, t)).join(", ") },
+              { key: "warehouse_names", header: t("assignedWarehouses"), render: (row) => row.warehouse_names.join(", ") },
               { key: "is_active", header: t("activeUser"), sortable: true, render: (row) => row.is_active ? t("yes") : t("no") },
               { key: "actions", header: t("actions"), render: (row) => <button className="button" onClick={() => editUser(row)}>{t("edit")}</button> }
             ]}

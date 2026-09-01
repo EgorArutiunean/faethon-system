@@ -322,22 +322,33 @@ test("M02: валютный приход фиксирует курс, суммы
   await page.getByTestId("document-post").click();
   await expect(page.getByText("\u041f\u0440\u043e\u0432\u0435\u0434\u0451\u043d", { exact: true })).toBeVisible();
 
-  const [documentResponse, stockResponse] = await Promise.all([
+  const [documentResponse, stockResponse, productsResponse] = await Promise.all([
     api.get(`documents/${documentId}`, { headers: { Authorization: `Bearer ${managerToken}` } }),
     api.get(`stock/balances?warehouse_id=${warehouse.id}&product_id=${product.id}`, {
       headers: { Authorization: `Bearer ${managerToken}` },
     }),
+    api.get("products", { headers: { Authorization: `Bearer ${managerToken}` } }),
   ]);
   expect(documentResponse.ok()).toBeTruthy();
   expect(stockResponse.ok()).toBeTruthy();
+  expect(productsResponse.ok()).toBeTruthy();
   const document = await documentResponse.json();
   const stock = await stockResponse.json();
+  const pricedProduct = (await productsResponse.json()).find((row: { id: number }) => row.id === product.id);
   expect(document.status).toBe("posted");
   expect(document.currency_code).toBe("USD");
   expect(document.exchange_rate).toBe("16.200000");
   expect(document.foreign_total_amount).toBe("20.00");
   expect(document.total_amount).toBe("324.00");
   expect(stock[0].quantity).toBe("2.000");
+  expect(pricedProduct.latest_purchase_cost).toBe("162.00");
+  expect(pricedProduct.markup_percent).toBe("-38.27");
+  expect(pricedProduct.minimum_sale_price).toBe("178.20");
+  expect(pricedProduct.price_review_required).toBe(true);
+
+  await page.goto("/products", { waitUntil: "domcontentloaded" });
+  const productRow = page.getByRole("row").filter({ hasText: "E2E FX Product" });
+  await expect(productRow.getByText("Пересмотреть цену", { exact: false })).toBeVisible();
   await api.dispose();
 });
 

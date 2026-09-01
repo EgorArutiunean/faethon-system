@@ -151,7 +151,7 @@ test("M02: валютный приход показывает необходим
   await page.getByTestId("document-line-price").fill("10");
 
   await expect(page.getByText("Пересмотрите цену реализации.")).toBeVisible();
-  await expect(page.getByText(/Новая закупочная стоимость выше/)).toBeVisible();
+  await expect(page.getByText(/первая проведённая закупка/i)).toBeVisible();
   await expect(page.getByText(/162\.00/)).toBeVisible();
 });
 

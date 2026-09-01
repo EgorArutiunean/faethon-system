@@ -48,14 +48,28 @@ export function DocumentEditor() {
   const selectedProduct = useMemo(() => products.find((item) => String(item.id) === productId), [products, productId]);
   const baseUnitCost = useMemo(() => Number(price || 0) * Number(header.exchange_rate || 1), [price, header.exchange_rate]);
   const salePriceReview = useMemo(() => {
-    if (!isIncoming || !selectedProduct?.base_price || baseUnitCost <= 0) return null;
-    const salePrice = Number(selectedProduct.base_price);
-    if (!Number.isFinite(salePrice) || salePrice <= 0) return null;
-    if (baseUnitCost === salePrice) return null;
+    if (!isIncoming || !selectedProduct || baseUnitCost <= 0) return null;
+    const salePrice = selectedProduct.base_price === null || selectedProduct.base_price === undefined
+      ? null
+      : Number(selectedProduct.base_price);
+    const previousPurchaseCost = selectedProduct.latest_purchase_cost === null || selectedProduct.latest_purchase_cost === undefined
+      ? null
+      : Number(selectedProduct.latest_purchase_cost);
+    const markupPercent = salePrice === null || !Number.isFinite(salePrice)
+      ? null
+      : ((salePrice - baseUnitCost) / baseUnitCost) * 100;
+    const priceReviewRequired = markupPercent === null || markupPercent < 10;
+    const costChanged = previousPurchaseCost === null || Math.abs(previousPurchaseCost - baseUnitCost) >= 0.005;
+    if (!costChanged && !priceReviewRequired) return null;
     return {
-      direction: baseUnitCost > salePrice ? "higher" : "lower",
+      direction: previousPurchaseCost === null ? "first" : baseUnitCost > previousPurchaseCost ? "higher" : "lower",
       salePrice,
-      baseUnitCost
+      baseUnitCost,
+      previousPurchaseCost,
+      markupPercent,
+      minimumSalePrice: baseUnitCost * 1.1,
+      priceReviewRequired,
+      costChanged
     };
   }, [isIncoming, selectedProduct, baseUnitCost]);
   const filteredProducts = useMemo(() => {
@@ -513,8 +527,9 @@ export function DocumentEditor() {
         <div className="field"><label>&nbsp;</label><button data-testid="document-line-add" className="button primary" title={!can("documents.update") ? t("noPermission") : ""} disabled={!can("documents.update") || !isEditable} onClick={addLine}>{t(editingCorrectionLineId === null ? "addLine" : "saveLine")}</button></div>
       </div>
       {salePriceReview ? (
-        <div className="panel" style={{ padding: 10, color: "#7a4b00", background: "#fff7e6", borderColor: "#f0c36d", fontSize: 13 }}>
-          {t("salePriceReviewHint")} {t(salePriceReview.direction === "higher" ? "purchasePriceHigher" : "purchasePriceLower")} {t("currentSalePrice")}: {formatMoney(salePriceReview.salePrice.toFixed(2))}; {t("newBasePurchasePrice")}: {formatMoney(salePriceReview.baseUnitCost.toFixed(2))}.
+        <div data-testid="sale-price-review" className="panel" style={{ padding: 10, color: salePriceReview.priceReviewRequired ? "#8b1e16" : "#6b5200", background: salePriceReview.priceReviewRequired ? "#fff1f0" : "#fffbea", borderColor: salePriceReview.priceReviewRequired ? "#e6a29c" : "#e8cf6a", fontSize: 13 }}>
+          {salePriceReview.costChanged ? <div>{t(salePriceReview.direction === "first" ? "firstPurchaseCost" : salePriceReview.direction === "higher" ? "purchaseCostHigher" : "purchaseCostLower")} {salePriceReview.previousPurchaseCost !== null ? `${t("latestPurchaseCost")}: ${formatMoney(salePriceReview.previousPurchaseCost.toFixed(2))}; ` : ""}{t("newBasePurchasePrice")}: {formatMoney(salePriceReview.baseUnitCost.toFixed(2))}.</div> : null}
+          {salePriceReview.priceReviewRequired ? <div><strong>{t("salePriceReviewHint")}</strong> {t("proposedMarkup")}: {salePriceReview.markupPercent === null ? "-" : `${salePriceReview.markupPercent.toFixed(2)}%`}; {t("minimumSalePrice")}: {formatMoney(salePriceReview.minimumSalePrice.toFixed(2))}.</div> : <div>{t("proposedMarkup")}: {salePriceReview.markupPercent?.toFixed(2)}%. {t("priceMeetsMarkup")}.</div>}
         </div>
       ) : null}
 

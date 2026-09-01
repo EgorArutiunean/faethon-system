@@ -1,4 +1,5 @@
 from decimal import Decimal
+from datetime import date
 
 from pydantic import BaseModel, Field
 
@@ -51,3 +52,10 @@ class ProductUpdate(BaseModel):
 class ProductRead(ProductBase, Timestamped):
     id: int
     group_name: str | None = None
+    latest_purchase_cost: Decimal | None = None
+    latest_purchase_document_id: int | None = None
+    latest_purchase_document_number: str | None = None
+    latest_purchase_date: date | None = None
+    markup_percent: Decimal | None = None
+    minimum_sale_price: Decimal | None = None
+    price_review_required: bool = False

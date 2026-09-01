@@ -7,6 +7,13 @@ export type Product = {
   group_id?: number | null;
   group_name?: string | null;
   base_price?: string | null;
+  latest_purchase_cost?: string | null;
+  latest_purchase_document_id?: number | null;
+  latest_purchase_document_number?: string | null;
+  latest_purchase_date?: string | null;
+  markup_percent?: string | null;
+  minimum_sale_price?: string | null;
+  price_review_required: boolean;
   is_active: boolean;
 };
 

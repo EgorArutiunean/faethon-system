@@ -142,6 +142,19 @@ export function Products() {
           { key: "name", header: t("name"), sortable: true },
           { key: "group_name", header: t("productCategory"), sortable: true, render: (row) => row.group_name ?? "" },
           { key: "base_price", header: t("basePrice"), sortable: true, render: (row) => formatMoney(row.base_price) },
+          { key: "latest_purchase_cost", header: t("latestPurchaseCost"), sortable: true, render: (row) => row.latest_purchase_cost ? formatMoney(row.latest_purchase_cost) : "-" },
+          { key: "markup_percent", header: t("markup"), sortable: true, render: (row) => row.markup_percent !== null && row.markup_percent !== undefined ? `${row.markup_percent}%` : "-" },
+          {
+            key: "price_review_required",
+            header: t("priceControl"),
+            sortable: true,
+            render: (row) => row.latest_purchase_cost ? (
+              <span style={{ color: row.price_review_required ? "#b42318" : "#16794b", fontWeight: 600 }}>
+                {t(row.price_review_required ? "priceReviewRequired" : "priceMeetsMarkup")}
+                {row.price_review_required && row.minimum_sale_price ? `: ${formatMoney(row.minimum_sale_price)}` : ""}
+              </span>
+            ) : "-"
+          },
           { key: "is_active", header: t("active"), sortable: true, render: (row) => row.is_active ? t("yes") : t("no") },
           {
             key: "actions",

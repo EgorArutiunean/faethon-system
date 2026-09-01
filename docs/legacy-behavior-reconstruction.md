@@ -70,7 +70,7 @@ These questions must be answered before changing accounting rules for documents 
 | PAY-002 | P1 | How were partial payments and overpayments shown? | Balance can become negative | question | Partner statement and reports |
 | PAY-003 | P1 | What is the exact refund direction? | Refund increases partner balance and creates `cash_out` | question | Payment effects, cash effects, UI labels |
 | PAY-004 | P1 | On payment cancellation, did old program mark cash rows cancelled or add reversal rows? | Mark linked cash rows cancelled | question | Cash cancellation workflow |
-| CASH-001 | P1 | Is cash correction a signed delta or an absolute target balance? | Signed delta | question | Cash balance, cash book, reports |
+| CASH-001 | P1 | Is cash correction a signed delta or an absolute target balance? | Operator enters the final actual balance; the system calculates and records the difference | confirmed | Cash correction API/UI, balance, cash book, reports |
 | CASH-002 | P1 | Did old program support multiple cash desks or bank accounts? | One cash desk is sufficient for the first release | confirmed | Keep single-cash model; defer accounts/multiple cash desks |
 
 ## P1 Questions: Reports And Printing
@@ -149,6 +149,9 @@ These questions must be answered before changing accounting rules for documents 
 - PAY-006: the manager creates, posts, and manually allocates payments to
   documents. Cashier responsibilities must be narrowed accordingly when the
   payment-allocation workflow is implemented.
+- CASH-004: for a correction, the operator enters the final physically counted
+  cash balance. The system calculates the adjustment difference and requires a
+  reason. Any operation that would make the cash balance negative is blocked.
 
 When Egor answers a question:
 

@@ -107,6 +107,8 @@ Business decisions received after the audit:
 - manager chooses return/write-off/receipt for rare transfer discrepancies;
 - sale-price warning threshold is markup below `10%` over latest incoming cost;
 - manager creates, posts, and manually allocates payments.
+- cash correction sets the final actual balance, requires a reason, and cash is
+  not allowed to become negative.
 
 Latest checks:
 

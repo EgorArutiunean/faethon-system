@@ -94,6 +94,16 @@ Repeated audit on 2026-09-01:
 - release blockers and the current work order are recorded in
   `docs/re-audit-and-work-plan-2026-09-01.md`.
 
+Business decisions received after the audit:
+
+- continuous document numbering without reset; authorized manual edit remains;
+- posted documents are editable through a future controlled reposting workflow;
+- latest posted incoming purchase defines current product cost;
+- manager manually allocates payments to documents;
+- one cash desk for the first release;
+- baseline operational documents/reports retained;
+- target parallel operation and cutover near the end of October 2026.
+
 Latest checks:
 
 - manager workflow Playwright tests: `3 passed` on 2026-07-24 for M01, M02, and M04;

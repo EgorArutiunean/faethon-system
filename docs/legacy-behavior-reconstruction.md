@@ -50,14 +50,14 @@ These questions must be answered before changing accounting rules for documents 
 | ID | Priority | Question | Current assumption | Status | Code/test impact |
 | --- | --- | --- | --- | --- | --- |
 | DOC-001 | P0 | What document types should exist at launch? | incoming, outgoing, adjustment, transfer | confirmed | Models, UI labels, posting rules, reports |
-| DOC-002 | P0 | How were document numbers generated? | Global sequence per type with `IN/OUT/ADJ/TR` prefixes | assumed | `documents_service._generate_document_number`, tests |
-| DOC-003 | P0 | Could users edit a posted document directly? | No; posted documents are read-only | question | API update guards, frontend disabled states |
+| DOC-002 | P0 | How were document numbers generated? | Continuous sequence per type, no periodic reset, manual correction allowed | confirmed | Add concurrency-safe sequence, uniqueness, and manual-number validation |
+| DOC-003 | P0 | Could users edit a posted document directly? | Yes, through controlled recalculation and reposting with audit history | confirmed | Replace current read-only guard with atomic reverse/validate/reapply workflow |
 | DOC-004 | P0 | Could users delete posted or cancelled documents? | No; only draft documents can be deleted | question | Delete endpoint behavior, audit policy |
 | DOC-005 | P0 | What happened when cancelling a posted document after later documents consumed its stock? | Block cancellation if reversal makes stock negative | question | Cancellation algorithm and error messages |
 | DOC-006 | P0 | Should the app allow selling or transferring more than available stock? | No; insufficient stock blocks posting | confirmed | Posting validation, role exceptions |
 | DOC-007 | P0 | What should an adjustment document line mean? | Target final stock quantity | confirmed | Adjustment delta calculation, import opening stock |
 | DOC-008 | P0 | Should warehouse transfers be a separate document type? | Yes | confirmed | New document type and transfer workflow |
-| DOC-009 | P0 | Did stock have valuation/cost accounting or only quantities? | Quantities only in current stock reports | question | Stock models, reports, import data |
+| DOC-009 | P0 | Did stock have valuation/cost accounting or only quantities? | Product cost is the latest posted incoming purchase cost in RUB PMR | confirmed | Cost snapshot/history, price-review hint, reports |
 | DOC-010 | P0 | Which date controls stock movement date: document date or posting time? | Movement rows use created timestamp in reports | question | Movement schema/report filters |
 
 ## P1 Questions: Debts, Payments, Cash
@@ -66,12 +66,12 @@ These questions must be answered before changing accounting rules for documents 
 | --- | --- | --- | --- | --- | --- |
 | DEBT-001 | P1 | How should customer debt and supplier payable signs be shown? | Positive means partner owes us; negative means we owe/credit | question | Reports, statements, UI labels |
 | DEBT-002 | P1 | Did incoming supplier documents create payable debt? | Incoming reduces balance as simplified supplier model | question | Debt calculations and tests |
-| PAY-001 | P1 | Were payments allocated to specific invoices/documents? | Payment may reference a document, but no allocation rules | question | Payment schema, statement matching |
+| PAY-001 | P1 | Were payments allocated to specific invoices/documents? | Manager allocates payments to documents manually | confirmed | Payment allocations, manager permission, statement matching |
 | PAY-002 | P1 | How were partial payments and overpayments shown? | Balance can become negative | question | Partner statement and reports |
 | PAY-003 | P1 | What is the exact refund direction? | Refund increases partner balance and creates `cash_out` | question | Payment effects, cash effects, UI labels |
 | PAY-004 | P1 | On payment cancellation, did old program mark cash rows cancelled or add reversal rows? | Mark linked cash rows cancelled | question | Cash cancellation workflow |
 | CASH-001 | P1 | Is cash correction a signed delta or an absolute target balance? | Signed delta | question | Cash balance, cash book, reports |
-| CASH-002 | P1 | Did old program support multiple cash desks or bank accounts? | Not implemented | question | Cash model, permissions, reports |
+| CASH-002 | P1 | Did old program support multiple cash desks or bank accounts? | One cash desk is sufficient for the first release | confirmed | Keep single-cash model; defer accounts/multiple cash desks |
 
 ## P1 Questions: Reports And Printing
 
@@ -94,7 +94,7 @@ These questions must be answered before changing accounting rules for documents 
 | AUDIT-001 | P2 | Who needs to view audit history? | Audit rows exist, viewer UI missing | question | Audit API/UI |
 | UX-001 | P2 | Which keyboard shortcuts or operator workflows are mandatory? | Basic mouse-first UI | question | Frontend workflow changes |
 | UI-001 | P2 | What language must the interface use? | Russian only | confirmed | Disable English switching; keep Russian as active language |
-| DATA-001 | P2 | What launch cutoff date should opening balances use? | Not set | question | Manual data readiness |
+| DATA-001 | P2 | What launch cutoff date should opening balances use? | Target cutover near the end of October 2026; start parallel operation earlier when ready | partially confirmed | Set exact cutoff during migration rehearsal |
 
 ## Confirmed Decisions
 
@@ -122,6 +122,23 @@ These questions must be answered before changing accounting rules for documents 
 - LOG-009: task start, confirmation, quantity discrepancy, cancellation, and
   actual-quantity changes must be audited. Task print forms, photos, serials,
   expiration dates, priorities, and deadlines are deferred.
+- DOC-011: document numbering does not reset by year or period. An authorized
+  user may manually change a number, but uniqueness must be enforced.
+- DOC-012: posted documents may be edited. The implementation must preserve an
+  immutable change history and atomically reverse the previous stock/debt effect,
+  validate the new version, and apply the new effect; direct silent mutation of
+  balances is not allowed.
+- COST-001: current product cost is based on the latest posted incoming purchase
+  cost converted to RUB PMR.
+- PAY-005: payment allocation is performed manually by a manager. The exact split
+  of responsibilities between manager and cashier still needs confirmation.
+- CASH-003: one cash desk is sufficient for the first release. Multiple cash
+  desks and bank accounts are deferred.
+- REP-005: the launch baseline includes incoming/outgoing invoices, price list,
+  product catalog, debts, expenses/cash, stock and period reports. Exact columns
+  will be accepted through UAT.
+- DATA-002: target cutover is near the end of October 2026. Parallel operation may
+  begin earlier as soon as data reconciliation and critical workflows are ready.
 
 When Egor answers a question:
 

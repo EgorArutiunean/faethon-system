@@ -16,6 +16,7 @@ services:
       retries: 10
 
   backend:
+    image: buy-modern-backend
     build:
       context: ./backend
     environment:

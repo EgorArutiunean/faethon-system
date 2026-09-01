@@ -1,5 +1,6 @@
 import hashlib
 from decimal import Decimal
+from types import SimpleNamespace
 
 from fastapi import HTTPException
 from sqlalchemy import func, select
@@ -8,12 +9,18 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from app.models.documents import Document, DocumentLine, DocumentNumberSequence
+from app.models.documents import Document, DocumentLine, DocumentNumberSequence, DocumentRevision
 from app.models.partners import Partner
 from app.models.products import Product
 from app.models.stock import StockBalance, StockMovement
 from app.models.stock import Warehouse
-from app.schemas.documents import DocumentCreate, DocumentLineCreate, DocumentLineUpdate, DocumentUpdate
+from app.schemas.documents import (
+    DocumentCreate,
+    DocumentLineCreate,
+    DocumentLineUpdate,
+    DocumentRepost,
+    DocumentUpdate,
+)
 from app.services.audit_writer import change_details, write_audit
 from app.services.currency_service import BASE_CURRENCY_CODE, get_currency
 
@@ -201,6 +208,69 @@ def _recalculate_total(document: Document) -> None:
 
 def recalculate_document_total(document: Document) -> None:
     _recalculate_total(document)
+
+
+def _document_snapshot(document: Document) -> dict:
+    return {
+        "document_type": document.document_type,
+        "number": document.number,
+        "document_date": str(document.document_date),
+        "status": document.status,
+        "partner_id": document.partner_id,
+        "warehouse_id": document.warehouse_id,
+        "destination_warehouse_id": document.destination_warehouse_id,
+        "total_amount": f"{document.total_amount:.2f}",
+        "currency_code": document.currency_code,
+        "exchange_rate": f"{document.exchange_rate:.6f}",
+        "foreign_total_amount": f"{document.foreign_total_amount:.2f}",
+        "note": document.note,
+        "lines": [
+            {
+                "product_id": line.product_id,
+                "product_name": line.product.name if line.product is not None else None,
+                "product_sku": line.product.sku if line.product is not None else None,
+                "quantity": f"{line.quantity:.3f}",
+                "price": f"{line.price:.2f}",
+                "line_total": f"{line.line_total:.2f}",
+                "foreign_price": f"{line.foreign_price:.2f}" if line.foreign_price is not None else None,
+                "foreign_line_total": (
+                    f"{line.foreign_line_total:.2f}" if line.foreign_line_total is not None else None
+                ),
+            }
+            for line in sorted(document.lines, key=lambda item: item.id or 0)
+        ],
+    }
+
+
+def _store_revision(db: Session, document: Document, version: int, reason: str) -> DocumentRevision:
+    revision = db.scalar(
+        select(DocumentRevision).where(
+            DocumentRevision.document_id == document.id,
+            DocumentRevision.version == version,
+        )
+    )
+    if revision is None:
+        revision = DocumentRevision(
+            document_id=document.id,
+            version=version,
+            reason=reason,
+            actor_user_id=db.info.get("actor_user_id"),
+            snapshot=_document_snapshot(document),
+        )
+        db.add(revision)
+    return revision
+
+
+def list_document_revisions(db: Session, document_id: int) -> list[DocumentRevision]:
+    _load_document(db, document_id)
+    return list(
+        db.scalars(
+            select(DocumentRevision)
+            .where(DocumentRevision.document_id == document_id)
+            .options(selectinload(DocumentRevision.actor))
+            .order_by(DocumentRevision.version.desc())
+        ).all()
+    )
 
 
 def _ensure_draft(document: Document) -> None:
@@ -434,24 +504,6 @@ def delete_draft_document(db: Session, document_id: int) -> None:
     db.commit()
 
 
-def _movement_delta(document: Document, line: DocumentLine, current_quantity: Decimal) -> Decimal:
-    # TODO LEGACY_RULE_REQUIRED: confirm whether adjustment lines represent target stock,
-    # absolute correction delta, inventory fact quantity, or a separate document type.
-    if document.document_type == Document.TYPE_INCOMING:
-        return line.quantity
-    if document.document_type == Document.TYPE_OUTGOING:
-        if current_quantity < line.quantity:
-            raise DocumentRulesError("Not enough stock for outgoing document")
-        return -line.quantity
-    if document.document_type == Document.TYPE_ADJUSTMENT:
-        return line.quantity - current_quantity
-    if document.document_type == Document.TYPE_TRANSFER:
-        if current_quantity < line.quantity:
-            raise DocumentRulesError("Not enough stock for transfer document")
-        return -line.quantity
-    raise DocumentRulesError("Unsupported document type")
-
-
 def _validate_document_warehouses(db: Session, document: Document) -> None:
     if document.warehouse_id is None:
         raise HTTPException(status_code=422, detail="Document warehouse is required")
@@ -470,6 +522,103 @@ def _validate_document_warehouses(db: Session, document: Document) -> None:
         raise HTTPException(status_code=422, detail="Destination warehouse is only valid for transfer documents")
 
 
+def _document_stock_keys(document: Document) -> set[tuple[int, int]]:
+    keys = {(line.product_id, document.warehouse_id) for line in document.lines}
+    if document.document_type == Document.TYPE_TRANSFER:
+        keys.update((line.product_id, document.destination_warehouse_id) for line in document.lines)
+    return keys
+
+
+def _load_balance_quantities(
+    db: Session,
+    keys: set[tuple[int, int]],
+) -> tuple[dict[tuple[int, int], StockBalance], dict[tuple[int, int], Decimal]]:
+    balances: dict[tuple[int, int], StockBalance] = {}
+    quantities: dict[tuple[int, int], Decimal] = {}
+    for product_id, warehouse_id in sorted(keys):
+        balance = _get_balance(db, product_id, warehouse_id)
+        key = (product_id, warehouse_id)
+        balances[key] = balance
+        quantities[key] = balance.quantity
+    return balances, quantities
+
+
+def _plan_document_movements(
+    document: Document,
+    starting_quantities: dict[tuple[int, int], Decimal],
+) -> tuple[list[tuple[int, int, Decimal]], dict[tuple[int, int], Decimal]]:
+    quantities = dict(starting_quantities)
+    movements: list[tuple[int, int, Decimal]] = []
+    for line in document.lines:
+        source_key = (line.product_id, document.warehouse_id)
+        current_quantity = quantities[source_key]
+        if document.document_type == Document.TYPE_INCOMING:
+            delta = line.quantity
+        elif document.document_type == Document.TYPE_OUTGOING:
+            if current_quantity < line.quantity:
+                raise DocumentRulesError("Not enough stock for outgoing document")
+            delta = -line.quantity
+        elif document.document_type == Document.TYPE_ADJUSTMENT:
+            delta = line.quantity - current_quantity
+        elif document.document_type == Document.TYPE_TRANSFER:
+            if current_quantity < line.quantity:
+                raise DocumentRulesError("Not enough stock for transfer document")
+            delta = -line.quantity
+        else:
+            raise DocumentRulesError("Unsupported document type")
+        quantities[source_key] += delta
+        movements.append((line.product_id, document.warehouse_id, delta))
+        if document.document_type == Document.TYPE_TRANSFER:
+            destination_key = (line.product_id, document.destination_warehouse_id)
+            quantities[destination_key] += line.quantity
+            movements.append((line.product_id, document.destination_warehouse_id, line.quantity))
+    if any(quantity < 0 for quantity in quantities.values()):
+        raise DocumentRulesError("Stock operation would make stock negative")
+    return movements, quantities
+
+
+def _write_stock_movements(
+    db: Session,
+    document: Document,
+    posting_version: int,
+    movement_kind: str,
+    movements: list[tuple[int, int, Decimal]],
+    reason_prefix: str,
+) -> None:
+    for product_id, warehouse_id, delta in movements:
+        db.add(
+            StockMovement(
+                product_id=product_id,
+                warehouse_id=warehouse_id,
+                document_id=document.id,
+                posting_version=posting_version,
+                movement_kind=movement_kind,
+                quantity_delta=delta,
+                reason=f"{reason_prefix}:{document.document_type}:v{posting_version}",
+            )
+        )
+
+
+def _active_posting_movements(db: Session, document: Document) -> list[StockMovement]:
+    return list(
+        db.scalars(
+            select(StockMovement).where(
+                StockMovement.document_id == document.id,
+                StockMovement.posting_version == document.posting_version,
+                StockMovement.movement_kind == "apply",
+            )
+        ).all()
+    )
+
+
+def _apply_balance_quantities(
+    balances: dict[tuple[int, int], StockBalance],
+    quantities: dict[tuple[int, int], Decimal],
+) -> None:
+    for key, quantity in quantities.items():
+        balances[key].quantity = quantity
+
+
 def post_document(db: Session, document_id: int) -> Document:
     document = _load_document(db, document_id, for_update=True)
     if document.status != Document.STATUS_DRAFT:
@@ -481,44 +630,26 @@ def post_document(db: Session, document_id: int) -> Document:
     for line in document.lines:
         _validate_document_line(db, document.document_type, line.product_id, line.quantity)
 
-    stock_keys = {(line.product_id, document.warehouse_id) for line in document.lines}
-    if document.document_type == Document.TYPE_TRANSFER:
-        stock_keys.update((line.product_id, document.destination_warehouse_id) for line in document.lines)
+    stock_keys = _document_stock_keys(document)
     _lock_stock_keys(db, stock_keys)
 
     try:
-        for line in document.lines:
-            balance = _get_balance(db, line.product_id, document.warehouse_id)
-            delta = _movement_delta(document, line, balance.quantity)
-            balance.quantity += delta
-            db.add(
-                StockMovement(
-                    product_id=line.product_id,
-                    warehouse_id=document.warehouse_id,
-                    document_id=document.id,
-                    quantity_delta=delta,
-                    reason=f"post:{document.document_type}",
-                )
-            )
-            if document.document_type == Document.TYPE_TRANSFER:
-                destination_balance = _get_balance(db, line.product_id, document.destination_warehouse_id)
-                destination_balance.quantity += line.quantity
-                db.add(
-                    StockMovement(
-                        product_id=line.product_id,
-                        warehouse_id=document.destination_warehouse_id,
-                        document_id=document.id,
-                        quantity_delta=line.quantity,
-                        reason=f"post:{document.document_type}",
-                    )
-                )
+        balances, starting_quantities = _load_balance_quantities(db, stock_keys)
+        movements, final_quantities = _plan_document_movements(document, starting_quantities)
+        _apply_balance_quantities(balances, final_quantities)
+        document.posting_version += 1
+        _write_stock_movements(db, document, document.posting_version, "apply", movements, "post")
         document.status = Document.STATUS_POSTED
+        _store_revision(db, document, document.posting_version, "Первичное проведение")
         write_audit(
             db,
             "document",
             document.id,
             "post",
-            change_details({"status": Document.STATUS_DRAFT}, {"status": Document.STATUS_POSTED}),
+            change_details(
+                {"status": Document.STATUS_DRAFT, "posting_version": 0},
+                {"status": Document.STATUS_POSTED, "posting_version": document.posting_version},
+            ),
         )
         db.commit()
     except (DocumentRulesError, IntegrityError) as exc:
@@ -528,45 +659,198 @@ def post_document(db: Session, document_id: int) -> Document:
     return document
 
 
+def _build_repost_candidate(db: Session, payload: DocumentRepost) -> SimpleNamespace:
+    if payload.document_type not in _valid_document_types():
+        raise HTTPException(status_code=422, detail="Invalid document type")
+    _validate_document_partner(db, payload.document_type, payload.partner_id)
+    _validate_document_warehouse_references(
+        db,
+        payload.document_type,
+        payload.warehouse_id,
+        payload.destination_warehouse_id,
+    )
+    currency_code, exchange_rate = _normalize_document_currency(
+        db,
+        payload.document_type,
+        payload.currency_code,
+        payload.exchange_rate,
+    )
+    candidate = SimpleNamespace(
+        id=None,
+        document_type=payload.document_type,
+        number=_normalize_document_number(db, payload.document_type, payload.number),
+        document_date=payload.document_date,
+        status=Document.STATUS_POSTED,
+        partner_id=payload.partner_id,
+        warehouse_id=payload.warehouse_id,
+        destination_warehouse_id=payload.destination_warehouse_id,
+        currency_code=currency_code,
+        exchange_rate=exchange_rate,
+        note=payload.note,
+        lines=[],
+    )
+    _validate_document_warehouses(db, candidate)
+    for payload_line in payload.lines:
+        product = _validate_document_line(
+            db,
+            candidate.document_type,
+            payload_line.product_id,
+            payload_line.quantity,
+        )
+        price = _base_price(candidate, payload_line.price, payload_line.foreign_price)
+        foreign_price = (
+            payload_line.foreign_price
+            if candidate.document_type == Document.TYPE_INCOMING
+            else None
+        )
+        candidate.lines.append(
+            DocumentLine(
+                product_id=payload_line.product_id,
+                product=product,
+                quantity=payload_line.quantity,
+                price=price,
+                line_total=_line_total(payload_line.quantity, price),
+                foreign_price=foreign_price,
+                foreign_line_total=(
+                    _line_total(payload_line.quantity, foreign_price)
+                    if foreign_price is not None
+                    else None
+                ),
+            )
+        )
+    candidate.total_amount = sum((line.line_total for line in candidate.lines), Decimal("0"))
+    candidate.foreign_total_amount = sum(
+        (line.foreign_line_total or line.line_total for line in candidate.lines),
+        Decimal("0"),
+    )
+    return candidate
+
+
+def repost_document(db: Session, document_id: int, payload: DocumentRepost) -> Document:
+    document = _load_document(db, document_id, for_update=True)
+    if document.status != Document.STATUS_POSTED:
+        raise HTTPException(status_code=409, detail="Only posted documents can be corrected")
+    reason = payload.reason.strip()
+    if len(reason) < 3:
+        raise HTTPException(status_code=422, detail="Correction reason must contain at least 3 characters")
+
+    try:
+        old_snapshot = _document_snapshot(document)
+        _store_revision(db, document, document.posting_version, "Recovered posted version")
+        candidate = _build_repost_candidate(db, payload)
+        old_movements = _active_posting_movements(db, document)
+        if not old_movements:
+            raise DocumentRulesError("Posted document has no active stock movements")
+
+        stock_keys = {(movement.product_id, movement.warehouse_id) for movement in old_movements}
+        stock_keys.update(_document_stock_keys(candidate))
+        _lock_stock_keys(db, stock_keys)
+        balances, current_quantities = _load_balance_quantities(db, stock_keys)
+        baseline_quantities = dict(current_quantities)
+        for movement in old_movements:
+            key = (movement.product_id, movement.warehouse_id)
+            baseline_quantities[key] -= movement.quantity_delta
+
+        new_movements, final_quantities = _plan_document_movements(candidate, baseline_quantities)
+        _apply_balance_quantities(balances, final_quantities)
+        reverse_movements = [
+            (movement.product_id, movement.warehouse_id, -movement.quantity_delta)
+            for movement in old_movements
+        ]
+        _write_stock_movements(
+            db,
+            document,
+            document.posting_version,
+            "reverse",
+            reverse_movements,
+            "repost_reverse",
+        )
+
+        document.document_type = candidate.document_type
+        document.number = candidate.number
+        document.document_date = candidate.document_date
+        document.partner_id = candidate.partner_id
+        document.warehouse_id = candidate.warehouse_id
+        document.destination_warehouse_id = candidate.destination_warehouse_id
+        document.total_amount = candidate.total_amount
+        document.currency_code = candidate.currency_code
+        document.exchange_rate = candidate.exchange_rate
+        document.foreign_total_amount = candidate.foreign_total_amount
+        document.note = candidate.note
+        document.lines = candidate.lines
+        document.posting_version += 1
+        _write_stock_movements(
+            db,
+            document,
+            document.posting_version,
+            "apply",
+            new_movements,
+            "repost_apply",
+        )
+        new_snapshot = _document_snapshot(document)
+        _store_revision(db, document, document.posting_version, reason)
+        write_audit(
+            db,
+            "document",
+            document.id,
+            "repost",
+            change_details(
+                {"posting_version": document.posting_version - 1, "snapshot": old_snapshot},
+                {"posting_version": document.posting_version, "reason": reason, "snapshot": new_snapshot},
+            ),
+        )
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    except (DocumentRulesError, IntegrityError) as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    db.expire_all()
+    return _load_document(db, document_id)
+
+
 def cancel_document(db: Session, document_id: int) -> Document:
     document = _load_document(db, document_id, for_update=True)
     if document.status != Document.STATUS_POSTED:
         raise HTTPException(status_code=409, detail="Only posted documents can be cancelled")
     _validate_document_warehouses(db, document)
 
-    movements = list(
-        db.scalars(
-            select(StockMovement).where(
-                StockMovement.document_id == document.id,
-                StockMovement.reason.like("post:%"),
-            )
-        )
-    )
+    movements = _active_posting_movements(db, document)
+    if not movements:
+        raise HTTPException(status_code=409, detail="Posted document has no active stock movements")
     _lock_stock_keys(db, {(movement.product_id, movement.warehouse_id) for movement in movements})
     try:
+        keys = {(movement.product_id, movement.warehouse_id) for movement in movements}
+        balances, final_quantities = _load_balance_quantities(db, keys)
         for movement in movements:
-            balance = _get_balance(db, movement.product_id, movement.warehouse_id)
-            reverse_delta = -movement.quantity_delta
-            if balance.quantity + reverse_delta < 0:
-                # TODO LEGACY_RULE_REQUIRED: confirm cancellation behavior when later documents consumed stock.
+            key = (movement.product_id, movement.warehouse_id)
+            final_quantities[key] -= movement.quantity_delta
+            if final_quantities[key] < 0:
                 raise DocumentRulesError("Cancellation would make stock negative")
-            balance.quantity += reverse_delta
-            db.add(
-                StockMovement(
-                    product_id=movement.product_id,
-                    warehouse_id=movement.warehouse_id,
-                    document_id=document.id,
-                    quantity_delta=reverse_delta,
-                    reason=f"cancel:{document.document_type}",
-                )
-            )
+        _apply_balance_quantities(balances, final_quantities)
+        reverse_movements = [
+            (movement.product_id, movement.warehouse_id, -movement.quantity_delta)
+            for movement in movements
+        ]
+        _write_stock_movements(
+            db,
+            document,
+            document.posting_version,
+            "reverse",
+            reverse_movements,
+            "cancel",
+        )
         document.status = Document.STATUS_CANCELLED
         write_audit(
             db,
             "document",
             document.id,
             "cancel",
-            change_details({"status": Document.STATUS_POSTED}, {"status": Document.STATUS_CANCELLED}),
+            change_details(
+                {"status": Document.STATUS_POSTED, "posting_version": document.posting_version},
+                {"status": Document.STATUS_CANCELLED, "posting_version": document.posting_version},
+            ),
         )
         db.commit()
     except (DocumentRulesError, IntegrityError) as exc:

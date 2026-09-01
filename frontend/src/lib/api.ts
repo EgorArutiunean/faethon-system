@@ -63,8 +63,26 @@ export type Document = {
   currency_code: string;
   exchange_rate: string;
   foreign_total_amount: string;
+  posting_version: number;
   note?: string | null;
   lines?: DocumentLine[];
+};
+
+export type DocumentRevision = {
+  id: number;
+  document_id: number;
+  version: number;
+  reason: string;
+  actor_user_id?: number | null;
+  actor_name?: string | null;
+  snapshot: {
+    total_amount?: string;
+    foreign_total_amount?: string;
+    lines?: Array<Record<string, unknown>>;
+    [key: string]: unknown;
+  };
+  created_at: string;
+  updated_at: string;
 };
 
 export type Currency = {
@@ -391,6 +409,20 @@ export const api = {
   latestExchangeRate: (currencyCode: string, onDate?: string) =>
     request<{ currency_code: string; rate_to_base: string }>(`/currencies/rates/latest?currency_code=${encodeURIComponent(currencyCode)}${onDate ? `&on_date=${encodeURIComponent(onDate)}` : ""}`),
   postDocument: (documentId: number) => request<Document>(`/documents/${documentId}/post`, { method: "POST" }),
+  repostDocument: (documentId: number, payload: {
+    document_type: string;
+    number?: string | null;
+    document_date: string;
+    partner_id?: number | null;
+    warehouse_id?: number | null;
+    destination_warehouse_id?: number | null;
+    currency_code: string;
+    exchange_rate: string;
+    note?: string | null;
+    reason: string;
+    lines: Array<{ product_id: number; quantity: string; price: string; foreign_price?: string | null }>;
+  }) => request<Document>(`/documents/${documentId}/repost`, { method: "POST", body: JSON.stringify(payload) }),
+  documentRevisions: (documentId: number) => request<DocumentRevision[]>(`/documents/${documentId}/revisions`),
   cancelDocument: (documentId: number) => request<Document>(`/documents/${documentId}/cancel`, { method: "POST" }),
   deleteDocument: (documentId: number) => request<void>(`/documents/${documentId}`, { method: "DELETE" }),
   deleteDocumentLine: (documentId: number, lineId: number) => request<void>(`/documents/${documentId}/lines/${lineId}`, { method: "DELETE" }),

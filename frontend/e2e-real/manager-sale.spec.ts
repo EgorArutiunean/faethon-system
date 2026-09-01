@@ -10,7 +10,9 @@ type SeededSaleData = {
   token: string;
   productId: number;
   warehouseId: number;
+  supplierId: number;
   customerId: number;
+  incomingId: number;
 };
 
 async function postJson(api: APIRequestContext, path: string, token: string, data: Record<string, unknown>) {
@@ -85,7 +87,9 @@ async function prepareStock(key = "SALE"): Promise<SeededSaleData> {
     token,
     productId: product.id,
     warehouseId: warehouse.id,
+    supplierId: supplier.id,
     customerId: customer.id,
+    incomingId: incoming.id,
   };
 }
 
@@ -225,6 +229,52 @@ test("M03: продажа через интерфейс согласует до�
   expect(debt.balance).toBe("300.00");
   expect(register.total_amount).toBe("300.00");
   expect(register.rows).toEqual(expect.arrayContaining([expect.objectContaining({ id: documentId, total_amount: "300.00" })]));
+  await api.dispose();
+});
+
+test("M08: менеджер исправляет проведенный приход с полной историей", async ({ page }) => {
+  const seeded = await prepareStock("REPOST");
+  await loginAsManager(page);
+  await page.goto(`/documents/${seeded.incomingId}`, { waitUntil: "domcontentloaded" });
+  await expect(page.getByText("Проведён", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("document-posting-version")).toHaveText("v1");
+
+  await page.getByTestId("document-correction-start").click();
+  await page.getByTestId("document-correction-reason").fill("Уточнено фактическое количество при приёмке");
+  await page.getByRole("button", { name: "Изменить строку" }).click();
+  await page.getByTestId("document-line-quantity").fill("7");
+  await page.getByTestId("document-line-price").fill("80");
+  await page.getByTestId("document-line-add").click();
+  await expect(page.getByRole("cell", { name: "E2E Контрольный товар" })).toBeVisible();
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByTestId("document-correction-apply").click();
+  await expect(page.getByTestId("document-posting-version")).toHaveText("v2");
+  await expect(page.getByText("Уточнено фактическое количество при приёмке", { exact: true })).toBeVisible();
+
+  const api = await request.newContext({
+    baseURL: apiBaseUrl,
+    extraHTTPHeaders: { Authorization: `Bearer ${seeded.token}` },
+  });
+  const [documentResponse, stockResponse, debtResponse, revisionsResponse, movementsResponse] = await Promise.all([
+    api.get(`documents/${seeded.incomingId}`),
+    api.get(`stock/balances?warehouse_id=${seeded.warehouseId}&product_id=${seeded.productId}`),
+    api.get(`partners/${seeded.supplierId}/balance`),
+    api.get(`documents/${seeded.incomingId}/revisions`),
+    api.get(`stock/movements?document_id=${seeded.incomingId}`),
+  ]);
+  const document = await documentResponse.json();
+  const stock = await stockResponse.json();
+  const debt = await debtResponse.json();
+  const revisions = await revisionsResponse.json();
+  const movements = await movementsResponse.json();
+  expect(document.posting_version).toBe(2);
+  expect(document.lines[0].quantity).toBe("7.000");
+  expect(document.total_amount).toBe("560.00");
+  expect(stock[0].quantity).toBe("7.000");
+  expect(debt.balance).toBe("-560.00");
+  expect(revisions.map((revision: { version: number }) => revision.version)).toEqual([2, 1]);
+  expect(movements).toHaveLength(3);
   await api.dispose();
 });
 

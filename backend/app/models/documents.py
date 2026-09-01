@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from sqlalchemy import CheckConstraint, Date, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import JSON, CheckConstraint, Date, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -14,6 +14,7 @@ class Document(TimestampMixin, Base):
         CheckConstraint("total_amount >= 0", name="ck_documents_total_nonnegative"),
         CheckConstraint("foreign_total_amount >= 0", name="ck_documents_foreign_total_nonnegative"),
         CheckConstraint("exchange_rate > 0", name="ck_documents_exchange_rate_positive"),
+        CheckConstraint("posting_version >= 0", name="ck_documents_posting_version_nonnegative"),
     )
 
     STATUS_DRAFT = "draft"
@@ -37,12 +38,19 @@ class Document(TimestampMixin, Base):
     currency_code: Mapped[str] = mapped_column(String(12), default="RUB_PMR")
     exchange_rate: Mapped[Decimal] = mapped_column(Numeric(14, 6), default=1)
     foreign_total_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=0)
+    posting_version: Mapped[int] = mapped_column(Integer, default=0)
     note: Mapped[str | None] = mapped_column(Text)
 
     partner = relationship("Partner", back_populates="documents")
     warehouse = relationship("Warehouse", foreign_keys=[warehouse_id])
     destination_warehouse = relationship("Warehouse", foreign_keys=[destination_warehouse_id])
     lines = relationship("DocumentLine", back_populates="document", cascade="all, delete-orphan")
+    revisions = relationship(
+        "DocumentRevision",
+        back_populates="document",
+        cascade="all, delete-orphan",
+        order_by="DocumentRevision.version",
+    )
 
     @property
     def partner_name(self) -> str | None:
@@ -99,3 +107,27 @@ class DocumentNumberSequence(Base):
 
     document_type: Mapped[str] = mapped_column(String(60), primary_key=True)
     last_value: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class DocumentRevision(TimestampMixin, Base):
+    __tablename__ = "document_revisions"
+    __table_args__ = (
+        UniqueConstraint("document_id", "version", name="uq_document_revisions_document_version"),
+        CheckConstraint("version > 0", name="ck_document_revisions_version_positive"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    document_id: Mapped[int] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), index=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    snapshot: Mapped[dict] = mapped_column(JSON, nullable=False)
+
+    document = relationship("Document", back_populates="revisions")
+    actor = relationship("User")
+
+    @property
+    def actor_name(self) -> str | None:
+        if self.actor is None:
+            return None
+        return self.actor.full_name or self.actor.username

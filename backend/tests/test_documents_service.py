@@ -14,13 +14,19 @@ from app.db.session import Base
 from app.db.session import get_db
 from app.main import app
 from app.core.security import create_access_token
-from app.models.documents import Document
+from app.models.documents import Document, DocumentRevision
 from app.models.identity import Role, User
 from app.models.partners import Partner
 from app.models.products import Product
 from app.models.stock import StockBalance, StockMovement
 from app.models.stock import Warehouse
-from app.schemas.documents import DocumentCreate, DocumentLineCreate, DocumentLineUpdate, DocumentUpdate
+from app.schemas.documents import (
+    DocumentCreate,
+    DocumentLineCreate,
+    DocumentLineUpdate,
+    DocumentRepost,
+    DocumentUpdate,
+)
 from app.services.documents_service import (
     add_document_line,
     cancel_document,
@@ -28,6 +34,7 @@ from app.services.documents_service import (
     delete_document_line,
     delete_draft_document,
     post_document,
+    repost_document,
     update_document_header,
     update_document_line,
 )
@@ -617,6 +624,201 @@ def test_duplicate_manual_document_number_is_rejected(db: Session) -> None:
         create_document(db, payload)
 
     assert exc.value.status_code == 409
+
+
+def repost_payload(
+    document: Document,
+    product_id: int,
+    quantity: str,
+    *,
+    reason: str = "Correct actual quantity",
+) -> DocumentRepost:
+    return DocumentRepost(
+        document_type=document.document_type,
+        number=document.number,
+        document_date=document.document_date,
+        partner_id=document.partner_id,
+        warehouse_id=document.warehouse_id,
+        destination_warehouse_id=document.destination_warehouse_id,
+        currency_code=document.currency_code,
+        exchange_rate=document.exchange_rate,
+        note=document.note,
+        reason=reason,
+        lines=[
+            DocumentLineCreate(
+                product_id=product_id,
+                quantity=Decimal(quantity),
+                price=Decimal("10.00"),
+            )
+        ],
+    )
+
+
+def test_posting_creates_versioned_revision_and_movements(db: Session) -> None:
+    product, warehouse, partner = seed_catalog(db)
+    document = make_document(db, Document.TYPE_INCOMING, warehouse.id, partner.id)
+    add_line(db, document.id, product.id, "5")
+
+    posted = post_document(db, document.id)
+
+    revision = db.scalar(select(DocumentRevision).where(DocumentRevision.document_id == document.id))
+    movement = db.scalar(select(StockMovement).where(StockMovement.document_id == document.id))
+    assert posted.posting_version == 1
+    assert revision is not None
+    assert revision.version == 1
+    assert revision.snapshot["lines"][0]["quantity"] == "5.000"
+    assert revision.snapshot["lines"][0]["product_name"] == "Bolt"
+    assert revision.snapshot["lines"][0]["product_sku"] == "BOLT"
+    assert movement is not None
+    assert movement.posting_version == 1
+    assert movement.movement_kind == "apply"
+
+
+def test_repost_replaces_stock_and_preserves_both_revisions(db: Session) -> None:
+    product, warehouse, partner = seed_catalog(db)
+    document = make_document(db, Document.TYPE_INCOMING, warehouse.id, partner.id)
+    add_line(db, document.id, product.id, "5")
+    post_document(db, document.id)
+
+    corrected = repost_document(db, document.id, repost_payload(document, product.id, "8"))
+
+    revisions = list(
+        db.scalars(
+            select(DocumentRevision)
+            .where(DocumentRevision.document_id == document.id)
+            .order_by(DocumentRevision.version)
+        )
+    )
+    movements = list(
+        db.scalars(
+            select(StockMovement)
+            .where(StockMovement.document_id == document.id)
+            .order_by(StockMovement.id)
+        )
+    )
+    assert corrected.status == Document.STATUS_POSTED
+    assert corrected.posting_version == 2
+    assert balance_quantity(db, product.id, warehouse.id) == Decimal("8.000")
+    assert [revision.version for revision in revisions] == [1, 2]
+    assert revisions[0].snapshot["lines"][0]["quantity"] == "5.000"
+    assert revisions[1].snapshot["lines"][0]["quantity"] == "8.000"
+    assert revisions[1].reason == "Correct actual quantity"
+    assert [(movement.posting_version, movement.movement_kind, movement.quantity_delta) for movement in movements] == [
+        (1, "apply", Decimal("5.000")),
+        (1, "reverse", Decimal("-5.000")),
+        (2, "apply", Decimal("8.000")),
+    ]
+
+
+def test_repost_incoming_after_sale_uses_final_stock_not_temporary_reverse(db: Session) -> None:
+    product, warehouse, partner = seed_catalog(db)
+    incoming = make_document(db, Document.TYPE_INCOMING, warehouse.id, partner.id)
+    add_line(db, incoming.id, product.id, "10")
+    post_document(db, incoming.id)
+    outgoing = make_document(db, Document.TYPE_OUTGOING, warehouse.id, partner.id)
+    add_line(db, outgoing.id, product.id, "8")
+    post_document(db, outgoing.id)
+
+    repost_document(db, incoming.id, repost_payload(incoming, product.id, "9"))
+
+    assert balance_quantity(db, product.id, warehouse.id) == Decimal("1.000")
+
+
+def test_failed_repost_rolls_back_document_stock_and_history(db: Session) -> None:
+    product, warehouse, partner = seed_catalog(db)
+    incoming = make_document(db, Document.TYPE_INCOMING, warehouse.id, partner.id)
+    add_line(db, incoming.id, product.id, "10")
+    post_document(db, incoming.id)
+    outgoing = make_document(db, Document.TYPE_OUTGOING, warehouse.id, partner.id)
+    add_line(db, outgoing.id, product.id, "8")
+    post_document(db, outgoing.id)
+    movement_count = len(list(db.scalars(select(StockMovement))))
+
+    with pytest.raises(HTTPException) as exc:
+        repost_document(db, incoming.id, repost_payload(incoming, product.id, "7"))
+
+    db.expire_all()
+    unchanged = db.get(Document, incoming.id)
+    revisions = list(db.scalars(select(DocumentRevision).where(DocumentRevision.document_id == incoming.id)))
+    assert exc.value.status_code == 409
+    assert unchanged is not None
+    assert unchanged.posting_version == 1
+    assert unchanged.lines[0].quantity == Decimal("10.000")
+    assert balance_quantity(db, product.id, warehouse.id) == Decimal("2.000")
+    assert len(revisions) == 1
+    assert len(list(db.scalars(select(StockMovement)))) == movement_count
+
+
+def test_cancel_after_repost_reverses_only_current_version(db: Session) -> None:
+    product, warehouse, partner = seed_catalog(db)
+    incoming = make_document(db, Document.TYPE_INCOMING, warehouse.id, partner.id)
+    add_line(db, incoming.id, product.id, "5")
+    post_document(db, incoming.id)
+    repost_document(db, incoming.id, repost_payload(incoming, product.id, "8"))
+
+    cancelled = cancel_document(db, incoming.id)
+
+    assert cancelled.status == Document.STATUS_CANCELLED
+    assert cancelled.posting_version == 2
+    assert balance_quantity(db, product.id, warehouse.id) == Decimal("0.000")
+    cancellation = list(
+        db.scalars(
+            select(StockMovement).where(
+                StockMovement.document_id == incoming.id,
+                StockMovement.reason.like("cancel:%"),
+            )
+        )
+    )
+    assert len(cancellation) == 1
+    assert cancellation[0].posting_version == 2
+    assert cancellation[0].quantity_delta == Decimal("-8.000")
+
+
+def test_manager_repost_api_records_authenticated_actor(db: Session) -> None:
+    seed_auth_defaults(db)
+    manager = db.scalar(select(User).where(User.username == "manager@example.com"))
+    assert manager is not None
+    product, warehouse, partner = seed_catalog(db)
+    incoming = make_document(db, Document.TYPE_INCOMING, warehouse.id, partner.id)
+    add_line(db, incoming.id, product.id, "5")
+    post_document(db, incoming.id)
+
+    def override_get_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        headers = {"Authorization": f"Bearer {create_access_token(str(manager.id))}"}
+        response = TestClient(app).post(
+            f"/api/v1/documents/{incoming.id}/repost",
+            headers=headers,
+            json={
+                "document_type": "incoming",
+                "number": incoming.number,
+                "document_date": "2026-05-01",
+                "partner_id": partner.id,
+                "warehouse_id": warehouse.id,
+                "currency_code": "RUB_PMR",
+                "exchange_rate": "1",
+                "reason": "API correction",
+                "lines": [{"product_id": product.id, "quantity": "6", "price": "6"}],
+            },
+        )
+        revisions_response = TestClient(app).get(
+            f"/api/v1/documents/{incoming.id}/revisions",
+            headers=headers,
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["posting_version"] == 2
+    assert response.json()["lines"][0]["quantity"] == "6.000"
+    assert revisions_response.status_code == 200
+    latest_revision = revisions_response.json()[0]
+    assert latest_revision["version"] == 2
+    assert latest_revision["actor_user_id"] == manager.id
+    assert latest_revision["actor_name"] == "Demo Manager"
 
 
 def test_missing_product_is_rejected_when_adding_line(db: Session) -> None:

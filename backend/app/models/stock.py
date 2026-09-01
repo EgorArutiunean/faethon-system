@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from sqlalchemy import CheckConstraint, ForeignKey, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import CheckConstraint, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -23,11 +23,23 @@ class Warehouse(TimestampMixin, Base):
 
 class StockMovement(TimestampMixin, Base):
     __tablename__ = "stock_movements"
+    __table_args__ = (
+        CheckConstraint(
+            "posting_version IS NULL OR posting_version > 0",
+            name="ck_stock_movements_posting_version_positive",
+        ),
+        CheckConstraint(
+            "movement_kind IS NULL OR movement_kind IN ('apply', 'reverse')",
+            name="ck_stock_movements_kind",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), index=True)
     warehouse_id: Mapped[int] = mapped_column(ForeignKey("warehouses.id"), index=True)
     document_id: Mapped[int | None] = mapped_column(ForeignKey("documents.id"), index=True)
+    posting_version: Mapped[int | None] = mapped_column(Integer, index=True)
+    movement_kind: Mapped[str | None] = mapped_column(String(20), index=True)
     quantity_delta: Mapped[Decimal] = mapped_column(Numeric(14, 3))
     reason: Mapped[str | None] = mapped_column(String(120))
 

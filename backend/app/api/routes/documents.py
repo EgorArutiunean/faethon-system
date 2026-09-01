@@ -13,6 +13,8 @@ from app.schemas.documents import (
     DocumentLineRead,
     DocumentLineUpdate,
     DocumentRead,
+    DocumentRepost,
+    DocumentRevisionRead,
     DocumentUpdate,
 )
 from app.services import documents_print_service, documents_service
@@ -81,6 +83,24 @@ def update_document(item_id: int, payload: DocumentUpdate, db: Session = Depends
 @router.post("/{item_id}/post", response_model=DocumentRead, dependencies=[Depends(require_permission("documents.post"))])
 def post_document_endpoint(item_id: int, db: Session = Depends(get_db)):
     return documents_service.post_document(db, item_id)
+
+
+@router.post(
+    "/{item_id}/repost",
+    response_model=DocumentDetailRead,
+    dependencies=[Depends(require_permission("documents.update")), Depends(require_permission("documents.post"))],
+)
+def repost_document_endpoint(item_id: int, payload: DocumentRepost, db: Session = Depends(get_db)):
+    return documents_service.repost_document(db, item_id, payload)
+
+
+@router.get(
+    "/{item_id}/revisions",
+    response_model=list[DocumentRevisionRead],
+    dependencies=[Depends(require_permission("documents.read"))],
+)
+def list_document_revisions(item_id: int, db: Session = Depends(get_db)):
+    return documents_service.list_document_revisions(db, item_id)
 
 
 @router.post("/{item_id}/cancel", response_model=DocumentRead, dependencies=[Depends(require_permission("documents.cancel"))])

@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -45,6 +46,7 @@ class DocumentUpdate(BaseModel):
 
 class DocumentRead(DocumentBase, Timestamped):
     id: int
+    posting_version: int = 0
     partner_name: str | None = None
     warehouse_name: str | None = None
     destination_warehouse_name: str | None = None
@@ -59,6 +61,20 @@ class DocumentLineBase(BaseModel):
 
 class DocumentLineCreate(DocumentLineBase):
     pass
+
+
+class DocumentRepost(BaseModel):
+    document_type: str
+    number: str | None = None
+    document_date: date
+    partner_id: int | None = None
+    warehouse_id: int | None = None
+    destination_warehouse_id: int | None = None
+    currency_code: str = "RUB_PMR"
+    exchange_rate: Decimal = Field(default=Decimal("1"), gt=0)
+    note: str | None = None
+    reason: str = Field(min_length=3, max_length=500)
+    lines: list[DocumentLineCreate] = Field(min_length=1)
 
 
 class DocumentLineUpdate(BaseModel):
@@ -79,3 +95,13 @@ class DocumentLineRead(DocumentLineBase, Timestamped):
 
 class DocumentDetailRead(DocumentRead):
     lines: list[DocumentLineRead] = []
+
+
+class DocumentRevisionRead(Timestamped):
+    id: int
+    document_id: int
+    version: int
+    reason: str
+    actor_user_id: int | None = None
+    actor_name: str | None = None
+    snapshot: dict[str, Any]

@@ -102,7 +102,11 @@ Business decisions received after the audit:
 - manager manually allocates payments to documents;
 - one cash desk for the first release;
 - baseline operational documents/reports retained;
-- target parallel operation and cutover near the end of October 2026.
+- target parallel operation and cutover near the end of October 2026;
+- no separate return document in the first release; controlled edit/cancel is used;
+- manager chooses return/write-off/receipt for rare transfer discrepancies;
+- sale-price warning threshold is markup below `10%` over latest incoming cost;
+- manager creates, posts, and manually allocates payments.
 
 Latest checks:
 

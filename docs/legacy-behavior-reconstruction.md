@@ -130,8 +130,7 @@ These questions must be answered before changing accounting rules for documents 
   balances is not allowed.
 - COST-001: current product cost is based on the latest posted incoming purchase
   cost converted to RUB PMR.
-- PAY-005: payment allocation is performed manually by a manager. The exact split
-  of responsibilities between manager and cashier still needs confirmation.
+- PAY-005: payment allocation is performed manually by a manager.
 - CASH-003: one cash desk is sufficient for the first release. Multiple cash
   desks and bank accounts are deferred.
 - REP-005: the launch baseline includes incoming/outgoing invoices, price list,
@@ -139,6 +138,17 @@ These questions must be answered before changing accounting rules for documents 
   will be accepted through UAT.
 - DATA-002: target cutover is near the end of October 2026. Parallel operation may
   begin earlier as soon as data reconciliation and critical workflows are ready.
+- DOC-013: separate return documents are not required for the first release.
+  Operators use controlled editing or cancellation of the original document.
+- TRANSFER-001: when a rare transfer has a discrepancy, the manager chooses the
+  resolution: return to source, write off, or receive at destination. The chosen
+  resolution must be represented by an audited stock operation.
+- COST-002: show the sale-price review warning when sale price is below 110% of
+  the latest posted incoming cost in RUB PMR. The markup formula is
+  `(sale_price - latest_cost) / latest_cost`.
+- PAY-006: the manager creates, posts, and manually allocates payments to
+  documents. Cashier responsibilities must be narrowed accordingly when the
+  payment-allocation workflow is implemented.
 
 When Egor answers a question:
 

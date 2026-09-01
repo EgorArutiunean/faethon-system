@@ -1,8 +1,13 @@
 # Work Plan
 
-Date: 2026-06-16
+Date: 2026-09-01
 
 Goal: rebuild the old BuySell program behavior in the modern web app without direct access to `BUY.GDB`.
+
+The current execution order, repeated audit, release blockers, and ten pending
+business decisions are maintained in
+`docs/re-audit-and-work-plan-2026-09-01.md`. That document takes precedence over
+older priority lists in this file.
 
 `BUY.GDB` is no longer treated as a required source. The new source of truth is observed behavior: old program screens, reports, printed forms, operator knowledge, manual exports, screenshots, and confirmed business rules.
 

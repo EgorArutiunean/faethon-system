@@ -60,6 +60,7 @@ Demo users:
 - `admin@example.com / admin123`
 - `manager@example.com / manager123`
 - `cashier@example.com / cashier123`
+- `logist@example.com / logist123`
 - `viewer@example.com / viewer123`
 
 ## Local Backend
@@ -123,12 +124,16 @@ Current target:
 - keep production credentials, local databases, logs, build output, downloaded Firebird tools, and legacy working copies out of version control;
 - prepare for a future Docker Compose production deployment after server access and production secrets are available.
 
-Verification on 2026-06-16:
+Verification on 2026-09-01:
 
-- backend tests: `80 passed`;
-- backend compileall: successful;
+- backend tests: `123 passed` using the local SQLite test configuration;
 - frontend TypeScript check: successful;
 - frontend production build: successful.
+- frontend mock Playwright: `3 passed`;
+
+PostgreSQL real E2E was not repeated on 2026-09-01 because Docker Desktop was
+not running. The latest recorded successful PostgreSQL result is `7 passed` on
+2026-07-24.
 
 ## Current Scope
 
@@ -144,7 +149,7 @@ Implemented:
 Not implemented yet:
 
 - final legacy-compatible accounting behavior;
-- PDF print generation;
+- logistics task execution and confirmations;
 - advanced report builder;
 - full legacy data import.
 

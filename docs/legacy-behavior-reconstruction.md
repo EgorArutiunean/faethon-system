@@ -100,6 +100,28 @@ These questions must be answered before changing accounting rules for documents 
 
 - UI-001: the application interface must be in Russian. English may remain as an internal fallback dictionary, but users should not switch the active UI to English.
 - DOC-001/DOC-006/DOC-007/DOC-008: use commercial stock-accounting defaults. Launch document types are incoming, outgoing, adjustment, and transfer. Outgoing/transfer cannot make stock negative. Adjustment quantity means target final stock. Transfer is a warehouse-to-warehouse document with source and destination warehouses and no partner/debt effect.
+- LOG-001: the manager posts the source document before logistics processing;
+  stock changes when the manager posts the document.
+- LOG-002: logistics confirms actual quantity per line and cannot change product,
+  partner, prices, currency, or exchange rate. A manager may also confirm lines.
+- LOG-003: logistics tasks use `pending`, `in_progress`, `completed`,
+  `discrepancy`, and `cancelled`; only a manager or admin may cancel or undo a
+  confirmation.
+- LOG-004: every logistics user assigned to the warehouse can see a task, but one
+  task cannot be processed concurrently by multiple users.
+- LOG-005: partial completion is not allowed. A shortage, excess, damage, or
+  replacement is sent to the manager and does not automatically edit the source
+  document.
+- LOG-006: the recipient is recorded for outgoing delivery; final handoff is
+  confirmed by the manager.
+- LOG-007: transfer goods may be represented as in transit and are received by the
+  destination side. One logistics user may be assigned to both warehouses.
+- LOG-008: logistics participates in inventory counting; the manager approves and
+  posts the resulting adjustment. Warehouse operations are not frozen during the
+  count.
+- LOG-009: task start, confirmation, quantity discrepancy, cancellation, and
+  actual-quantity changes must be audited. Task print forms, photos, serials,
+  expiration dates, priorities, and deadlines are deferred.
 
 When Egor answers a question:
 

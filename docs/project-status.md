@@ -82,6 +82,18 @@ See `docs/development-setup.md` for the PostgreSQL/Docker workflow.
 
 ## Verification
 
+Repeated audit on 2026-09-01:
+
+- backend tests against the local SQLite test configuration: `123 passed`;
+- frontend TypeScript check and production build: successful;
+- manager mock Playwright scenarios: `3 passed`;
+- frontend offline dependency audit: `0 vulnerabilities` from the local lock file;
+- Docker Desktop was not running, so PostgreSQL migrations and the `7` real E2E
+  scenarios were not repeated during this audit; their latest successful run
+  remains 2026-07-24;
+- release blockers and the current work order are recorded in
+  `docs/re-audit-and-work-plan-2026-09-01.md`.
+
 Latest checks:
 
 - manager workflow Playwright tests: `3 passed` on 2026-07-24 for M01, M02, and M04;

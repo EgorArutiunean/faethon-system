@@ -4,10 +4,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.security import hash_password
-from app.models.accounting import AuditLog
 from app.models.identity import Role, User
 from app.models.stock import Warehouse
 from app.schemas.users import UserCreate, UserUpdate
+from app.services.audit_writer import write_audit
 
 
 def _load_roles(db: Session, role_names: list[str]) -> list[Role]:
@@ -67,7 +67,7 @@ def create_user(db: Session, payload: UserCreate) -> User:
     db.add(user)
     try:
         db.flush()
-        db.add(AuditLog(entity_type="user", entity_id=str(user.id), action="create", details=f"roles={','.join(payload.role_names)}"))
+        write_audit(db, "user", user.id, "create", f"roles={','.join(payload.role_names)}")
         db.commit()
     except IntegrityError as exc:
         db.rollback()
@@ -107,7 +107,7 @@ def update_user(db: Session, user_id: int, payload: UserUpdate, *, current_user_
     user.warehouses = next_warehouses
     try:
         if values:
-            db.add(AuditLog(entity_type="user", entity_id=str(user.id), action="update", details=",".join(sorted(values.keys()))))
+            write_audit(db, "user", user.id, "update", ",".join(sorted(values.keys())))
         db.commit()
     except IntegrityError as exc:
         db.rollback()

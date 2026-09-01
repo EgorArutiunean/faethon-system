@@ -149,12 +149,14 @@ export type CashOperation = {
   direction: string;
   status: string;
   amount: string;
+  target_balance?: string | null;
   partner_id?: number | null;
   partner_name?: string | null;
   document_id?: number | null;
   payment_id?: number | null;
   payment_status?: string | null;
   note?: string | null;
+  created_by_id?: number | null;
 };
 
 export type CashBalance = {

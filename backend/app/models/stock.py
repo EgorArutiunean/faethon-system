@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from sqlalchemy import ForeignKey, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import CheckConstraint, ForeignKey, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -54,7 +54,10 @@ class StockMovement(TimestampMixin, Base):
 
 class StockBalance(TimestampMixin, Base):
     __tablename__ = "stock_balances"
-    __table_args__ = (UniqueConstraint("product_id", "warehouse_id", name="uq_stock_balance_product_warehouse"),)
+    __table_args__ = (
+        UniqueConstraint("product_id", "warehouse_id", name="uq_stock_balance_product_warehouse"),
+        CheckConstraint("quantity >= 0", name="ck_stock_balances_quantity_nonnegative"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), index=True)

@@ -8,12 +8,12 @@ from openpyxl import Workbook, load_workbook
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.accounting import AuditLog
 from app.models.documents import Document
 from app.models.partners import Partner
 from app.models.products import Product, ProductGroup
 from app.models.stock import StockBalance, StockMovement, Warehouse
 from app.schemas.imports import ImportIssue, ImportSummary
+from app.services.audit_writer import write_audit
 
 
 TEMPLATES: dict[str, list[str]] = {
@@ -170,7 +170,7 @@ def apply_import(db: Session, import_type: str, content: bytes, filename: str) -
             created, skipped = _apply_opening_stock(db, rows)
         elif import_type == "opening-partner-balances":
             created, skipped = _apply_opening_partner_balances(db, rows)
-        db.add(AuditLog(entity_type="import", entity_id=import_type, action="apply", details=f"created={created};skipped={skipped}"))
+        write_audit(db, "import", import_type, "apply", f"created={created};skipped={skipped}")
         db.commit()
         summary.applied = True
         summary.created = created

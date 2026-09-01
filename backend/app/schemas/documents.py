@@ -1,7 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.schemas.common import Timestamped
 
@@ -17,10 +17,10 @@ class DocumentBase(BaseModel):
     partner_id: int | None = None
     warehouse_id: int | None = None
     destination_warehouse_id: int | None = None
-    total_amount: Decimal = Decimal("0")
+    total_amount: Decimal = Field(default=Decimal("0"), ge=0)
     currency_code: str = "RUB_PMR"
-    exchange_rate: Decimal = Decimal("1")
-    foreign_total_amount: Decimal = Decimal("0")
+    exchange_rate: Decimal = Field(default=Decimal("1"), gt=0)
+    foreign_total_amount: Decimal = Field(default=Decimal("0"), ge=0)
     note: str | None = None
 
 
@@ -36,10 +36,10 @@ class DocumentUpdate(BaseModel):
     partner_id: int | None = None
     warehouse_id: int | None = None
     destination_warehouse_id: int | None = None
-    total_amount: Decimal | None = None
+    total_amount: Decimal | None = Field(default=None, ge=0)
     currency_code: str | None = None
-    exchange_rate: Decimal | None = None
-    foreign_total_amount: Decimal | None = None
+    exchange_rate: Decimal | None = Field(default=None, gt=0)
+    foreign_total_amount: Decimal | None = Field(default=None, ge=0)
     note: str | None = None
 
 
@@ -52,9 +52,9 @@ class DocumentRead(DocumentBase, Timestamped):
 
 class DocumentLineBase(BaseModel):
     product_id: int
-    quantity: Decimal
-    price: Decimal = Decimal("0")
-    foreign_price: Decimal | None = None
+    quantity: Decimal = Field(ge=0)
+    price: Decimal = Field(default=Decimal("0"), ge=0)
+    foreign_price: Decimal | None = Field(default=None, ge=0)
 
 
 class DocumentLineCreate(DocumentLineBase):
@@ -63,9 +63,9 @@ class DocumentLineCreate(DocumentLineBase):
 
 class DocumentLineUpdate(BaseModel):
     product_id: int | None = None
-    quantity: Decimal | None = None
-    price: Decimal | None = None
-    foreign_price: Decimal | None = None
+    quantity: Decimal | None = Field(default=None, ge=0)
+    price: Decimal | None = Field(default=None, ge=0)
+    foreign_price: Decimal | None = Field(default=None, ge=0)
 
 
 class DocumentLineRead(DocumentLineBase, Timestamped):

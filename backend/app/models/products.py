@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from sqlalchemy import Boolean, ForeignKey, Numeric, String, Text
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -34,6 +34,9 @@ class Unit(TimestampMixin, Base):
 
 class Product(TimestampMixin, Base):
     __tablename__ = "products"
+    __table_args__ = (
+        CheckConstraint("base_price IS NULL OR base_price >= 0", name="ck_products_base_price_nonnegative"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     sku: Mapped[str | None] = mapped_column(String(80), unique=True, index=True)

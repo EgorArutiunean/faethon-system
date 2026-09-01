@@ -5,8 +5,9 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.models.accounting import AuditLog, Currency, ExchangeRate
+from app.models.accounting import Currency, ExchangeRate
 from app.schemas.currencies import ExchangeRateCreate
+from app.services.audit_writer import write_audit
 
 BASE_CURRENCY_CODE = "RUB_PMR"
 
@@ -55,7 +56,7 @@ def create_exchange_rate(db: Session, payload: ExchangeRateCreate) -> ExchangeRa
     rate = ExchangeRate(currency_id=currency.id, rate_date=payload.rate_date, rate_to_base=payload.rate_to_base, note=payload.note)
     db.add(rate)
     db.flush()
-    db.add(AuditLog(entity_type="exchange_rate", entity_id=str(rate.id), action="create", details=f"{currency.code}={rate.rate_to_base}"))
+    write_audit(db, "exchange_rate", rate.id, "create", f"{currency.code}={rate.rate_to_base}")
     db.commit()
     db.refresh(rate)
     return rate

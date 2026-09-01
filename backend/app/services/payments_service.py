@@ -5,24 +5,24 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.models.accounting import AuditLog, CashOperation, Payment
+from app.models.accounting import CashOperation, Payment
 from app.models.documents import Document
 from app.models.partners import Partner
-from app.schemas.cash import CashOperationCreate
+from app.schemas.cash import CashOperationInternalCreate
 from app.schemas.payments import PaymentCreate, PaymentUpdate, PartnerBalanceRead, PartnerStatementRow
 from app.services import cash_service
+from app.services.audit_writer import change_details, write_audit
 
 
-def _audit(db: Session, entity_type: str, entity_id: int, action: str, details: str | None = None) -> None:
-    db.add(AuditLog(entity_type=entity_type, entity_id=str(entity_id), action=action, details=details))
-
-
-def _load_payment(db: Session, payment_id: int) -> Payment:
-    payment = db.scalar(
+def _load_payment(db: Session, payment_id: int, *, for_update: bool = False) -> Payment:
+    statement = (
         select(Payment)
         .where(Payment.id == payment_id)
         .options(selectinload(Payment.partner), selectinload(Payment.document), selectinload(Payment.cash_operations))
     )
+    if for_update:
+        statement = statement.with_for_update()
+    payment = db.scalar(statement)
     if payment is None:
         raise HTTPException(status_code=404, detail="Payment not found")
     return payment
@@ -108,7 +108,7 @@ def create_payment(db: Session, payload: PaymentCreate) -> Payment:
     payment = Payment(**payload.model_dump(exclude={"status"}), status=Payment.STATUS_DRAFT)
     db.add(payment)
     db.flush()
-    _audit(db, "payment", payment.id, "create")
+    write_audit(db, "payment", payment.id, "create")
     db.commit()
     db.refresh(payment)
     return payment
@@ -125,9 +125,11 @@ def update_payment(db: Session, payment_id: int, payload: PaymentUpdate) -> Paym
     next_document_id = values.get("document_id", payment.document_id)
     _validate_payment_partner(db, next_payment_type, next_partner_id)
     _validate_payment_document(db, next_payment_type, next_partner_id, next_document_id)
+    old_values = {key: getattr(payment, key) for key in values}
     for key, value in values.items():
         setattr(payment, key, value)
-    _audit(db, "payment", payment.id, "update", ",".join(sorted(values.keys())))
+    new_values = {key: getattr(payment, key) for key in values}
+    write_audit(db, "payment", payment.id, "update", change_details(old_values, new_values))
     db.commit()
     db.refresh(payment)
     return payment
@@ -137,50 +139,70 @@ def delete_draft_payment(db: Session, payment_id: int) -> None:
     payment = _load_payment(db, payment_id)
     if payment.status != Payment.STATUS_DRAFT:
         raise HTTPException(status_code=409, detail="Only draft payments can be deleted")
-    _audit(db, "payment", payment.id, "delete_draft")
+    write_audit(db, "payment", payment.id, "delete_draft")
     db.delete(payment)
     db.commit()
 
 
 def post_payment(db: Session, payment_id: int) -> Payment:
-    payment = _load_payment(db, payment_id)
+    payment = _load_payment(db, payment_id, for_update=True)
     if payment.status != Payment.STATUS_DRAFT:
         raise HTTPException(status_code=409, detail="Only draft payments can be posted")
     _validate_payment_partner(db, payment.payment_type, payment.partner_id)
     _validate_payment_document(db, payment.payment_type, payment.partner_id, payment.document_id)
-    payment.status = Payment.STATUS_POSTED
-    # TODO LEGACY_RULE_REQUIRED: refund cash direction must be confirmed against legacy cash rules.
-    cash_operation_type = CashOperation.TYPE_CASH_IN
-    if payment.payment_type in {Payment.TYPE_SUPPLIER_PAYMENT, Payment.TYPE_REFUND}:
-        cash_operation_type = CashOperation.TYPE_CASH_OUT
-    cash_service.create_cash_operation(
-        db,
-        CashOperationCreate(
-            operation_date=payment.payment_date,
-            operation_type=cash_operation_type,
-            amount=payment.amount,
-            partner_id=payment.partner_id,
-            document_id=payment.document_id,
-            payment_id=payment.id,
-            note=f"payment:{payment.payment_type}",
-        ),
-        commit=False,
-    )
-    _audit(db, "payment", payment.id, "post")
-    db.commit()
+    try:
+        payment.status = Payment.STATUS_POSTED
+        # TODO LEGACY_RULE_REQUIRED: refund cash direction must be confirmed against legacy cash rules.
+        cash_operation_type = CashOperation.TYPE_CASH_IN
+        if payment.payment_type in {Payment.TYPE_SUPPLIER_PAYMENT, Payment.TYPE_REFUND}:
+            cash_operation_type = CashOperation.TYPE_CASH_OUT
+        cash_service.create_cash_operation(
+            db,
+            CashOperationInternalCreate(
+                operation_date=payment.payment_date,
+                operation_type=cash_operation_type,
+                amount=payment.amount,
+                partner_id=payment.partner_id,
+                document_id=payment.document_id,
+                payment_id=payment.id,
+                note=f"payment:{payment.payment_type}",
+            ),
+            commit=False,
+        )
+        write_audit(
+            db,
+            "payment",
+            payment.id,
+            "post",
+            change_details({"status": Payment.STATUS_DRAFT}, {"status": Payment.STATUS_POSTED}),
+        )
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
     db.refresh(payment)
     return payment
 
 
 def cancel_payment(db: Session, payment_id: int) -> Payment:
-    payment = _load_payment(db, payment_id)
+    payment = _load_payment(db, payment_id, for_update=True)
     if payment.status != Payment.STATUS_POSTED:
         raise HTTPException(status_code=409, detail="Only posted payments can be cancelled")
-    payment.status = Payment.STATUS_CANCELLED
-    cash_service.cancel_payment_cash_operations(db, payment.id)
-    # TODO LEGACY_RULE_REQUIRED: confirm if legacy posts a reversing cash row on payment cancellation.
-    _audit(db, "payment", payment.id, "cancel")
-    db.commit()
+    try:
+        cash_service.cancel_payment_cash_operations(db, payment.id)
+        payment.status = Payment.STATUS_CANCELLED
+        # TODO LEGACY_RULE_REQUIRED: confirm if legacy posts a reversing cash row on payment cancellation.
+        write_audit(
+            db,
+            "payment",
+            payment.id,
+            "cancel",
+            change_details({"status": Payment.STATUS_POSTED}, {"status": Payment.STATUS_CANCELLED}),
+        )
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
     db.refresh(payment)
     return payment
 

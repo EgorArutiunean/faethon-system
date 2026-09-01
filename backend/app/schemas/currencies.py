@@ -1,7 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.schemas.common import Timestamped
 
@@ -18,7 +18,7 @@ class CurrencyRead(Timestamped):
 class ExchangeRateCreate(BaseModel):
     currency_code: str
     rate_date: date
-    rate_to_base: Decimal
+    rate_to_base: Decimal = Field(gt=0)
     note: str | None = None
 
 

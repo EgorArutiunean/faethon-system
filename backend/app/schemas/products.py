@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.schemas.common import Timestamped
 
@@ -11,7 +11,7 @@ class ProductBase(BaseModel):
     description: str | None = None
     group_id: int | None = None
     unit_id: int | None = None
-    base_price: Decimal | None = None
+    base_price: Decimal | None = Field(default=None, ge=0)
     is_active: bool = True
 
 
@@ -44,7 +44,7 @@ class ProductUpdate(BaseModel):
     description: str | None = None
     group_id: int | None = None
     unit_id: int | None = None
-    base_price: Decimal | None = None
+    base_price: Decimal | None = Field(default=None, ge=0)
     is_active: bool | None = None
 
 

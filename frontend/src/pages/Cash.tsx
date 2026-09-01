@@ -29,6 +29,10 @@ export function Cash() {
 
   function create() {
     if (!amount) return;
+    if (operationType === "correction" && !note.trim()) {
+      setError(t("cashCorrectionNoteRequired"));
+      return;
+    }
     api
       .createCashOperation({
         operation_date: operationDate,
@@ -75,7 +79,16 @@ export function Cash() {
             <option value="correction">{t("correction")}</option>
           </select>
         </div>
-        <div className="field"><label>{t("amount")}</label><input value={amount} onChange={(event) => setAmount(event.target.value)} /></div>
+        <div className="field">
+          <label>{operationType === "correction" ? t("actualCashBalance") : t("amount")}</label>
+          <input
+            type="number"
+            min={operationType === "correction" ? "0" : "0.01"}
+            step="0.01"
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
+          />
+        </div>
         <div className="field"><label>{t("note")}</label><input value={note} onChange={(event) => setNote(event.target.value)} /></div>
         <div className="field"><label>&nbsp;</label><button className="button primary" title={!can("cash.create") ? t("noPermission") : ""} disabled={!can("cash.create")} onClick={create}>{t("createOperation")}</button></div>
       </div>
@@ -88,6 +101,7 @@ export function Cash() {
           { key: "operation_date", header: t("date"), sortable: true, render: (row) => formatDate(row.operation_date) },
           { key: "operation_type", header: t("type"), sortable: true, render: (row) => formatCode(row.operation_type, t) },
           { key: "amount", header: t("amount"), sortable: true, render: (row) => formatMoney(row.amount) },
+          { key: "target_balance", header: t("targetCashBalance"), sortable: true, render: (row) => row.target_balance == null ? "-" : formatMoney(row.target_balance) },
           { key: "partner_name", header: t("partner"), sortable: true },
           { key: "payment_id", header: t("payment"), sortable: true },
           { key: "status", header: t("status"), sortable: true, render: (row) => <StatusBadge status={row.status} label={formatCode(row.status, t)} /> },

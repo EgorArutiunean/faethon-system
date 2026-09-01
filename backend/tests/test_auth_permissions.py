@@ -179,3 +179,18 @@ def test_viewer_cannot_access_cash_create_or_cancel(client: TestClient, db: Sess
     )
 
     assert response.status_code == 403
+
+
+def test_cash_operation_author_cannot_be_supplied_by_client(client: TestClient) -> None:
+    response = client.post(
+        "/api/v1/cash/operations",
+        json={
+            "operation_date": "2026-05-02",
+            "operation_type": "cash_in",
+            "amount": "1.00",
+            "created_by_id": 999,
+        },
+        headers=auth_header(client),
+    )
+
+    assert response.status_code == 422

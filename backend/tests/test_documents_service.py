@@ -4,6 +4,7 @@ from decimal import Decimal
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 from sqlalchemy import select, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -224,20 +225,17 @@ def test_transfer_without_stock_is_rejected(db: Session) -> None:
 
 
 def test_transfer_requires_different_warehouses(db: Session) -> None:
-    product, source, _partner = seed_catalog(db)
-    transfer = create_document(
-        db,
-        DocumentCreate(
-            document_type=Document.TYPE_TRANSFER,
-            document_date=date(2026, 5, 2),
-            warehouse_id=source.id,
-            destination_warehouse_id=source.id,
-        ),
-    )
-    add_line(db, transfer.id, product.id, "1")
-
     with pytest.raises(HTTPException) as exc:
-        post_document(db, transfer.id)
+        _product, source, _partner = seed_catalog(db)
+        create_document(
+            db,
+            DocumentCreate(
+                document_type=Document.TYPE_TRANSFER,
+                document_date=date(2026, 5, 2),
+                warehouse_id=source.id,
+                destination_warehouse_id=source.id,
+            ),
+        )
 
     assert exc.value.status_code == 422
 
@@ -538,3 +536,94 @@ def test_viewer_cannot_delete_or_edit_document(db: Session) -> None:
 
     assert patch_response.status_code == 403
     assert delete_response.status_code == 403
+
+
+def test_document_totals_are_calculated_server_side(db: Session) -> None:
+    _product, warehouse, partner = seed_catalog(db)
+
+    document = create_document(
+        db,
+        DocumentCreate(
+            document_type=Document.TYPE_INCOMING,
+            document_date=date(2026, 5, 1),
+            warehouse_id=warehouse.id,
+            partner_id=partner.id,
+            total_amount=Decimal("999.00"),
+            foreign_total_amount=Decimal("888.00"),
+        ),
+    )
+
+    assert document.total_amount == Decimal("0")
+    assert document.foreign_total_amount == Decimal("0")
+
+
+def test_negative_document_line_values_are_rejected_by_schema() -> None:
+    with pytest.raises(ValidationError):
+        DocumentLineCreate(product_id=1, quantity=Decimal("-1"), price=Decimal("10"))
+    with pytest.raises(ValidationError):
+        DocumentLineCreate(product_id=1, quantity=Decimal("1"), price=Decimal("-10"))
+
+
+def test_zero_quantity_is_rejected_for_incoming_document(db: Session) -> None:
+    product, warehouse, partner = seed_catalog(db)
+    document = make_document(db, Document.TYPE_INCOMING, warehouse.id, partner.id)
+
+    with pytest.raises(HTTPException) as exc:
+        add_line(db, document.id, product.id, "0")
+
+    assert exc.value.status_code == 422
+
+
+def test_zero_quantity_is_valid_adjustment_target(db: Session) -> None:
+    product, warehouse, _partner = seed_catalog(db)
+    document = make_document(db, Document.TYPE_ADJUSTMENT, warehouse.id)
+
+    add_line(db, document.id, product.id, "0")
+    post_document(db, document.id)
+
+    assert balance_quantity(db, product.id, warehouse.id) == Decimal("0.000")
+
+
+def test_manual_document_number_reserves_continuous_sequence(db: Session) -> None:
+    _product, warehouse, partner = seed_catalog(db)
+    manual = create_document(
+        db,
+        DocumentCreate(
+            document_type=Document.TYPE_INCOMING,
+            number=" IN-000010 ",
+            document_date=date(2026, 5, 1),
+            warehouse_id=warehouse.id,
+            partner_id=partner.id,
+        ),
+    )
+    generated = make_document(db, Document.TYPE_INCOMING, warehouse.id, partner.id)
+
+    assert manual.number == "IN-000010"
+    assert generated.number == "IN-000011"
+
+
+def test_duplicate_manual_document_number_is_rejected(db: Session) -> None:
+    _product, warehouse, partner = seed_catalog(db)
+    payload = DocumentCreate(
+        document_type=Document.TYPE_INCOMING,
+        number="CUSTOM-1",
+        document_date=date(2026, 5, 1),
+        warehouse_id=warehouse.id,
+        partner_id=partner.id,
+    )
+    create_document(db, payload)
+
+    with pytest.raises(HTTPException) as exc:
+        create_document(db, payload)
+
+    assert exc.value.status_code == 409
+
+
+def test_missing_product_is_rejected_when_adding_line(db: Session) -> None:
+    _product, warehouse, partner = seed_catalog(db)
+    document = make_document(db, Document.TYPE_INCOMING, warehouse.id, partner.id)
+
+    with pytest.raises(HTTPException) as exc:
+        add_line(db, document.id, 999, "1")
+
+    assert exc.value.status_code == 404

@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from sqlalchemy import Date, ForeignKey, Numeric, String, Text
+from sqlalchemy import CheckConstraint, Date, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -9,6 +9,12 @@ from app.models.mixins import TimestampMixin
 
 class Document(TimestampMixin, Base):
     __tablename__ = "documents"
+    __table_args__ = (
+        UniqueConstraint("number", name="uq_documents_number"),
+        CheckConstraint("total_amount >= 0", name="ck_documents_total_nonnegative"),
+        CheckConstraint("foreign_total_amount >= 0", name="ck_documents_foreign_total_nonnegative"),
+        CheckConstraint("exchange_rate > 0", name="ck_documents_exchange_rate_positive"),
+    )
 
     STATUS_DRAFT = "draft"
     STATUS_POSTED = "posted"
@@ -53,6 +59,16 @@ class Document(TimestampMixin, Base):
 
 class DocumentLine(TimestampMixin, Base):
     __tablename__ = "document_lines"
+    __table_args__ = (
+        CheckConstraint("quantity >= 0", name="ck_document_lines_quantity_nonnegative"),
+        CheckConstraint("price >= 0", name="ck_document_lines_price_nonnegative"),
+        CheckConstraint("line_total >= 0", name="ck_document_lines_total_nonnegative"),
+        CheckConstraint("foreign_price IS NULL OR foreign_price >= 0", name="ck_document_lines_foreign_price_nonnegative"),
+        CheckConstraint(
+            "foreign_line_total IS NULL OR foreign_line_total >= 0",
+            name="ck_document_lines_foreign_total_nonnegative",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     document_id: Mapped[int] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), index=True)
@@ -73,3 +89,13 @@ class DocumentLine(TimestampMixin, Base):
     @property
     def total(self) -> Decimal:
         return self.line_total
+
+
+class DocumentNumberSequence(Base):
+    __tablename__ = "document_number_sequences"
+    __table_args__ = (
+        CheckConstraint("last_value >= 0", name="ck_document_number_sequences_last_value_nonnegative"),
+    )
+
+    document_type: Mapped[str] = mapped_column(String(60), primary_key=True)
+    last_value: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

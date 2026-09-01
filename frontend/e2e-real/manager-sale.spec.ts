@@ -506,6 +506,12 @@ test("M07: supplier partial, full and overpayment update debt and cash", async (
   await postJson(api, `/documents/${incoming.id}/post`, managerToken, {});
 
   const headers = { Authorization: `Bearer ${cashierToken}` };
+  await postJson(api, "/cash/operations", cashierToken, {
+    operation_date: "2026-07-24",
+    operation_type: "cash_in",
+    amount: "1000.00",
+    note: "M07 supplier payment funding",
+  });
   const initialCash = Number((await (await api.get("cash/balance", { headers })).json()).balance);
   await loginAsCashier(page);
 

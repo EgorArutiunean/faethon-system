@@ -84,3 +84,18 @@ def test_audit_can_filter_by_entity_type(client: TestClient, db: Session) -> Non
     rows = response.json()
     assert len(rows) == 1
     assert rows[0]["entity_type"] == "warehouse"
+
+
+def test_api_mutation_records_authenticated_actor(client: TestClient) -> None:
+    headers = auth_header(client)
+
+    create_response = client.post(
+        "/api/v1/products",
+        json={"name": "Actor Product", "sku": "ACTOR-1", "base_price": "1.00", "is_active": True},
+        headers=headers,
+    )
+    audit_response = client.get("/api/v1/audit?entity_type=product", headers=headers)
+
+    assert create_response.status_code == 201
+    assert audit_response.status_code == 200
+    assert audit_response.json()[0]["actor_user_id"] is not None

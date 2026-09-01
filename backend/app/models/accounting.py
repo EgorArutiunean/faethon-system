@@ -1,7 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, ForeignKey, Numeric, String, Text
+from sqlalchemy import Boolean, CheckConstraint, Date, ForeignKey, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -21,6 +21,7 @@ class Currency(TimestampMixin, Base):
 
 class ExchangeRate(TimestampMixin, Base):
     __tablename__ = "exchange_rates"
+    __table_args__ = (CheckConstraint("rate_to_base > 0", name="ck_exchange_rates_rate_positive"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     currency_id: Mapped[int] = mapped_column(ForeignKey("currencies.id"), index=True)
@@ -37,6 +38,7 @@ class ExchangeRate(TimestampMixin, Base):
 
 class Price(TimestampMixin, Base):
     __tablename__ = "prices"
+    __table_args__ = (CheckConstraint("amount >= 0", name="ck_prices_amount_nonnegative"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), index=True)
@@ -50,6 +52,7 @@ class Price(TimestampMixin, Base):
 
 class Payment(TimestampMixin, Base):
     __tablename__ = "payments"
+    __table_args__ = (CheckConstraint("amount > 0", name="ck_payments_amount_positive"),)
 
     STATUS_DRAFT = "draft"
     STATUS_POSTED = "posted"
@@ -96,6 +99,13 @@ class Payment(TimestampMixin, Base):
 
 class CashOperation(TimestampMixin, Base):
     __tablename__ = "cash_operations"
+    __table_args__ = (
+        CheckConstraint("amount >= 0", name="ck_cash_operations_amount_nonnegative"),
+        CheckConstraint(
+            "target_balance IS NULL OR target_balance >= 0",
+            name="ck_cash_operations_target_balance_nonnegative",
+        ),
+    )
 
     TYPE_CASH_IN = "cash_in"
     TYPE_CASH_OUT = "cash_out"
@@ -110,6 +120,7 @@ class CashOperation(TimestampMixin, Base):
     direction: Mapped[str] = mapped_column(String(20), index=True)
     status: Mapped[str] = mapped_column(String(40), default=STATUS_POSTED, index=True)
     amount: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    target_balance: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
     partner_id: Mapped[int | None] = mapped_column(ForeignKey("partners.id"))
     document_id: Mapped[int | None] = mapped_column(ForeignKey("documents.id"))
     payment_id: Mapped[int | None] = mapped_column(ForeignKey("payments.id"))

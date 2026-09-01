@@ -1,5 +1,5 @@
 from app.models.accounting import AuditLog, CashOperation, Currency, ExchangeRate, Payment, Price
-from app.models.documents import Document, DocumentLine
+from app.models.documents import Document, DocumentLine, DocumentNumberSequence
 from app.models.identity import Permission, Role, User
 from app.models.partners import Partner
 from app.models.products import Product, ProductGroup, Unit
@@ -11,6 +11,7 @@ __all__ = [
     "Currency",
     "Document",
     "DocumentLine",
+    "DocumentNumberSequence",
     "ExchangeRate",
     "Partner",
     "Payment",

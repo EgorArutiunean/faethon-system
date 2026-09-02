@@ -1,4 +1,4 @@
-from app.models.accounting import AuditLog, CashOperation, Currency, ExchangeRate, Payment, Price
+from app.models.accounting import AuditLog, CashOperation, Currency, ExchangeRate, Payment, PaymentAllocation, Price
 from app.models.documents import Document, DocumentLine, DocumentNumberSequence, DocumentRevision
 from app.models.identity import Permission, Role, User
 from app.models.partners import Partner
@@ -16,6 +16,7 @@ __all__ = [
     "ExchangeRate",
     "Partner",
     "Payment",
+    "PaymentAllocation",
     "Permission",
     "Price",
     "Product",

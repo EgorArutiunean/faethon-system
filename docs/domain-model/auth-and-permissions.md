@@ -38,8 +38,8 @@ This account is for local development only and must be changed before any real d
 ## Roles
 
 - `admin`: all permissions;
-- `manager`: products, warehouses, partners, documents, stock, reports;
-- `cashier`: partner and document read, payments, cash, reports read;
+- `manager`: products, warehouses, partners, documents, stock, payments, payment allocation, reports;
+- `cashier`: partner and document read, unallocated payments, cash, reports read;
 - `logist`: warehouse-scoped read-only logistics documents with sales prices only;
 - `viewer`: read-only access to main operational objects.
 
@@ -87,8 +87,11 @@ Payments:
 
 - `payments.read`
 - `payments.create`
+- `payments.update`
+- `payments.delete`
 - `payments.post`
 - `payments.cancel`
+- `payments.allocate`
 
 Cash:
 

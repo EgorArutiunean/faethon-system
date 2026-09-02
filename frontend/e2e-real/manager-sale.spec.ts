@@ -146,16 +146,21 @@ async function createAndPostPaymentThroughUi(
   token: string,
   paymentType: "customer_payment" | "supplier_payment",
   partnerId: number,
-  documentId: number,
+  documentId: number | null,
   amount: string,
+  allocationAmount: string | null = amount,
 ) {
   if (!new URL(page.url()).pathname.endsWith("/payments")) {
     await page.goto("/payments", { waitUntil: "domcontentloaded" });
   }
   await page.getByTestId("payment-type").selectOption(paymentType);
   await page.getByTestId("payment-partner").selectOption(String(partnerId));
-  await page.getByTestId("payment-document").selectOption(String(documentId));
   await page.getByTestId("payment-amount").fill(amount);
+  if (documentId && allocationAmount) {
+    const allocationInput = page.getByTestId(`payment-allocation-${documentId}`);
+    await expect(allocationInput).toBeVisible();
+    await allocationInput.fill(allocationAmount);
+  }
   await page.getByTestId("payment-save").click();
 
   let paymentId = 0;
@@ -169,12 +174,16 @@ async function createAndPostPaymentThroughUi(
       payment_type: string;
       amount: string;
       status: string;
+      allocations: Array<{ document_id: number; amount: string }>;
     }) => (
       row.partner_id === partnerId
-      && row.document_id === documentId
+      && row.document_id === (allocationAmount ? documentId : null)
       && row.payment_type === paymentType
       && Number(row.amount) === Number(amount)
       && row.status === "draft"
+      && (allocationAmount === null || row.allocations.some((allocation) => (
+        allocation.document_id === documentId && Number(allocation.amount) === Number(allocationAmount)
+      )))
     ));
     paymentId = payment?.id ?? 0;
     return paymentId;
@@ -489,11 +498,11 @@ test("M06: partial customer payment updates debt, cash and statement", async ({ 
 
   const headers = { Authorization: `Bearer ${cashierToken}` };
   const initialCash = Number((await (await api.get("cash/balance", { headers })).json()).balance);
-  await loginAsCashier(page);
+  await loginAsManager(page);
   const paymentId = await createAndPostPaymentThroughUi(
     page,
     api,
-    cashierToken,
+    seeded.token,
     "customer_payment",
     seeded.customerId,
     outgoing.id,
@@ -510,8 +519,16 @@ test("M06: partial customer payment updates debt, cash and statement", async ({ 
   const cash = await cashResponse.json();
   const statement = await statementResponse.json();
   const cashBook = await cashBookResponse.json();
+  const payment = await (await api.get(`payments/${paymentId}`, {
+    headers: { Authorization: `Bearer ${seeded.token}` },
+  })).json();
 
   expect(balance.balance).toBe("180.00");
+  expect(payment.allocated_amount).toBe("120.00");
+  expect(payment.unallocated_amount).toBe("0.00");
+  expect(payment.allocations).toEqual([
+    expect.objectContaining({ document_id: outgoing.id, amount: "120.00" }),
+  ]);
   expect(Number(cash.balance)).toBe(initialCash + 120);
   expect(statement).toEqual(expect.arrayContaining([
     expect.objectContaining({
@@ -530,6 +547,46 @@ test("M06: partial customer payment updates debt, cash and statement", async ({ 
       status: "posted",
     }),
   ]));
+
+  const secondOutgoing = await postJson(api, "/documents", seeded.token, {
+    document_type: "outgoing",
+    document_date: "2026-07-25",
+    partner_id: seeded.customerId,
+    warehouse_id: seeded.warehouseId,
+  });
+  await postJson(api, `/documents/${secondOutgoing.id}/lines`, seeded.token, {
+    product_id: seeded.productId,
+    quantity: "1",
+    price: "150.00",
+  });
+  await postJson(api, `/documents/${secondOutgoing.id}/post`, seeded.token, {});
+
+  const paymentRow = page.getByRole("row").filter({ has: page.getByTestId(`payment-post-${paymentId}`) });
+  await paymentRow.getByRole("button", { name: "Распределить" }).click();
+  await expect(page.getByTestId(`payment-allocation-${secondOutgoing.id}`)).toBeVisible();
+  await page.getByTestId(`payment-allocation-${outgoing.id}`).fill("");
+  await page.getByTestId(`payment-allocation-${secondOutgoing.id}`).fill("120.00");
+  await page.getByTestId("payment-save").click();
+
+  await expect.poll(async () => {
+    const response = await api.get(`payments/${paymentId}`, {
+      headers: { Authorization: `Bearer ${seeded.token}` },
+    });
+    if (!response.ok()) return 0;
+    const updatedPayment = await response.json();
+    return updatedPayment.allocations[0]?.document_id ?? 0;
+  }).toBe(secondOutgoing.id);
+
+  const cashAfterReallocation = await (await api.get("cash/book", { headers })).json();
+  const paymentCashRows = cashAfterReallocation.filter((row: { payment_id: number }) => row.payment_id === paymentId);
+  expect(paymentCashRows).toHaveLength(1);
+  expect(paymentCashRows[0]).toEqual(expect.objectContaining({
+    document_id: secondOutgoing.id,
+    amount: "120.00",
+    status: "posted",
+  }));
+  expect(Number((await (await api.get("cash/balance", { headers })).json()).balance)).toBe(initialCash + 120);
+  expect((await (await api.get(`partners/${seeded.customerId}/balance`, { headers })).json()).balance).toBe("330.00");
   await api.dispose();
 });
 
@@ -574,20 +631,20 @@ test("M07: supplier partial, full and overpayment update debt and cash", async (
     note: "M07 supplier payment funding",
   });
   const initialCash = Number((await (await api.get("cash/balance", { headers })).json()).balance);
-  await loginAsCashier(page);
+  await loginAsManager(page);
 
   const partialPaymentId = await createAndPostPaymentThroughUi(
-    page, api, cashierToken, "supplier_payment", supplier.id, incoming.id, "100.00"
+    page, api, managerToken, "supplier_payment", supplier.id, incoming.id, "100.00"
   );
   expect((await (await api.get(`partners/${supplier.id}/balance`, { headers })).json()).balance).toBe("-300.00");
 
   const fullPaymentId = await createAndPostPaymentThroughUi(
-    page, api, cashierToken, "supplier_payment", supplier.id, incoming.id, "300.00"
+    page, api, managerToken, "supplier_payment", supplier.id, incoming.id, "300.00"
   );
   expect((await (await api.get(`partners/${supplier.id}/balance`, { headers })).json()).balance).toBe("0.00");
 
   const overpaymentId = await createAndPostPaymentThroughUi(
-    page, api, cashierToken, "supplier_payment", supplier.id, incoming.id, "50.00"
+    page, api, managerToken, "supplier_payment", supplier.id, incoming.id, "50.00", null
   );
   const [balanceResponse, cashResponse, statementResponse, cashBookResponse] = await Promise.all([
     api.get(`partners/${supplier.id}/balance`, { headers }),
@@ -602,6 +659,11 @@ test("M07: supplier partial, full and overpayment update debt and cash", async (
   const paymentIds = [partialPaymentId, fullPaymentId, overpaymentId];
 
   expect(balance.balance).toBe("50.00");
+  const overpayment = await (await api.get(`payments/${overpaymentId}`, {
+    headers: { Authorization: `Bearer ${managerToken}` },
+  })).json();
+  expect(overpayment.allocated_amount).toBe("0.00");
+  expect(overpayment.unallocated_amount).toBe("50.00");
   expect(Number(cash.balance)).toBe(initialCash - 450);
   expect(statement.filter((row: { source_type: string; source_id: number }) => (
     row.source_type === "payment" && paymentIds.includes(row.source_id)

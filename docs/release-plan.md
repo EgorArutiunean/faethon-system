@@ -22,10 +22,11 @@ Goal: prepare Buy Modern for the fastest safe company transition from the old Bu
 14. Buy Modern product import standard now includes explicit `category` and `legacy_name` fields.
 15. A controlled data-preparation tool converts the known old price-list XLSX shape into Buy Modern `products.xlsx` and `opening-stock.xlsx` templates.
 16. Incoming documents support foreign purchase currency, fixed exchange rate, base RUB PMR conversion, and sale-price review hints.
+17. A manager can manually allocate payments across posted invoices; partial payments, advances, and reallocation without duplicate cash movements are protected by backend and PostgreSQL E2E tests.
 
 ## Before Release
 
-1. Confirm final document, stock, debt, payment, and cash rules from old-program behavior.
+1. Close or remove the still-unconfirmed standalone money-refund workflow; document, stock, allocation, advance, and cash-correction rules are already fixed for the first release.
 2. Prepare old price-list category mapping and run the data-preparation tool against the real export.
 3. Prepare and reconcile production opening data: products, categories, warehouses, partners, stock, debts, and cash.
 4. Confirm remaining print forms and whether invoice PDF needs visual tuning against the old form.

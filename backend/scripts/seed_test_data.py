@@ -136,8 +136,8 @@ def _document_exists(db: Session, note: str) -> bool:
     return db.scalar(select(Document.id).where(Document.note == note)) is not None
 
 
-def _payment_exists(db: Session, note: str) -> bool:
-    return db.scalar(select(Payment.id).where(Payment.note == note)) is not None
+def _payment_by_note(db: Session, note: str) -> Payment | None:
+    return db.scalar(select(Payment).where(Payment.note == note))
 
 
 def _cash_exists(db: Session, note: str) -> bool:
@@ -194,23 +194,31 @@ def _seed_documents(db: Session, products: list[Product], warehouses: list[Wareh
 
 
 def _seed_payments(db: Session, partners: list[Partner]) -> None:
-    for index in range(1, 11):
+    # Customer receipts are posted before supplier payouts so the generated cash
+    # ledger stays nonnegative at every point in time.
+    for index in [2, 4, 6, 8, 10, 1, 3, 5, 7, 9]:
         note = f"{PREFIX}:payment:{index:02d}"
-        if _payment_exists(db, note):
+        payment = _payment_by_note(db, note)
+        if payment is not None and payment.status != Payment.STATUS_DRAFT:
             continue
         is_customer = index % 2 == 0
         partner = _customer_for(partners, index) if is_customer else _supplier_for(partners, index)
-        payment = create_payment(
-            db,
-            PaymentCreate(
-                partner_id=partner.id,
-                payment_date=START_DATE + timedelta(days=20 + index),
-                payment_type=Payment.TYPE_CUSTOMER_PAYMENT if is_customer else Payment.TYPE_SUPPLIER_PAYMENT,
-                amount=Decimal("50.00") + Decimal(index * 10),
-                method="cash",
-                note=note,
-            ),
-        )
+        payment_date = START_DATE + timedelta(days=(20 if is_customer else 30) + index)
+        if payment is None:
+            payment = create_payment(
+                db,
+                PaymentCreate(
+                    partner_id=partner.id,
+                    payment_date=payment_date,
+                    payment_type=Payment.TYPE_CUSTOMER_PAYMENT if is_customer else Payment.TYPE_SUPPLIER_PAYMENT,
+                    amount=Decimal("50.00") + Decimal(index * 10),
+                    method="cash",
+                    note=note,
+                ),
+            )
+        else:
+            payment.payment_date = payment_date
+            db.commit()
         post_payment(db, payment.id)
 
 

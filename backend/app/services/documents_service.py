@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.documents import Document, DocumentLine, DocumentNumberSequence, DocumentRevision
+from app.models.accounting import Payment, PaymentAllocation
 from app.models.partners import Partner
 from app.models.products import Product
 from app.models.stock import StockBalance, StockMovement
@@ -522,6 +523,37 @@ def _validate_document_warehouses(db: Session, document: Document) -> None:
         raise HTTPException(status_code=422, detail="Destination warehouse is only valid for transfer documents")
 
 
+def _active_document_allocations(db: Session, document_id: int) -> list[PaymentAllocation]:
+    return list(
+        db.scalars(
+            select(PaymentAllocation)
+            .join(Payment, Payment.id == PaymentAllocation.payment_id)
+            .where(
+                PaymentAllocation.document_id == document_id,
+                Payment.status == Payment.STATUS_POSTED,
+            )
+            .options(selectinload(PaymentAllocation.payment))
+        ).all()
+    )
+
+
+def _validate_repost_allocations(db: Session, document: Document, candidate: SimpleNamespace) -> None:
+    allocations = _active_document_allocations(db, document.id)
+    if not allocations:
+        return
+    allocated_total = sum((allocation.amount for allocation in allocations), Decimal("0"))
+    expected_payment_type = {
+        Document.TYPE_OUTGOING: Payment.TYPE_CUSTOMER_PAYMENT,
+        Document.TYPE_INCOMING: Payment.TYPE_SUPPLIER_PAYMENT,
+    }.get(candidate.document_type)
+    if candidate.partner_id != document.partner_id or expected_payment_type is None:
+        raise HTTPException(status_code=409, detail="Reallocate posted payments before changing document partner or type")
+    if any(allocation.payment.payment_type != expected_payment_type for allocation in allocations):
+        raise HTTPException(status_code=409, detail="Reallocate posted payments before changing document type")
+    if allocated_total > candidate.total_amount:
+        raise HTTPException(status_code=409, detail="Reallocate posted payments before reducing document total")
+
+
 def _document_stock_keys(document: Document) -> set[tuple[int, int]]:
     keys = {(line.product_id, document.warehouse_id) for line in document.lines}
     if document.document_type == Document.TYPE_TRANSFER:
@@ -738,6 +770,7 @@ def repost_document(db: Session, document_id: int, payload: DocumentRepost) -> D
         old_snapshot = _document_snapshot(document)
         _store_revision(db, document, document.posting_version, "Recovered posted version")
         candidate = _build_repost_candidate(db, payload)
+        _validate_repost_allocations(db, document, candidate)
         old_movements = _active_posting_movements(db, document)
         if not old_movements:
             raise DocumentRulesError("Posted document has no active stock movements")
@@ -814,6 +847,8 @@ def cancel_document(db: Session, document_id: int) -> Document:
     document = _load_document(db, document_id, for_update=True)
     if document.status != Document.STATUS_POSTED:
         raise HTTPException(status_code=409, detail="Only posted documents can be cancelled")
+    if _active_document_allocations(db, document.id):
+        raise HTTPException(status_code=409, detail="Reallocate posted payments before cancelling document")
     _validate_document_warehouses(db, document)
 
     movements = _active_posting_movements(db, document)

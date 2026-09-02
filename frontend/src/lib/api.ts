@@ -133,6 +133,42 @@ export type StockMovement = {
   created_at: string;
 };
 
+export type PaymentAllocation = {
+  id: number;
+  payment_id: number;
+  document_id: number;
+  document_number?: string | null;
+  document_date?: string | null;
+  document_total?: string | null;
+  amount: string;
+};
+
+export type PaymentAllocationInput = {
+  document_id: number;
+  amount: string;
+};
+
+export type PaymentAllocationOption = {
+  document_id: number;
+  document_number?: string | null;
+  document_date: string;
+  total_amount: string;
+  allocated_amount: string;
+  outstanding_amount: string;
+};
+
+export type PaymentWrite = {
+  partner_id: number;
+  document_id?: number | null;
+  payment_date: string;
+  payment_type: string;
+  status?: string;
+  amount: string;
+  method?: string | null;
+  note?: string | null;
+  allocations?: PaymentAllocationInput[];
+};
+
 export type Payment = {
   id: number;
   partner_id: number;
@@ -147,6 +183,9 @@ export type Payment = {
   note?: string | null;
   cash_operation_id?: number | null;
   cash_operation_status?: string | null;
+  allocations: PaymentAllocation[];
+  allocated_amount: string;
+  unallocated_amount: string;
 };
 
 export type PartnerBalance = {
@@ -438,10 +477,20 @@ export const api = {
   stockBalances: (params = "") => request<StockBalance[]>(`/stock/balances${params}`),
   stockMovements: (params = "") => request<StockMovement[]>(`/stock/movements${params}`),
   payments: () => request<Payment[]>("/payments"),
-  createPayment: (payload: Partial<Payment>) =>
+  createPayment: (payload: PaymentWrite) =>
     request<Payment>("/payments", { method: "POST", body: JSON.stringify(payload) }),
-  updatePayment: (id: number, payload: Partial<Payment>) =>
+  updatePayment: (id: number, payload: Partial<PaymentWrite>) =>
     request<Payment>(`/payments/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  paymentAllocationOptions: (partnerId: number, paymentType: string, excludePaymentId?: number) => {
+    const params = new URLSearchParams({ partner_id: String(partnerId), payment_type: paymentType });
+    if (excludePaymentId) params.set("exclude_payment_id", String(excludePaymentId));
+    return request<PaymentAllocationOption[]>(`/payments/allocation-options?${params.toString()}`);
+  },
+  replacePaymentAllocations: (paymentId: number, allocations: PaymentAllocationInput[]) =>
+    request<Payment>(`/payments/${paymentId}/allocations`, {
+      method: "PUT",
+      body: JSON.stringify({ allocations })
+    }),
   deletePayment: (id: number) => request<void>(`/payments/${id}`, { method: "DELETE" }),
   postPayment: (paymentId: number) => request<Payment>(`/payments/${paymentId}/post`, { method: "POST" }),
   cancelPayment: (paymentId: number) => request<Payment>(`/payments/${paymentId}/cancel`, { method: "POST" }),

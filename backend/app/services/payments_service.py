@@ -2,14 +2,21 @@ from datetime import date
 from decimal import Decimal
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.models.accounting import CashOperation, Payment
+from app.models.accounting import CashOperation, Payment, PaymentAllocation
 from app.models.documents import Document
 from app.models.partners import Partner
 from app.schemas.cash import CashOperationInternalCreate
-from app.schemas.payments import PaymentCreate, PaymentUpdate, PartnerBalanceRead, PartnerStatementRow
+from app.schemas.payments import (
+    PaymentAllocationInput,
+    PaymentAllocationOption,
+    PaymentCreate,
+    PaymentUpdate,
+    PartnerBalanceRead,
+    PartnerStatementRow,
+)
 from app.services import cash_service
 from app.services.audit_writer import change_details, write_audit
 
@@ -18,7 +25,12 @@ def _load_payment(db: Session, payment_id: int, *, for_update: bool = False) -> 
     statement = (
         select(Payment)
         .where(Payment.id == payment_id)
-        .options(selectinload(Payment.partner), selectinload(Payment.document), selectinload(Payment.cash_operations))
+        .options(
+            selectinload(Payment.partner),
+            selectinload(Payment.document),
+            selectinload(Payment.cash_operations),
+            selectinload(Payment.allocations).selectinload(PaymentAllocation.document),
+        )
     )
     if for_update:
         statement = statement.with_for_update()
@@ -87,6 +99,134 @@ def _validate_payment_document(
         raise HTTPException(status_code=409, detail="Document type does not match payment type")
 
 
+def _allocation_inputs_from_payment(payment: Payment) -> list[PaymentAllocationInput]:
+    return [
+        PaymentAllocationInput(document_id=allocation.document_id, amount=allocation.amount)
+        for allocation in payment.allocations
+    ]
+
+
+def _posted_allocated_amount(
+    db: Session,
+    document_id: int,
+    *,
+    exclude_payment_id: int | None = None,
+) -> Decimal:
+    statement = (
+        select(func.coalesce(func.sum(PaymentAllocation.amount), 0))
+        .join(Payment, Payment.id == PaymentAllocation.payment_id)
+        .where(
+            PaymentAllocation.document_id == document_id,
+            Payment.status == Payment.STATUS_POSTED,
+        )
+    )
+    if exclude_payment_id is not None:
+        statement = statement.where(Payment.id != exclude_payment_id)
+    return Decimal(db.scalar(statement) or 0)
+
+
+def _validate_allocations(
+    db: Session,
+    payment_type: str,
+    partner_id: int,
+    payment_amount: Decimal,
+    allocations: list[PaymentAllocationInput],
+    *,
+    exclude_payment_id: int | None = None,
+    lock_documents: bool = False,
+) -> list[tuple[Document, Decimal]]:
+    if payment_type == Payment.TYPE_REFUND and allocations:
+        raise HTTPException(status_code=422, detail="Refund cannot be allocated to documents")
+    document_ids = [allocation.document_id for allocation in allocations]
+    if len(document_ids) != len(set(document_ids)):
+        raise HTTPException(status_code=422, detail="Payment document can be allocated only once")
+    allocated_total = sum((allocation.amount for allocation in allocations), Decimal("0"))
+    if allocated_total > payment_amount:
+        raise HTTPException(status_code=409, detail="Allocated amount exceeds payment amount")
+
+    documents: dict[int, Document] = {}
+    if document_ids:
+        statement = select(Document).where(Document.id.in_(sorted(document_ids))).order_by(Document.id)
+        if lock_documents:
+            statement = statement.with_for_update()
+        documents = {document.id: document for document in db.scalars(statement).all()}
+    validated: list[tuple[Document, Decimal]] = []
+    for allocation in allocations:
+        document = documents.get(allocation.document_id)
+        if document is None:
+            raise HTTPException(status_code=404, detail="Document not found")
+        _validate_payment_document(db, payment_type, partner_id, document.id)
+        already_allocated = _posted_allocated_amount(
+            db,
+            document.id,
+            exclude_payment_id=exclude_payment_id,
+        )
+        outstanding = max(document.total_amount - already_allocated, Decimal("0"))
+        if allocation.amount > outstanding:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Allocation exceeds outstanding amount for document {document.number or document.id}",
+            )
+        validated.append((document, allocation.amount))
+    return validated
+
+
+def _replace_allocations(
+    db: Session,
+    payment: Payment,
+    validated: list[tuple[Document, Decimal]],
+) -> None:
+    payment.allocations.clear()
+    db.flush()
+    payment.allocations = [
+        PaymentAllocation(document_id=document.id, amount=amount, document=document)
+        for document, amount in validated
+    ]
+    payment.document_id = validated[0][0].id if len(validated) == 1 else None
+
+
+def get_payment_allocation_options(
+    db: Session,
+    partner_id: int,
+    payment_type: str,
+    *,
+    exclude_payment_id: int | None = None,
+) -> list[PaymentAllocationOption]:
+    _validate_payment_partner(db, payment_type, partner_id)
+    expected_document_type = {
+        Payment.TYPE_CUSTOMER_PAYMENT: Document.TYPE_OUTGOING,
+        Payment.TYPE_SUPPLIER_PAYMENT: Document.TYPE_INCOMING,
+    }.get(payment_type)
+    if expected_document_type is None:
+        return []
+    documents = db.scalars(
+        select(Document)
+        .where(
+            Document.partner_id == partner_id,
+            Document.document_type == expected_document_type,
+            Document.status == Document.STATUS_POSTED,
+        )
+        .order_by(Document.document_date, Document.id)
+    ).all()
+    options: list[PaymentAllocationOption] = []
+    for document in documents:
+        allocated = _posted_allocated_amount(db, document.id, exclude_payment_id=exclude_payment_id)
+        outstanding = max(document.total_amount - allocated, Decimal("0"))
+        if outstanding <= 0:
+            continue
+        options.append(
+            PaymentAllocationOption(
+                document_id=document.id,
+                document_number=document.number,
+                document_date=document.document_date,
+                total_amount=document.total_amount,
+                allocated_amount=allocated,
+                outstanding_amount=outstanding,
+            )
+        )
+    return options
+
+
 def _valid_payment_types() -> set[str]:
     return {
         Payment.TYPE_CUSTOMER_PAYMENT,
@@ -104,10 +244,21 @@ def create_payment(db: Session, payload: PaymentCreate) -> Payment:
     if payload.payment_type not in _valid_payment_types():
         raise HTTPException(status_code=422, detail="Invalid payment type")
     _validate_payment_partner(db, payload.payment_type, payload.partner_id)
-    _validate_payment_document(db, payload.payment_type, payload.partner_id, payload.document_id)
-    payment = Payment(**payload.model_dump(exclude={"status"}), status=Payment.STATUS_DRAFT)
+    allocation_inputs = list(payload.allocations)
+    if not allocation_inputs and payload.document_id is not None:
+        allocation_inputs = [PaymentAllocationInput(document_id=payload.document_id, amount=payload.amount)]
+    validated_allocations = _validate_allocations(
+        db,
+        payload.payment_type,
+        payload.partner_id,
+        payload.amount,
+        allocation_inputs,
+    )
+    values = payload.model_dump(exclude={"status", "allocations", "document_id"})
+    payment = Payment(**values, status=Payment.STATUS_DRAFT)
     db.add(payment)
     db.flush()
+    _replace_allocations(db, payment, validated_allocations)
     write_audit(db, "payment", payment.id, "create")
     db.commit()
     db.refresh(payment)
@@ -117,17 +268,34 @@ def create_payment(db: Session, payload: PaymentCreate) -> Payment:
 def update_payment(db: Session, payment_id: int, payload: PaymentUpdate) -> Payment:
     payment = _load_payment(db, payment_id)
     _ensure_draft(payment)
-    values = payload.model_dump(exclude_unset=True)
+    values = payload.model_dump(exclude_unset=True, exclude={"allocations", "document_id"})
     if "payment_type" in values and values["payment_type"] not in _valid_payment_types():
         raise HTTPException(status_code=422, detail="Invalid payment type")
     next_payment_type = values.get("payment_type", payment.payment_type)
     next_partner_id = values.get("partner_id", payment.partner_id)
-    next_document_id = values.get("document_id", payment.document_id)
     _validate_payment_partner(db, next_payment_type, next_partner_id)
-    _validate_payment_document(db, next_payment_type, next_partner_id, next_document_id)
+    next_amount = values.get("amount", payment.amount)
+    if payload.allocations is not None:
+        allocation_inputs = list(payload.allocations)
+    elif "document_id" in payload.model_fields_set:
+        allocation_inputs = (
+            [PaymentAllocationInput(document_id=payload.document_id, amount=next_amount)]
+            if payload.document_id is not None
+            else []
+        )
+    else:
+        allocation_inputs = _allocation_inputs_from_payment(payment)
+    validated_allocations = _validate_allocations(
+        db,
+        next_payment_type,
+        next_partner_id,
+        next_amount,
+        allocation_inputs,
+    )
     old_values = {key: getattr(payment, key) for key in values}
     for key, value in values.items():
         setattr(payment, key, value)
+    _replace_allocations(db, payment, validated_allocations)
     new_values = {key: getattr(payment, key) for key in values}
     write_audit(db, "payment", payment.id, "update", change_details(old_values, new_values))
     db.commit()
@@ -149,8 +317,16 @@ def post_payment(db: Session, payment_id: int) -> Payment:
     if payment.status != Payment.STATUS_DRAFT:
         raise HTTPException(status_code=409, detail="Only draft payments can be posted")
     _validate_payment_partner(db, payment.payment_type, payment.partner_id)
-    _validate_payment_document(db, payment.payment_type, payment.partner_id, payment.document_id)
     try:
+        validated_allocations = _validate_allocations(
+            db,
+            payment.payment_type,
+            payment.partner_id,
+            payment.amount,
+            _allocation_inputs_from_payment(payment),
+            lock_documents=True,
+        )
+        payment.document_id = validated_allocations[0][0].id if len(validated_allocations) == 1 else None
         payment.status = Payment.STATUS_POSTED
         # TODO LEGACY_RULE_REQUIRED: refund cash direction must be confirmed against legacy cash rules.
         cash_operation_type = CashOperation.TYPE_CASH_IN
@@ -182,6 +358,50 @@ def post_payment(db: Session, payment_id: int) -> Payment:
         raise
     db.refresh(payment)
     return payment
+
+
+def replace_posted_payment_allocations(
+    db: Session,
+    payment_id: int,
+    allocations: list[PaymentAllocationInput],
+) -> Payment:
+    payment = _load_payment(db, payment_id, for_update=True)
+    if payment.status != Payment.STATUS_POSTED:
+        raise HTTPException(status_code=409, detail="Only posted payments can be reallocated")
+    old_values = [
+        {"document_id": allocation.document_id, "amount": str(allocation.amount)}
+        for allocation in payment.allocations
+    ]
+    try:
+        validated = _validate_allocations(
+            db,
+            payment.payment_type,
+            payment.partner_id,
+            payment.amount,
+            allocations,
+            exclude_payment_id=payment.id,
+            lock_documents=True,
+        )
+        _replace_allocations(db, payment, validated)
+        for cash_operation in payment.cash_operations:
+            cash_operation.document_id = payment.document_id
+        new_values = [
+            {"document_id": document.id, "amount": str(amount)}
+            for document, amount in validated
+        ]
+        write_audit(
+            db,
+            "payment",
+            payment.id,
+            "allocate",
+            change_details({"allocations": old_values}, {"allocations": new_values}),
+        )
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    db.expire_all()
+    return _load_payment(db, payment_id)
 
 
 def cancel_payment(db: Session, payment_id: int) -> Payment:

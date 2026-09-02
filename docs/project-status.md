@@ -23,6 +23,7 @@ Implemented:
 - audit log entries for document actions;
 - protected audit log API and frontend viewer for admin/accountability review;
 - payment creation, posting, and cancellation;
+- manager-only manual allocation of one payment across multiple invoices, including partial payments, advances, and posted-payment reallocation without duplicate cash movement;
 - draft payment editing and deletion before posting;
 - cash operation records linked to posted/cancelled payments;
 - manual cash operations with `cash_in`, `cash_out`, and `correction` types;
@@ -112,6 +113,9 @@ Business decisions received after the audit:
 
 Latest checks:
 
+- backend tests: `156 passed`, `2 skipped` locally on 2026-09-02 after manual payment allocation;
+- frontend TypeScript, containerized production build, and `3` mock E2E passed on 2026-09-02;
+- real PostgreSQL E2E M06 and M07 passed with partial/full payments, advances, and cash-safe reallocation on 2026-09-02;
 - manager workflow Playwright tests: `3 passed` on 2026-07-24 for M01, M02, and M04;
 - real role-based workflows M02-M07 and LOG-01 against isolated PostgreSQL: `7 passed` on 2026-07-24;
 - backend tests: `123 passed` on 2026-07-24 after adding logistics access, price-visibility, and exclusive-role checks;

@@ -1,7 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import Boolean, CheckConstraint, Date, ForeignKey, Numeric, String, Text
+from sqlalchemy import Boolean, CheckConstraint, Date, ForeignKey, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -75,6 +75,12 @@ class Payment(TimestampMixin, Base):
     partner = relationship("Partner")
     document = relationship("Document")
     cash_operations = relationship("CashOperation", back_populates="payment")
+    allocations = relationship(
+        "PaymentAllocation",
+        back_populates="payment",
+        cascade="all, delete-orphan",
+        order_by="PaymentAllocation.id",
+    )
 
     @property
     def partner_name(self) -> str | None:
@@ -82,7 +88,19 @@ class Payment(TimestampMixin, Base):
 
     @property
     def document_number(self) -> str | None:
+        if self.allocations:
+            numbers = [allocation.document_number for allocation in self.allocations if allocation.document_number]
+            if numbers:
+                return ", ".join(numbers)
         return self.document.number if self.document else None
+
+    @property
+    def allocated_amount(self) -> Decimal:
+        return sum((allocation.amount for allocation in self.allocations), Decimal("0.00"))
+
+    @property
+    def unallocated_amount(self) -> Decimal:
+        return self.amount - self.allocated_amount
 
     @property
     def cash_operation_id(self) -> int | None:
@@ -139,6 +157,34 @@ class CashOperation(TimestampMixin, Base):
     @property
     def payment_status(self) -> str | None:
         return self.payment.status if self.payment else None
+
+
+class PaymentAllocation(TimestampMixin, Base):
+    __tablename__ = "payment_allocations"
+    __table_args__ = (
+        UniqueConstraint("payment_id", "document_id", name="uq_payment_allocations_payment_document"),
+        CheckConstraint("amount > 0", name="ck_payment_allocations_amount_positive"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    payment_id: Mapped[int] = mapped_column(ForeignKey("payments.id", ondelete="CASCADE"), index=True)
+    document_id: Mapped[int] = mapped_column(ForeignKey("documents.id"), index=True)
+    amount: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+
+    payment = relationship("Payment", back_populates="allocations")
+    document = relationship("Document")
+
+    @property
+    def document_number(self) -> str | None:
+        return self.document.number if self.document else None
+
+    @property
+    def document_date(self):
+        return self.document.document_date if self.document else None
+
+    @property
+    def document_total(self) -> Decimal | None:
+        return self.document.total_amount if self.document else None
 
 
 class AuditLog(TimestampMixin, Base):

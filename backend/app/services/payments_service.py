@@ -73,7 +73,13 @@ def _validate_payment_partner(db: Session, payment_type: str, partner_id: int) -
         raise HTTPException(status_code=409, detail="Customer payment requires customer partner")
     if payment_type == Payment.TYPE_SUPPLIER_PAYMENT and partner.partner_type not in {Partner.TYPE_SUPPLIER, Partner.TYPE_BOTH}:
         raise HTTPException(status_code=409, detail="Supplier payment requires supplier partner")
-    # TODO LEGACY_RULE_REQUIRED: refund partner direction must be confirmed against legacy payment rules.
+
+
+def _validate_supported_payment(payment_type: str, method: str | None) -> None:
+    if payment_type not in _valid_payment_types():
+        raise HTTPException(status_code=422, detail="Payment type is not enabled for the first release")
+    if method != "cash":
+        raise HTTPException(status_code=422, detail="Only cash payments are enabled for the first release")
 
 
 def _validate_payment_document(
@@ -192,6 +198,7 @@ def get_payment_allocation_options(
     *,
     exclude_payment_id: int | None = None,
 ) -> list[PaymentAllocationOption]:
+    _validate_supported_payment(payment_type, "cash")
     _validate_payment_partner(db, payment_type, partner_id)
     expected_document_type = {
         Payment.TYPE_CUSTOMER_PAYMENT: Document.TYPE_OUTGOING,
@@ -231,7 +238,6 @@ def _valid_payment_types() -> set[str]:
     return {
         Payment.TYPE_CUSTOMER_PAYMENT,
         Payment.TYPE_SUPPLIER_PAYMENT,
-        Payment.TYPE_REFUND,
     }
 
 
@@ -241,8 +247,7 @@ def _ensure_draft(payment: Payment) -> None:
 
 
 def create_payment(db: Session, payload: PaymentCreate) -> Payment:
-    if payload.payment_type not in _valid_payment_types():
-        raise HTTPException(status_code=422, detail="Invalid payment type")
+    _validate_supported_payment(payload.payment_type, payload.method)
     _validate_payment_partner(db, payload.payment_type, payload.partner_id)
     allocation_inputs = list(payload.allocations)
     if not allocation_inputs and payload.document_id is not None:
@@ -269,10 +274,10 @@ def update_payment(db: Session, payment_id: int, payload: PaymentUpdate) -> Paym
     payment = _load_payment(db, payment_id)
     _ensure_draft(payment)
     values = payload.model_dump(exclude_unset=True, exclude={"allocations", "document_id"})
-    if "payment_type" in values and values["payment_type"] not in _valid_payment_types():
-        raise HTTPException(status_code=422, detail="Invalid payment type")
     next_payment_type = values.get("payment_type", payment.payment_type)
     next_partner_id = values.get("partner_id", payment.partner_id)
+    next_method = values.get("method", payment.method)
+    _validate_supported_payment(next_payment_type, next_method)
     _validate_payment_partner(db, next_payment_type, next_partner_id)
     next_amount = values.get("amount", payment.amount)
     if payload.allocations is not None:
@@ -316,6 +321,7 @@ def post_payment(db: Session, payment_id: int) -> Payment:
     payment = _load_payment(db, payment_id, for_update=True)
     if payment.status != Payment.STATUS_DRAFT:
         raise HTTPException(status_code=409, detail="Only draft payments can be posted")
+    _validate_supported_payment(payment.payment_type, payment.method)
     _validate_payment_partner(db, payment.payment_type, payment.partner_id)
     try:
         validated_allocations = _validate_allocations(

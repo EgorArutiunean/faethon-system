@@ -7,7 +7,7 @@ from app.schemas.common import Timestamped
 
 
 PAYMENT_STATUSES = {"draft", "posted", "cancelled"}
-PAYMENT_TYPES = {"customer_payment", "supplier_payment", "refund"}
+PAYMENT_TYPES = {"customer_payment", "supplier_payment"}
 
 
 class PaymentBase(BaseModel):

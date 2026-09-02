@@ -23,11 +23,13 @@ Cash operations are not physically deleted.
 
 - `customer_payment` creates `cash_in`;
 - `supplier_payment` creates `cash_out`;
-- `refund` currently creates `cash_out`.
+- historical `refund` rows keep their existing cash links, but new refund payments
+  are disabled for the first release.
 
 Cancelling a posted payment marks linked cash operations as `cancelled` and writes audit log entries.
 
-TODO LEGACY_RULE_REQUIRED: refund direction and payment cancellation behavior must be verified against the legacy cash book.
+Bank accounts and standalone refunds are outside the first-release scope. The API
+rejects new bank/refund payments instead of mapping them into the single cash desk.
 
 ## Cash Balance
 

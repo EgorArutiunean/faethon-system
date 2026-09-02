@@ -46,7 +46,7 @@ export function Payments() {
     if (!partner.is_active) return false;
     if (paymentType === "customer_payment") return partner.partner_type === "customer" || partner.partner_type === "both";
     if (paymentType === "supplier_payment") return partner.partner_type === "supplier" || partner.partner_type === "both";
-    return true;
+    return false;
   }), [partners, paymentType]);
   const selectedBalance = useMemo(
     () => balances.find((balance) => String(balance.partner_id) === partnerId),
@@ -61,7 +61,7 @@ export function Payments() {
   const allocationInvalid = allocatedAmount > paymentAmount;
 
   useEffect(() => {
-    if (!canAllocate || !partnerId || paymentType === "refund") {
+    if (!canAllocate || !partnerId) {
       setAllocationOptions([]);
       return;
     }
@@ -82,7 +82,6 @@ export function Payments() {
     const currentPartner = partners.find((partner) => String(partner.id) === partnerId);
     const allowed =
       !currentPartner ||
-      nextType === "refund" ||
       (nextType === "customer_payment" && ["customer", "both"].includes(currentPartner.partner_type)) ||
       (nextType === "supplier_payment" && ["supplier", "both"].includes(currentPartner.partner_type));
     setPaymentType(nextType);
@@ -161,7 +160,7 @@ export function Payments() {
       amount,
       method
     };
-    if (canAllocate && paymentType !== "refund") payload.allocations = selectedAllocations;
+    if (canAllocate) payload.allocations = selectedAllocations;
     const request = editingId ? api.updatePayment(editingId, payload) : api.createPayment(payload);
     request
       .then(() => {
@@ -231,7 +230,6 @@ export function Payments() {
             <select data-testid="payment-type" value={paymentType} disabled={isPostedAllocation} onChange={(event) => setPaymentTypeChecked(event.target.value)}>
               <option value="customer_payment">{t("customerPayment")}</option>
               <option value="supplier_payment">{t("supplierPayment")}</option>
-              <option value="refund">{t("refund")}</option>
             </select>
           </div>
           <div className="field">
@@ -241,10 +239,7 @@ export function Payments() {
           </div>
           <div className="field">
             <label>{t("method")}</label>
-            <select value={method} disabled={isPostedAllocation} onChange={(event) => setMethod(event.target.value)}>
-              <option value="cash">{t("cash")}</option>
-              <option value="bank">{t("bank")}</option>
-            </select>
+            <input value={formatCode(method, t)} disabled />
           </div>
           <div className="field">
             <label>&nbsp;</label>
@@ -263,7 +258,7 @@ export function Payments() {
           </div>
         </div>
 
-        {canAllocate && partnerId && paymentType !== "refund" ? (
+        {canAllocate && partnerId ? (
           <section className="payment-allocation-section" aria-label={t("paymentAllocation")}>
             <div className="payment-allocation-toolbar">
               <div>
@@ -350,7 +345,7 @@ export function Payments() {
               <div style={{ display: "flex", gap: 6 }}>
                 <button className="button" title={!can("payments.update") ? t("noPermission") : ""} disabled={row.status !== "draft" || !can("payments.update")} onClick={() => edit(row)}>{t("edit")}</button>
                 <button data-testid={`payment-post-${row.id}`} className="button" title={!can("payments.post") ? t("noPermission") : ""} disabled={row.status !== "draft" || !can("payments.post")} onClick={() => post(row.id)}>{t("post")}</button>
-                <button className="button" title={!canAllocate ? t("noPermission") : ""} disabled={row.status !== "posted" || !canAllocate} onClick={() => editAllocations(row)}>{t("allocate")}</button>
+                <button className="button" title={!canAllocate ? t("noPermission") : ""} disabled={row.status !== "posted" || row.payment_type === "refund" || !canAllocate} onClick={() => editAllocations(row)}>{t("allocate")}</button>
                 <button className="button" title={!can("payments.cancel") ? t("noPermission") : ""} disabled={row.status !== "posted" || !can("payments.cancel")} onClick={() => cancel(row.id)}>{t("cancel")}</button>
                 <button className="button" title={!can("payments.delete") ? t("noPermission") : ""} disabled={row.status !== "draft" || !can("payments.delete")} onClick={() => removeDraft(row.id)}>{t("deleteDraft")}</button>
               </div>

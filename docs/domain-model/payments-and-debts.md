@@ -34,19 +34,22 @@ Only posted payments affect partner balances.
 
 - `customer_payment` decreases the partner debt;
 - `supplier_payment` increases the balance because it reduces our payable to a supplier;
-- `refund` currently increases the balance.
+- historical `refund` rows keep their previous balance effect for readable old data,
+  but new refund payments are disabled for the first release.
 
 Partner type validation:
 
 - `customer_payment` requires a `customer` or `both` partner;
 - `supplier_payment` requires a `supplier` or `both` partner;
-- `refund` keeps the simplified current rule.
+- new `refund` payments are rejected until a future workflow is explicitly approved.
 
 Payment cancellation changes the payment status to `cancelled`, writes audit log,
 and cancels the linked cash operation.
 
-The standalone `refund` payment direction is not yet approved for production and
-must not be treated as a completed first-release workflow.
+The standalone `refund` payment direction is not part of the first release. New
+refund drafts and bank payments are rejected by the API; historical rows remain
+readable and cancellable. The working interface exposes only cash payments from
+customers and cash payments to suppliers.
 
 ## Manual Allocation
 

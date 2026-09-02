@@ -42,7 +42,7 @@ Temporary assumptions:
 - outgoing documents increase partner debt;
 - incoming documents reduce partner balance as a simplified supplier payable model;
 - customer payments create `cash_in`;
-- supplier payments and refunds create `cash_out`;
+- supplier payments create `cash_out`; new standalone refunds are disabled;
 - cash corrections are treated as signed deltas;
 - payment cancellation marks linked cash operations as `cancelled` instead of posting a full legacy reversal workflow;
 - authentication uses simple JWT tokens and role permissions;

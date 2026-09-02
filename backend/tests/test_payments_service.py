@@ -163,15 +163,74 @@ def test_update_draft_payment_changes_editable_fields(db: Session) -> None:
         PaymentUpdate(
             payment_date=date(2026, 5, 4),
             amount=Decimal("6.25"),
-            method="bank",
+            method="cash",
             note="corrected before posting",
         ),
     )
 
     assert updated.payment_date == date(2026, 5, 4)
     assert updated.amount == Decimal("6.25")
-    assert updated.method == "bank"
+    assert updated.method == "cash"
     assert updated.note == "corrected before posting"
+
+
+@pytest.mark.parametrize(
+    ("payment_type", "method"),
+    [
+        (Payment.TYPE_REFUND, "cash"),
+        (Payment.TYPE_CUSTOMER_PAYMENT, "bank"),
+    ],
+)
+def test_unsupported_first_release_payment_is_rejected(
+    db: Session,
+    payment_type: str,
+    method: str,
+) -> None:
+    _document, partner = posted_document(db, Document.TYPE_OUTGOING)
+
+    with pytest.raises(HTTPException) as exc:
+        create_payment(
+            db,
+            PaymentCreate(
+                partner_id=partner.id,
+                payment_date=date(2026, 5, 4),
+                payment_type=payment_type,
+                amount=Decimal("5.00"),
+                method=method,
+            ),
+        )
+
+    assert exc.value.status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("payment_type", "method"),
+    [
+        (Payment.TYPE_REFUND, "cash"),
+        (Payment.TYPE_CUSTOMER_PAYMENT, "bank"),
+    ],
+)
+def test_legacy_unsupported_draft_cannot_be_posted(
+    db: Session,
+    payment_type: str,
+    method: str,
+) -> None:
+    _document, partner = posted_document(db, Document.TYPE_OUTGOING)
+    payment = Payment(
+        partner_id=partner.id,
+        payment_date=date(2026, 5, 4),
+        payment_type=payment_type,
+        status=Payment.STATUS_DRAFT,
+        amount=Decimal("5.00"),
+        method=method,
+    )
+    db.add(payment)
+    db.commit()
+
+    with pytest.raises(HTTPException) as exc:
+        post_payment(db, payment.id)
+
+    assert exc.value.status_code == 422
 
 
 def test_update_posted_payment_is_rejected(db: Session) -> None:

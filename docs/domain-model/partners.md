@@ -17,7 +17,7 @@ Existing rows receive `both` in migration `0004_partner_type`. This is the safes
 - Adjustment document can have no partner or any partner type.
 - `customer_payment` requires a `customer` or `both` partner.
 - `supplier_payment` requires a `supplier` or `both` partner.
-- `refund` keeps the current simplified behavior.
+- new standalone `refund` payments are disabled for the first release.
 
 TODO LEGACY_RULE_REQUIRED: confirm refund direction and whether BuySell had separate customer/supplier directories or a shared counterparty table with flags.
 

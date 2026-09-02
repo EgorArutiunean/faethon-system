@@ -98,7 +98,7 @@ async function loginAsManager(page: Page) {
   await page.getByLabel("Email").fill("manager@example.com");
   await page.getByLabel("Пароль").fill("manager123");
   await page.getByRole("button", { name: "Войти" }).click();
-  await expect(page.getByText("Роль: Менеджер")).toBeVisible();
+  await expect(page.getByTestId("header-user")).toContainText("Demo Manager:Менеджер");
 }
 
 async function loginAsCashier(page: Page) {
@@ -106,7 +106,7 @@ async function loginAsCashier(page: Page) {
   await page.getByLabel("Email").fill("cashier@example.com");
   await page.getByLabel("Пароль").fill("cashier123");
   await page.getByRole("button", { name: "Войти" }).click();
-  await expect(page.getByText("Роль: Кассир")).toBeVisible();
+  await expect(page.getByTestId("header-user")).toContainText("Demo Cashier:Кассир");
 }
 
 async function loginAsLogist(page: Page) {
@@ -114,7 +114,7 @@ async function loginAsLogist(page: Page) {
   await page.getByLabel("Email").fill("logist-e2e@example.com");
   await page.getByLabel("Пароль").fill("logist123");
   await page.getByRole("button", { name: "Войти" }).click();
-  await expect(page.getByText("Роль: Логист")).toBeVisible();
+  await expect(page.getByTestId("header-user")).toContainText("E2E Logistics Operator:Логист");
 }
 
 async function createDraftThroughUi(

@@ -105,7 +105,10 @@ async function loginAsManager(page: Page) {
   await page.getByLabel("Email").fill("manager@example.com");
   await page.getByLabel("Пароль").fill("manager123");
   await page.getByRole("button", { name: "Войти" }).click();
-  await expect(page.getByText("Роль: Менеджер")).toBeVisible();
+  const headerUser = page.getByTestId("header-user");
+  await expect(headerUser).toBeVisible();
+  await expect(headerUser).toContainText("Тестовый менеджер:");
+  await expect(headerUser).toContainText("Менеджер");
 }
 
 test("M01: менеджер входит и видит только разрешенные разделы", async ({ page }) => {

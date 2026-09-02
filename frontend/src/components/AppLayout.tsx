@@ -14,6 +14,7 @@ import {
   PanelLeftOpen,
   Settings,
   Truck,
+  UserRound,
   Users,
   WalletCards
 } from "lucide-react";
@@ -59,6 +60,7 @@ export function AppLayout() {
   const isCollapsed = sidebarMode === "collapsed";
   const isHidden = sidebarMode === "hidden";
   const roleLabel = user?.role_names[0] ? formatCode(user.role_names[0], t) : "";
+  const userName = user?.full_name?.trim() || user?.email || "";
   const collapseLabel = isCollapsed ? "\u0420\u0430\u0437\u0432\u0435\u0440\u043d\u0443\u0442\u044c \u043c\u0435\u043d\u044e" : "\u0421\u0432\u0435\u0440\u043d\u0443\u0442\u044c \u043c\u0435\u043d\u044e";
   const hideLabel = "\u0421\u043a\u0440\u044b\u0442\u044c \u043c\u0435\u043d\u044e";
   const showLabel = "\u041f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u043c\u0435\u043d\u044e";
@@ -120,11 +122,21 @@ export function AppLayout() {
             ) : null}
             <strong>{t("operationalWorkspace")}</strong>
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <span style={{ fontSize: 13, color: "#52616f" }}>
-              {user?.email} {roleLabel ? `(${t("role")}: ${roleLabel})` : ""}
-            </span>
-            <button className="button">{t("sync")}</button>
+          <div className="header-actions">
+            <div
+              className="header-user"
+              data-testid="header-user"
+              aria-label={roleLabel ? `${userName}: ${roleLabel}` : userName}
+            >
+              <span className="header-user-icon" aria-hidden="true">
+                <UserRound size={16} />
+              </span>
+              <span className="header-user-label">
+                <strong className="header-user-name">{userName}{roleLabel ? ":" : ""}</strong>
+                {roleLabel ? <span className="header-user-role">{roleLabel}</span> : null}
+              </span>
+            </div>
+            <button className="button header-sync-button">{t("sync")}</button>
             <button className="button" onClick={logout}>{t("logout")}</button>
           </div>
         </header>

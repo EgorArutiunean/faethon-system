@@ -20,7 +20,7 @@ from app.schemas.currencies import ExchangeRateCreate
 from app.schemas.documents import DocumentCreate, DocumentLineCreate
 from app.schemas.payments import PaymentCreate
 from app.services.auth_seed import seed_auth_defaults
-from app.services.cash_service import create_cash_operation
+from app.services.cash_service import create_cash_operation, get_cash_book
 from app.services.currency_service import create_exchange_rate, get_currency, seed_default_currencies
 from app.services.documents_service import add_document_line, create_document, post_document
 from app.services.payments_service import create_payment, post_payment
@@ -199,11 +199,18 @@ def _seed_payments(db: Session, partners: list[Partner]) -> None:
     for index in [2, 4, 6, 8, 10, 1, 3, 5, 7, 9]:
         note = f"{PREFIX}:payment:{index:02d}"
         payment = _payment_by_note(db, note)
-        if payment is not None and payment.status != Payment.STATUS_DRAFT:
-            continue
         is_customer = index % 2 == 0
         partner = _customer_for(partners, index) if is_customer else _supplier_for(partners, index)
         payment_date = START_DATE + timedelta(days=(20 if is_customer else 30) + index)
+        if payment is not None and payment.payment_date != payment_date:
+            payment.payment_date = payment_date
+            for operation in db.scalars(
+                select(CashOperation).where(CashOperation.payment_id == payment.id)
+            ):
+                operation.operation_date = payment_date
+            db.commit()
+        if payment is not None and payment.status != Payment.STATUS_DRAFT:
+            continue
         if payment is None:
             payment = create_payment(
                 db,
@@ -254,6 +261,8 @@ def seed() -> None:
         _seed_documents(db, products, warehouses, partners)
         _seed_payments(db, partners)
         _seed_cash_operations(db, partners)
+        if any(row.balance < 0 for row in get_cash_book(db)):
+            raise RuntimeError("Test data created a negative cash balance")
 
         print("Test data seed complete")
         print("Created/updated 10 product categories")

@@ -1,4 +1,13 @@
-import { Settings, SlidersHorizontal, TrendingDown, TrendingUp } from "lucide-react";
+import {
+  HandCoins,
+  PackagePlus,
+  ReceiptText,
+  Settings,
+  ShoppingCart,
+  SlidersHorizontal,
+  TrendingDown,
+  TrendingUp
+} from "lucide-react";
 import { ReactNode, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
@@ -202,6 +211,12 @@ export function Dashboard() {
 
   const visible = (id: WidgetId) => visibleWidgets.includes(id);
   const placeholder = state.loading ? t("loading") : "-";
+  const quickActions = [
+    { label: "Новая продажа", to: "/documents?create=outgoing", icon: ShoppingCart, permission: "documents.create" },
+    { label: "Новый приход", to: "/documents?create=incoming", icon: PackagePlus, permission: "documents.create" },
+    { label: "Принять оплату", to: "/payments?create=customer_payment", icon: HandCoins, permission: "payments.create" },
+    { label: "Записать расход", to: "/cash?create=cash_out", icon: ReceiptText, permission: "cash.create" },
+  ].filter((action) => can(action.permission));
 
   function toggleWidget(id: WidgetId) {
     setVisibleWidgets((current) => {
@@ -239,6 +254,23 @@ export function Dashboard() {
           </button>
         </div>
       </div>
+
+      {quickActions.length ? (
+        <section className="dashboard-command-bar" aria-label="Быстрые действия менеджера">
+          <h2>Быстрые действия</h2>
+          <div className="dashboard-command-list">
+            {quickActions.map((action) => {
+              const Icon = action.icon;
+              return (
+                <Link className="dashboard-command" key={action.to} to={action.to}>
+                  <Icon size={17} />
+                  <span>{action.label}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
 
       {state.error ? (
         <div className="panel error-panel">{t("apiLoadDashboardError")}</div>

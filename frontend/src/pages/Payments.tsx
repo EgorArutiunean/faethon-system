@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../auth";
 import { DataTable } from "../components/DataTable";
@@ -31,9 +32,12 @@ export function Payments() {
   const [balances, setBalances] = useState<PartnerBalance[]>([]);
   const [allocationOptions, setAllocationOptions] = useState<PaymentAllocationOption[]>([]);
   const [allocations, setAllocations] = useState<AllocationValues>({});
+  const [searchParams] = useSearchParams();
   const [partnerId, setPartnerId] = useState("");
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
-  const [paymentType, setPaymentType] = useState("customer_payment");
+  const [paymentType, setPaymentType] = useState(
+    searchParams.get("create") === "supplier_payment" ? "supplier_payment" : "customer_payment"
+  );
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState("cash");
   const [error, setError] = useState("");

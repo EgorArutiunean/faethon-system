@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import { DataTable } from "../components/DataTable";
 import { PageScaffold } from "../components/PageScaffold";
@@ -12,8 +13,12 @@ export function Cash() {
   const { can } = useAuth();
   const [rows, setRows] = useState<CashBookRow[]>([]);
   const [balance, setBalance] = useState("0");
+  const [searchParams] = useSearchParams();
   const [operationDate, setOperationDate] = useState(new Date().toISOString().slice(0, 10));
-  const [operationType, setOperationType] = useState("cash_in");
+  const [operationType, setOperationType] = useState(() => {
+    const requestedType = searchParams.get("create");
+    return requestedType === "cash_out" || requestedType === "correction" ? requestedType : "cash_in";
+  });
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
   const [error, setError] = useState("");

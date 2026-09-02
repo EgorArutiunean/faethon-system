@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { DataTable } from "../components/DataTable";
 import { PageScaffold } from "../components/PageScaffold";
@@ -13,6 +13,10 @@ type DraftDocumentType = "incoming" | "outgoing" | "adjustment" | "transfer";
 
 const today = new Date().toISOString().slice(0, 10);
 
+function isDraftDocumentType(value: string | null): value is DraftDocumentType {
+  return value === "incoming" || value === "outgoing" || value === "adjustment" || value === "transfer";
+}
+
 export function Documents() {
   const { t } = useI18n();
   const { showToast } = useToast();
@@ -21,8 +25,10 @@ export function Documents() {
   const [partners, setPartners] = useState<Partner[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [error, setError] = useState("");
+  const [searchParams] = useSearchParams();
+  const requestedType = searchParams.get("create");
   const [draftForm, setDraftForm] = useState({
-    document_type: "incoming" as DraftDocumentType,
+    document_type: isDraftDocumentType(requestedType) ? requestedType : "incoming" as DraftDocumentType,
     number: "",
     document_date: today,
     warehouse_id: "",
@@ -123,7 +129,15 @@ export function Documents() {
       const message = exc instanceof Error ? exc.message : t("apiLoadPartnersError");
       setError(message);
     });
-    api.warehouses().then(setWarehouses).catch((exc) => {
+    api.warehouses().then((warehouseRows) => {
+      setWarehouses(warehouseRows);
+      if (warehouseRows.length === 1) {
+        setDraftForm((current) => ({
+          ...current,
+          warehouse_id: current.warehouse_id || String(warehouseRows[0].id)
+        }));
+      }
+    }).catch((exc) => {
       const message = exc instanceof Error ? exc.message : t("apiLoadWarehousesError");
       setError(message);
     });

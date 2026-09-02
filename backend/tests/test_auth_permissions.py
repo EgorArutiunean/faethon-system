@@ -181,6 +181,37 @@ def test_viewer_cannot_access_cash_create_or_cancel(client: TestClient, db: Sess
     assert response.status_code == 403
 
 
+def test_manager_can_run_the_cash_register(client: TestClient) -> None:
+    headers = auth_header(client, "manager@example.com", "manager123")
+
+    current_user = client.get("/api/v1/auth/me", headers=headers)
+    created = client.post(
+        "/api/v1/cash/operations",
+        json={
+            "operation_date": "2026-05-02",
+            "operation_type": "cash_in",
+            "amount": "10.00",
+            "note": "Opening balance",
+        },
+        headers=headers,
+    )
+
+    assert current_user.status_code == 200
+    assert {"cash.read", "cash.create", "cash.cancel"} <= set(current_user.json()["permissions"])
+    assert created.status_code == 201
+
+    listed = client.get("/api/v1/cash/book", headers=headers)
+    cancelled = client.post(
+        f"/api/v1/cash/operations/{created.json()['id']}/cancel",
+        headers=headers,
+    )
+
+    assert listed.status_code == 200
+    assert listed.json()[0]["balance"] == "10.00"
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"
+
+
 def test_cash_operation_author_cannot_be_supplied_by_client(client: TestClient) -> None:
     response = client.post(
         "/api/v1/cash/operations",

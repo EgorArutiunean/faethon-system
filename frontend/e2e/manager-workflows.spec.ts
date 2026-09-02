@@ -22,6 +22,16 @@ const manager = {
     "documents.cancel",
     "documents.delete",
     "stock.read",
+    "payments.read",
+    "payments.create",
+    "payments.update",
+    "payments.delete",
+    "payments.post",
+    "payments.cancel",
+    "payments.allocate",
+    "cash.read",
+    "cash.create",
+    "cash.cancel",
     "reports.read",
   ],
 };
@@ -118,9 +128,19 @@ test("M01: менеджер входит и видит только разреш
   const navigation = page.locator(".sidebar-nav");
   await expect(navigation.getByRole("link", { name: "Документы" })).toBeVisible();
   await expect(navigation.getByRole("link", { name: "Складской учет" })).toBeVisible();
-  await expect(navigation.getByRole("link", { name: "Оплаты" })).toHaveCount(0);
-  await expect(navigation.getByRole("link", { name: "Касса" })).toHaveCount(0);
+  await expect(navigation.getByRole("link", { name: "Оплаты" })).toBeVisible();
+  await expect(navigation.getByRole("link", { name: "Касса" })).toBeVisible();
   await expect(navigation.getByRole("link", { name: "Настройки" })).toHaveCount(0);
+
+  const quickActions = page.getByRole("region", { name: "Быстрые действия менеджера" });
+  await expect(quickActions.getByRole("link", { name: "Новая продажа" })).toHaveAttribute("href", "/documents?create=outgoing");
+  await expect(quickActions.getByRole("link", { name: "Новый приход" })).toHaveAttribute("href", "/documents?create=incoming");
+  await expect(quickActions.getByRole("link", { name: "Принять оплату" })).toHaveAttribute("href", "/payments?create=customer_payment");
+  await expect(quickActions.getByRole("link", { name: "Записать расход" })).toHaveAttribute("href", "/cash?create=cash_out");
+
+  await quickActions.getByRole("link", { name: "Новая продажа" }).click();
+  await expect(page.getByTestId("draft-document-type")).toHaveValue("outgoing");
+  await expect(page.getByTestId("draft-document-warehouse")).toHaveValue("1");
 });
 
 test("M02: валютный приход показывает необходимость пересмотра цены", async ({ page }) => {

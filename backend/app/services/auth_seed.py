@@ -41,6 +41,8 @@ PERMISSIONS = [
     "users.manage",
     "settings.manage",
     "logistics.read",
+    "logistics.process",
+    "logistics.review",
 ]
 
 
@@ -71,6 +73,9 @@ ROLE_PERMISSIONS = {
         "payments.cancel",
         "payments.allocate",
         "reports.read",
+        "logistics.read",
+        "logistics.process",
+        "logistics.review",
     ],
     "cashier": [
         "partners.read",
@@ -88,6 +93,7 @@ ROLE_PERMISSIONS = {
     ],
     "logist": [
         "logistics.read",
+        "logistics.process",
     ],
     "viewer": [
         "products.read",

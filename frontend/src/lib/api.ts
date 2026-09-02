@@ -331,6 +331,50 @@ export type LogisticsDocument = {
   lines: LogisticsDocumentLine[];
 };
 
+export type WarehouseTaskLine = {
+  id: number;
+  product_id: number;
+  product_name?: string | null;
+  expected_quantity: string;
+  actual_quantity?: string | null;
+  status: string;
+  comment?: string | null;
+  sale_price: string;
+  sale_total: string;
+};
+
+export type WarehouseTaskEvent = {
+  id: number;
+  event_type: string;
+  actor_user_id?: number | null;
+  actor_name?: string | null;
+  from_status?: string | null;
+  to_status?: string | null;
+  note?: string | null;
+  created_at: string;
+};
+
+export type WarehouseTask = {
+  id: number;
+  document_id: number;
+  document_number?: string | null;
+  document_date: string;
+  document_type: string;
+  posting_version: number;
+  partner_name?: string | null;
+  warehouse_id: number;
+  warehouse_name?: string | null;
+  task_type: string;
+  status: string;
+  assigned_to_id?: number | null;
+  assigned_to_name?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  created_at: string;
+  lines: WarehouseTaskLine[];
+  events: WarehouseTaskEvent[];
+};
+
 export type LoginResponse = {
   access_token: string;
   token_type: string;
@@ -505,6 +549,23 @@ export const api = {
   cashBook: () => request<CashBookRow[]>("/cash/book"),
   logisticsDocuments: (status = "") =>
     request<LogisticsDocument[]>(`/logistics/documents${status ? `?status=${encodeURIComponent(status)}` : ""}`),
+  warehouseTasks: (status = "") =>
+    request<WarehouseTask[]>(`/logistics/tasks${status ? `?status=${encodeURIComponent(status)}` : ""}`),
+  warehouseTask: (taskId: number) => request<WarehouseTask>(`/logistics/tasks/${taskId}`),
+  startWarehouseTask: (taskId: number) =>
+    request<WarehouseTask>(`/logistics/tasks/${taskId}/start`, { method: "POST" }),
+  confirmWarehouseTask: (
+    taskId: number,
+    lines: Array<{ line_id: number; actual_quantity: string; comment?: string | null }>
+  ) => request<WarehouseTask>(`/logistics/tasks/${taskId}/confirm`, {
+    method: "PUT",
+    body: JSON.stringify({ lines })
+  }),
+  returnWarehouseTask: (taskId: number, note: string) =>
+    request<WarehouseTask>(`/logistics/tasks/${taskId}/return`, {
+      method: "POST",
+      body: JSON.stringify({ note })
+    }),
   reportStockBalances: (params = "") => request<StockBalancesReport>(`/reports/stock-balances${params}`),
   reportStockMovements: (params = "") => request<StockMovementsReport>(`/reports/stock-movements${params}`),
   reportPartnerDebts: (params = "") => request<PartnerDebtsReport>(`/reports/partner-debts${params}`),

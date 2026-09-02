@@ -20,7 +20,7 @@ app = FastAPI(
         {"name": "stock", "description": "Stock balances and movements"},
         {"name": "payments", "description": "Payments, partner balances, and debt statements"},
         {"name": "cash", "description": "Cash operations, cash balance, and cash book"},
-        {"name": "logistics", "description": "Warehouse-scoped logistics document views"},
+        {"name": "logistics", "description": "Warehouse-scoped execution tasks and logistics history"},
         {"name": "currencies", "description": "Currencies and historical exchange rates"},
         {"name": "reports", "description": "BuySell-like operational reports"},
         {"name": "import", "description": "CSV/XLSX import templates, dry-run validation, and apply"},

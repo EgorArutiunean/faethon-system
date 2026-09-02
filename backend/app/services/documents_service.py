@@ -24,6 +24,7 @@ from app.schemas.documents import (
 )
 from app.services.audit_writer import change_details, write_audit
 from app.services.currency_service import BASE_CURRENCY_CODE, get_currency
+from app.services.logistics_service import cancel_active_tasks_for_document_version, create_tasks_for_document
 
 
 class DocumentRulesError(ValueError):
@@ -683,6 +684,7 @@ def post_document(db: Session, document_id: int) -> Document:
                 {"status": Document.STATUS_POSTED, "posting_version": document.posting_version},
             ),
         )
+        create_tasks_for_document(db, document)
         db.commit()
     except (DocumentRulesError, IntegrityError) as exc:
         db.rollback()
@@ -767,6 +769,7 @@ def repost_document(db: Session, document_id: int, payload: DocumentRepost) -> D
         raise HTTPException(status_code=422, detail="Correction reason must contain at least 3 characters")
 
     try:
+        old_posting_version = document.posting_version
         old_snapshot = _document_snapshot(document)
         _store_revision(db, document, document.posting_version, "Recovered posted version")
         candidate = _build_repost_candidate(db, payload)
@@ -832,6 +835,13 @@ def repost_document(db: Session, document_id: int, payload: DocumentRepost) -> D
                 {"posting_version": document.posting_version, "reason": reason, "snapshot": new_snapshot},
             ),
         )
+        cancel_active_tasks_for_document_version(
+            db,
+            document.id,
+            old_posting_version,
+            "Документ исправлен и перепроведён",
+        )
+        create_tasks_for_document(db, document)
         db.commit()
     except HTTPException:
         db.rollback()
@@ -877,6 +887,12 @@ def cancel_document(db: Session, document_id: int) -> Document:
             "cancel",
         )
         document.status = Document.STATUS_CANCELLED
+        cancel_active_tasks_for_document_version(
+            db,
+            document.id,
+            document.posting_version,
+            "Документ отменён",
+        )
         write_audit(
             db,
             "document",

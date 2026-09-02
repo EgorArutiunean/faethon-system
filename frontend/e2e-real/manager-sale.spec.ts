@@ -674,7 +674,7 @@ test("M07: supplier partial, full and overpayment update debt and cash", async (
   await api.dispose();
 });
 
-test("LOG-01: logist sees assigned warehouse and sale price only", async ({ page }) => {
+test("LOG-01: logist completes assigned task and sees sale price only", async ({ page }) => {
   const api = await request.newContext({ baseURL: apiBaseUrl });
   const managerToken = await loginToken(api, "manager@example.com", "manager123");
   const adminToken = await loginToken(api, "admin@example.com", "admin123");
@@ -721,22 +721,29 @@ test("LOG-01: logist sees assigned warehouse and sale price only", async ({ page
   await expect(navigation.getByRole("link", { name: "Документы" })).toHaveCount(0);
   await expect(navigation.getByRole("link", { name: "Оплаты" })).toHaveCount(0);
   await page.goto("/logistics", { waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("heading", { name: "Логистика" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Складские задания" })).toBeVisible();
+  await page.getByRole("button", { name: new RegExp(incoming.number) }).click();
   await expect(page.getByRole("cell", { name: "E2E Logistics Product" })).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "Продажная цена" })).toBeVisible();
   await expect(page.getByText("E2E Logistics Warehouse", { exact: false }).first()).toBeVisible();
+  await page.getByTestId("start-warehouse-task").click();
+  await expect(page.locator(".logistics-detail-header .status-badge")).toHaveText("В работе");
+  await page.getByTestId("confirm-warehouse-task").click();
+  await expect(page.locator(".logistics-detail-header .status-badge")).toHaveText("Выполнено");
 
-  const response = await api.get("logistics/documents", {
+  const response = await api.get("logistics/tasks", {
     headers: { Authorization: `Bearer ${logistToken}` },
   });
   expect(response.ok()).toBeTruthy();
-  const logisticsDocuments = await response.json();
-  const logisticsDocument = logisticsDocuments.find((document: { id: number }) => document.id === incoming.id);
-  expect(logisticsDocument.lines[0].sale_price).toBe("150.00");
-  expect(logisticsDocument.lines[0].sale_total).toBe("300.00");
-  expect(logisticsDocument.lines[0]).not.toHaveProperty("price");
-  expect(logisticsDocument.lines[0]).not.toHaveProperty("foreign_price");
-  expect(logisticsDocument).not.toHaveProperty("currency_code");
-  expect(logisticsDocument).not.toHaveProperty("exchange_rate");
+  const logisticsTasks = await response.json();
+  const logisticsTask = logisticsTasks.find((task: { document_id: number }) => task.document_id === incoming.id);
+  expect(logisticsTask.status).toBe("completed");
+  expect(logisticsTask.lines[0].actual_quantity).toBe("2.000");
+  expect(logisticsTask.lines[0].sale_price).toBe("150.00");
+  expect(logisticsTask.lines[0].sale_total).toBe("300.00");
+  expect(logisticsTask.lines[0]).not.toHaveProperty("price");
+  expect(logisticsTask.lines[0]).not.toHaveProperty("foreign_price");
+  expect(logisticsTask).not.toHaveProperty("currency_code");
+  expect(logisticsTask).not.toHaveProperty("exchange_rate");
   await api.dispose();
 });

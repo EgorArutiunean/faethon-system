@@ -8,9 +8,72 @@ from app.api.deps import require_permission
 from app.db.session import get_db
 from app.models.documents import Document, DocumentLine
 from app.models.identity import User
-from app.schemas.logistics import LogisticsDocumentLineRead, LogisticsDocumentRead
+from app.schemas.logistics import (
+    LogisticsDocumentLineRead,
+    LogisticsDocumentRead,
+    WarehouseTaskConfirmation,
+    WarehouseTaskRead,
+    WarehouseTaskReturn,
+)
+from app.services.logistics_service import (
+    confirm_task,
+    get_task,
+    list_tasks,
+    return_task,
+    serialize_task,
+    start_task,
+)
 
 router = APIRouter(prefix="/logistics", tags=["logistics"])
+
+
+@router.get("/tasks", response_model=list[WarehouseTaskRead])
+def list_warehouse_tasks(
+    status: str | None = None,
+    skip: int = 0,
+    limit: int = Query(default=100, le=500),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("logistics.read")),
+):
+    return [serialize_task(task) for task in list_tasks(db, user, status=status, skip=skip, limit=limit)]
+
+
+@router.get("/tasks/{task_id}", response_model=WarehouseTaskRead)
+def get_warehouse_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("logistics.read")),
+):
+    return serialize_task(get_task(db, task_id, user))
+
+
+@router.post("/tasks/{task_id}/start", response_model=WarehouseTaskRead)
+def start_warehouse_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("logistics.process")),
+):
+    return serialize_task(start_task(db, task_id, user))
+
+
+@router.put("/tasks/{task_id}/confirm", response_model=WarehouseTaskRead)
+def confirm_warehouse_task(
+    task_id: int,
+    payload: WarehouseTaskConfirmation,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("logistics.process")),
+):
+    return serialize_task(confirm_task(db, task_id, payload, user))
+
+
+@router.post("/tasks/{task_id}/return", response_model=WarehouseTaskRead)
+def return_warehouse_task(
+    task_id: int,
+    payload: WarehouseTaskReturn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("logistics.review")),
+):
+    return serialize_task(return_task(db, task_id, payload.note, user))
 
 
 def _document_query(warehouse_ids: list[int]):

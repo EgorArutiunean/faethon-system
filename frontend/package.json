@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
-    "test:e2e:real": "playwright test --config playwright.real.config.ts"
+    "test:e2e:real": "playwright test --config playwright.real.config.ts",
+    "test:e2e:prod": "playwright test --config playwright.prod.config.ts"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",

@@ -1,6 +1,6 @@
 import { APIRequestContext, expect, Page, request, test } from "@playwright/test";
 
-const apiBaseUrl = "http://127.0.0.1:18000/api/v1/";
+const apiBaseUrl = process.env.E2E_API_BASE_URL ?? "http://127.0.0.1:18000/api/v1/";
 
 function relativeApiPath(path: string) {
   return path.replace(/^\//, "");
@@ -114,6 +114,11 @@ async function loginAsLogist(page: Page) {
   await page.getByLabel("Email").fill("logist-e2e@example.com");
   await page.getByLabel("Пароль").fill("logist123");
   await page.getByRole("button", { name: "Войти" }).click();
+  await expect(page.getByRole("heading", { name: "Задайте новый пароль" })).toBeVisible();
+  await page.getByLabel("Текущий пароль").fill("logist123");
+  await page.getByLabel("Новый пароль", { exact: true }).fill("logist-e2e-secure-2026");
+  await page.getByLabel("Подтвердите пароль").fill("logist-e2e-secure-2026");
+  await page.getByRole("button", { name: "Сменить пароль" }).click();
   await expect(page.getByTestId("header-user")).toContainText("E2E Logistics Operator:Логист");
 }
 
@@ -713,9 +718,8 @@ test("LOG-01: logist completes assigned task and sees sale price only", async ({
     role_names: ["logist"],
     warehouse_ids: [warehouse.id],
   });
-  const logistToken = await loginToken(api, "logist-e2e@example.com", "logist123");
-
   await loginAsLogist(page);
+  const logistToken = await loginToken(api, "logist-e2e@example.com", "logist-e2e-secure-2026");
   const navigation = page.getByRole("navigation");
   await expect(navigation.getByRole("link", { name: "Логистика" })).toBeVisible();
   await expect(navigation.getByRole("link", { name: "Документы" })).toHaveCount(0);

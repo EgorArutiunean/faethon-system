@@ -16,7 +16,15 @@ import {
 
 type Tab = "stock-balances" | "stock-movements" | "partner-debts" | "cash-book" | "documents-register";
 
-const emptyStockBalances: StockBalancesReport = { rows: [], total_quantity: "0" };
+const REPORT_PAGE_SIZE = 25;
+
+const emptyStockBalances: StockBalancesReport = {
+  rows: [],
+  total_quantity: "0",
+  total: 0,
+  offset: 0,
+  limit: REPORT_PAGE_SIZE
+};
 const emptyStockMovements: StockMovementsReport = { rows: [], total_quantity: "0" };
 const emptyPartnerDebts: PartnerDebtsReport = { rows: [], total_partner_debt: "0" };
 const emptyCashBook: CashBookReport = { rows: [], cash_in_total: "0", cash_out_total: "0", cash_balance: "0" };
@@ -56,6 +64,7 @@ export function Reports() {
   const [onlyWithBalance, setOnlyWithBalance] = useState(false);
 
   const [stockBalances, setStockBalances] = useState(emptyStockBalances);
+  const [stockPage, setStockPage] = useState(0);
   const [stockMovements, setStockMovements] = useState(emptyStockMovements);
   const [partnerDebts, setPartnerDebts] = useState(emptyPartnerDebts);
   const [cashBook, setCashBook] = useState(emptyCashBook);
@@ -75,7 +84,7 @@ export function Reports() {
     return params({ ...values, ...extra });
   }
 
-  function load() {
+  function load(requestedStockPage = stockPage) {
     if (!can("reports.read")) {
       return;
     }
@@ -83,7 +92,10 @@ export function Reports() {
     setError("");
     const request =
       tab === "stock-balances"
-        ? api.reportStockBalances(currentParams()).then(setStockBalances)
+        ? api.reportStockBalances(currentParams({
+            offset: String(requestedStockPage * REPORT_PAGE_SIZE),
+            limit: String(REPORT_PAGE_SIZE)
+          })).then(setStockBalances)
         : tab === "stock-movements"
           ? api.reportStockMovements(currentParams()).then(setStockMovements)
           : tab === "partner-debts"
@@ -121,8 +133,16 @@ export function Reports() {
   }
 
   useEffect(() => {
-    load();
+    setStockPage(0);
+    load(0);
   }, [tab]);
+
+  const stockPageCount = Math.max(1, Math.ceil(stockBalances.total / REPORT_PAGE_SIZE));
+
+  function changeStockPage(nextPage: number) {
+    setStockPage(nextPage);
+    load(nextPage);
+  }
 
   if (!can("reports.read")) {
     return (
@@ -218,7 +238,7 @@ export function Reports() {
             </select>
           </div>
         ) : null}
-        <div className="field"><label>&nbsp;</label><button className="button primary" onClick={load}>{t("filter")}</button></div>
+        <div className="field"><label>&nbsp;</label><button className="button primary" onClick={() => { setStockPage(0); load(0); }}>{t("filter")}</button></div>
       </div>
 
       {loading ? <div className="panel">{t("loading")}</div> : null}
@@ -228,11 +248,21 @@ export function Reports() {
       {tab === "stock-balances" ? (
         <>
           <div className="panel summary-row">{t("totalQuantity")}: {stockBalances.total_quantity}</div>
-          <DataTable rows={stockBalances.rows} emptyMessage={t("noReportRows")} columns={[
+          <DataTable rows={stockBalances.rows} pageSize={REPORT_PAGE_SIZE} emptyMessage={t("noReportRows")} columns={[
             { key: "warehouse_name", header: t("warehouse") },
             { key: "product_name", header: t("product") },
             { key: "quantity", header: t("quantity") }
           ]} />
+          {stockBalances.rows.length ? (
+            <div className="panel table-footer">
+              <span>{t("total")}: {stockBalances.total}</span>
+              <span>
+                <button className="button" disabled={stockPage === 0} onClick={() => changeStockPage(Math.max(0, stockPage - 1))}>‹</button>
+                <span style={{ padding: "0 8px" }}>{stockPage + 1} / {stockPageCount}</span>
+                <button className="button" disabled={stockPage >= stockPageCount - 1} onClick={() => changeStockPage(Math.min(stockPageCount - 1, stockPage + 1))}>›</button>
+              </span>
+            </div>
+          ) : null}
         </>
       ) : null}
 

@@ -14,7 +14,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../auth";
 import { formatCode, formatDate, formatMoney, StatusBadge } from "../format";
 import { useI18n } from "../i18n";
-import { Document, Payment, StockBalance, api } from "../lib/api";
+import { DashboardSummary, api } from "../lib/api";
 
 type Period = "today" | "week" | "month" | "all";
 type WidgetId = "summary" | "finance" | "documentTypes" | "stock" | "payments" | "recentDocuments";
@@ -22,12 +22,7 @@ type WidgetId = "summary" | "finance" | "documentTypes" | "stock" | "payments" |
 type DashboardState = {
   loading: boolean;
   error: boolean;
-  productsCount: number | null;
-  partnersCount: number | null;
-  documents: Document[] | null;
-  payments: Payment[] | null;
-  stockBalances: StockBalance[] | null;
-  cashBalance: string | null;
+  summary: DashboardSummary | null;
 };
 
 type WidgetConfig = {
@@ -39,12 +34,7 @@ type WidgetConfig = {
 const initialState: DashboardState = {
   loading: true,
   error: false,
-  productsCount: null,
-  partnersCount: null,
-  documents: null,
-  payments: null,
-  stockBalances: null,
-  cashBalance: null,
+  summary: null,
 };
 
 const widgetConfigs: WidgetConfig[] = [
@@ -70,11 +60,6 @@ function loadVisibleWidgets(): WidgetId[] {
   }
 }
 
-async function loadIfAllowed<T>(allowed: boolean, loader: () => Promise<T>): Promise<T | null> {
-  if (!allowed) return null;
-  return loader();
-}
-
 function toNumber(value?: string | number | null) {
   const numeric = Number(value ?? 0);
   return Number.isNaN(numeric) ? 0 : numeric;
@@ -93,24 +78,13 @@ function periodStart(period: Period) {
   return null;
 }
 
-function isInPeriod(dateValue: string, period: Period) {
+function periodStartValue(period: Period) {
   const start = periodStart(period);
-  if (!start) return true;
-  const date = new Date(`${dateValue.slice(0, 10)}T00:00:00`);
-  return date >= start;
-}
-
-function sumDocuments(documents: Document[], type: string) {
-  return documents
-    .filter((document) => document.document_type === type && document.status === "posted")
-    .reduce((sum, document) => sum + toNumber(document.total_amount), 0);
-}
-
-function countBy<T extends string>(values: T[]) {
-  return values.reduce<Record<T, number>>((acc, value) => {
-    acc[value] = (acc[value] ?? 0) + 1;
-    return acc;
-  }, {} as Record<T, number>);
+  if (!start) return undefined;
+  const year = start.getFullYear();
+  const month = String(start.getMonth() + 1).padStart(2, "0");
+  const day = String(start.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function percent(value: number, total: number) {
@@ -130,25 +104,13 @@ export function Dashboard() {
     let cancelled = false;
     setState((current) => ({ ...current, loading: true, error: false }));
 
-    Promise.all([
-      loadIfAllowed(can("products.read"), api.products),
-      loadIfAllowed(can("partners.read"), () => api.partners()),
-      loadIfAllowed(can("documents.read"), api.documents),
-      loadIfAllowed(can("payments.read"), api.payments),
-      loadIfAllowed(can("stock.read"), api.stockBalances),
-      loadIfAllowed(can("cash.read"), api.cashBalance),
-    ])
-      .then(([products, partners, documents, payments, stockBalances, cashBalance]) => {
+    api.dashboardSummary(periodStartValue(period))
+      .then((summary) => {
         if (cancelled) return;
         setState({
           loading: false,
           error: false,
-          productsCount: products?.length ?? null,
-          partnersCount: partners?.length ?? null,
-          documents,
-          payments,
-          stockBalances,
-          cashBalance: cashBalance?.balance ?? null,
+          summary,
         });
       })
       .catch(() => {
@@ -159,55 +121,35 @@ export function Dashboard() {
     return () => {
       cancelled = true;
     };
-  }, [can]);
+  }, [period]);
 
   useEffect(() => {
     localStorage.setItem("buy-modern-dashboard-widgets", JSON.stringify(visibleWidgets));
   }, [visibleWidgets]);
 
   const dashboard = useMemo(() => {
-    const allDocuments = state.documents ?? [];
-    const documents = allDocuments.filter((document) => isInPeriod(document.document_date, period));
-    const payments = (state.payments ?? []).filter((payment) => isInPeriod(payment.payment_date, period));
-    const stockBalances = state.stockBalances ?? [];
-    const outgoingTotal = sumDocuments(documents, "outgoing");
-    const incomingTotal = sumDocuments(documents, "incoming");
-    const transferCount = documents.filter((document) => document.document_type === "transfer").length;
-    const draftDocuments = documents.filter((document) => document.status === "draft").length;
-    const postedDocuments = documents.filter((document) => document.status === "posted").length;
-    const cancelledDocuments = documents.filter((document) => document.status === "cancelled").length;
-    const documentTypes = countBy(documents.map((document) => document.document_type));
-    const paymentStatuses = countBy(payments.map((payment) => payment.status));
-    const totalStockQuantity = stockBalances.reduce((sum, row) => sum + toNumber(row.quantity), 0);
-    const stockByWarehouse = stockBalances.reduce<Record<string, number>>((acc, row) => {
-      const name = row.warehouse_name ?? `#${row.warehouse_id}`;
-      acc[name] = (acc[name] ?? 0) + toNumber(row.quantity);
-      return acc;
-    }, {});
-    const topWarehouses = Object.entries(stockByWarehouse)
-      .sort(([, left], [, right]) => right - left)
-      .slice(0, 5);
-    const recentDocuments = [...documents]
-      .sort((left, right) => right.document_date.localeCompare(left.document_date) || right.id - left.id)
-      .slice(0, 6);
+    const summary = state.summary;
+    const documentTypes = summary?.document_types ?? {};
+    const documentStatuses = summary?.document_statuses ?? {};
+    const outgoingTotal = toNumber(summary?.outgoing_total);
+    const incomingTotal = toNumber(summary?.incoming_total);
 
     return {
-      documents,
-      payments,
+      documentsCount: summary?.documents_count ?? 0,
       outgoingTotal,
       incomingTotal,
       grossDelta: outgoingTotal - incomingTotal,
-      draftDocuments,
-      postedDocuments,
-      cancelledDocuments,
-      transferCount,
+      draftDocuments: documentStatuses.draft ?? 0,
+      postedDocuments: documentStatuses.posted ?? 0,
+      cancelledDocuments: documentStatuses.cancelled ?? 0,
+      transferCount: documentTypes.transfer ?? 0,
       documentTypes,
-      paymentStatuses,
-      totalStockQuantity,
-      topWarehouses,
-      recentDocuments,
+      paymentStatuses: summary?.payment_statuses ?? {},
+      totalStockQuantity: toNumber(summary?.stock_total_quantity),
+      topWarehouses: (summary?.top_warehouses ?? []).map((row) => [row.name, toNumber(row.quantity)] as [string, number]),
+      recentDocuments: summary?.recent_documents ?? [],
     };
-  }, [period, state.documents, state.payments, state.stockBalances]);
+  }, [state.summary]);
 
   const visible = (id: WidgetId) => visibleWidgets.includes(id);
   const placeholder = state.loading ? t("loading") : "-";
@@ -298,12 +240,12 @@ export function Dashboard() {
 
       {visible("summary") ? (
         <div className="dashboard-summary-grid">
-          <MetricCard accent="green" label="Продажи" value={state.documents ? formatMoney(dashboard.outgoingTotal) : placeholder} hint="Проведённые расходы" />
-          <MetricCard accent="yellow" label="Закупки" value={state.documents ? formatMoney(dashboard.incomingTotal) : placeholder} hint="Проведённые приходы" />
-          <MetricCard accent="violet" label="Черновики" value={state.documents ? String(dashboard.draftDocuments) : placeholder} hint="Ждут обработки" />
-          <MetricCard accent="blue" label="Позиции склада" value={state.stockBalances ? String(state.stockBalances.length) : placeholder} hint={`${formatMoney(dashboard.totalStockQuantity)} ед. всего`} />
-          <MetricCard accent="slate" label="Контрагенты" value={state.partnersCount === null ? placeholder : String(state.partnersCount)} hint="Клиенты и поставщики" />
-          <MetricCard accent="slate" label="Товары" value={state.productsCount === null ? placeholder : String(state.productsCount)} hint="Активный справочник" />
+          <MetricCard accent="green" label="Продажи" value={state.summary?.outgoing_total == null ? placeholder : formatMoney(dashboard.outgoingTotal)} hint="Проведённые расходы" />
+          <MetricCard accent="yellow" label="Закупки" value={state.summary?.incoming_total == null ? placeholder : formatMoney(dashboard.incomingTotal)} hint="Проведённые приходы" />
+          <MetricCard accent="violet" label="Черновики" value={state.summary?.document_statuses == null ? placeholder : String(dashboard.draftDocuments)} hint="Ждут обработки" />
+          <MetricCard accent="blue" label="Позиции склада" value={state.summary?.stock_positions_count == null ? placeholder : String(state.summary.stock_positions_count)} hint={`${formatMoney(dashboard.totalStockQuantity)} ед. всего`} />
+          <MetricCard accent="slate" label="Контрагенты" value={state.summary?.partners_count == null ? placeholder : String(state.summary.partners_count)} hint="Клиенты и поставщики" />
+          <MetricCard accent="slate" label="Товары" value={state.summary?.products_count == null ? placeholder : String(state.summary.products_count)} hint="Активный справочник" />
         </div>
       ) : null}
 
@@ -313,7 +255,7 @@ export function Dashboard() {
             <WidgetHeader title="Деньги и документы" action={<SlidersHorizontal size={18} />} />
             <div className="dashboard-finance">
               <div>
-                <div className="dashboard-big-number">{state.cashBalance === null ? placeholder : formatMoney(state.cashBalance)}</div>
+                <div className="dashboard-big-number">{state.summary?.cash_balance == null ? placeholder : formatMoney(state.summary.cash_balance)}</div>
                 <div className="dashboard-subtitle">Остаток кассы</div>
               </div>
               <div className={`dashboard-delta ${dashboard.grossDelta >= 0 ? "positive" : "negative"}`}>
@@ -322,9 +264,9 @@ export function Dashboard() {
               </div>
             </div>
             <div className="dashboard-bars">
-              <ProgressRow color="#19c37d" label="Проведено" value={dashboard.postedDocuments} total={dashboard.documents.length} />
-              <ProgressRow color="#8b5cf6" label="Черновики" value={dashboard.draftDocuments} total={dashboard.documents.length} />
-              <ProgressRow color="#ef4444" label="Отменено" value={dashboard.cancelledDocuments} total={dashboard.documents.length} />
+              <ProgressRow color="#19c37d" label="Проведено" value={dashboard.postedDocuments} total={dashboard.documentsCount} />
+              <ProgressRow color="#8b5cf6" label="Черновики" value={dashboard.draftDocuments} total={dashboard.documentsCount} />
+              <ProgressRow color="#ef4444" label="Отменено" value={dashboard.cancelledDocuments} total={dashboard.documentsCount} />
             </div>
           </section>
         ) : null}
@@ -333,10 +275,10 @@ export function Dashboard() {
           <section className="dashboard-widget dashboard-widget-chart">
             <WidgetHeader title="Структура документов" />
             <div className="dashboard-rings" aria-label="Разбивка документов по типам">
-              <Ring value={dashboard.documentTypes.incoming ?? 0} total={dashboard.documents.length} color="#f4c542" label={t("incoming")} />
-              <Ring value={dashboard.documentTypes.outgoing ?? 0} total={dashboard.documents.length} color="#22c55e" label={t("outgoing")} />
-              <Ring value={dashboard.documentTypes.adjustment ?? 0} total={dashboard.documents.length} color="#3b82f6" label={t("adjustment")} />
-              <Ring value={dashboard.transferCount} total={dashboard.documents.length} color="#8b5cf6" label={t("transfer")} />
+              <Ring value={dashboard.documentTypes.incoming ?? 0} total={dashboard.documentsCount} color="#f4c542" label={t("incoming")} />
+              <Ring value={dashboard.documentTypes.outgoing ?? 0} total={dashboard.documentsCount} color="#22c55e" label={t("outgoing")} />
+              <Ring value={dashboard.documentTypes.adjustment ?? 0} total={dashboard.documentsCount} color="#3b82f6" label={t("adjustment")} />
+              <Ring value={dashboard.transferCount} total={dashboard.documentsCount} color="#8b5cf6" label={t("transfer")} />
             </div>
           </section>
         ) : null}

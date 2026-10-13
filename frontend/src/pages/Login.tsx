@@ -7,8 +7,9 @@ import { useI18n } from "../i18n";
 export function Login() {
   const { t } = useI18n();
   const { login, user } = useAuth();
-  const [email, setEmail] = useState("admin@example.com");
-  const [password, setPassword] = useState("admin123");
+  const demoMode = import.meta.env.VITE_DEMO_MODE === "true";
+  const [email, setEmail] = useState(demoMode ? "admin@example.com" : "");
+  const [password, setPassword] = useState(demoMode ? "admin123" : "");
   const [error, setError] = useState("");
 
   if (user) {
@@ -25,7 +26,7 @@ export function Login() {
     <div className="login-page">
       <form className="panel login-panel" onSubmit={submit}>
         <h1>{t("loginTitle")}</h1>
-        <p className="muted-note">{t("loginHint")}</p>
+        {demoMode ? <p className="muted-note">{t("loginHint")}</p> : null}
         <div className="field">
           <label htmlFor="login-email">{t("email")}</label>
           <input id="login-email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} />

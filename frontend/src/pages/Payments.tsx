@@ -34,6 +34,7 @@ export function Payments() {
   const [allocations, setAllocations] = useState<AllocationValues>({});
   const [searchParams] = useSearchParams();
   const [partnerId, setPartnerId] = useState("");
+  const [partnerSearch, setPartnerSearch] = useState("");
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
   const [paymentType, setPaymentType] = useState(
     searchParams.get("create") === "supplier_payment" ? "supplier_payment" : "customer_payment"
@@ -82,6 +83,34 @@ export function Payments() {
     };
   }, [allocatingPaymentId, canAllocate, partnerId, paymentType]);
 
+  useEffect(() => {
+    let active = true;
+    const timeout = window.setTimeout(() => {
+      const role = paymentType === "supplier_payment" ? "supplier" : "customer";
+      api.partnerOptions(partnerSearch, role)
+        .then((items) => {
+          if (!active) return;
+          setPartners((current) => {
+            const selected = current.find((item) => String(item.id) === partnerId);
+            return selected && !items.some((item) => item.id === selected.id) ? [selected, ...items] : items;
+          });
+        })
+        .catch(() => active && setPartners([]));
+    }, 250);
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+    };
+  }, [partnerSearch, paymentType]);
+
+  useEffect(() => {
+    if (!partnerId) {
+      setBalances([]);
+      return;
+    }
+    api.partnerBalance(Number(partnerId)).then((balance) => setBalances([balance])).catch(() => setBalances([]));
+  }, [partnerId]);
+
   function setPaymentTypeChecked(nextType: string) {
     const currentPartner = partners.find((partner) => String(partner.id) === partnerId);
     const allowed =
@@ -97,12 +126,8 @@ export function Payments() {
   }
 
   function load() {
-    Promise.all([api.payments(), api.partners(), api.partnerBalances()])
-      .then(([paymentRows, partnerRows, balanceRows]) => {
-        setRows(paymentRows);
-        setPartners(partnerRows);
-        setBalances(balanceRows);
-      })
+    api.payments()
+      .then(setRows)
       .catch((err) => setError(err instanceof Error ? err.message : t("apiLoadPaymentsError")));
   }
 
@@ -127,6 +152,9 @@ export function Payments() {
     setMethod(row.method ?? "cash");
     setAllocations(Object.fromEntries(row.allocations.map((allocation) => [allocation.document_id, allocation.amount])));
     setError("");
+    api.partner(row.partner_id).then((partner) => {
+      setPartners((current) => current.some((item) => item.id === partner.id) ? current : [partner, ...current]);
+    }).catch(() => undefined);
   }
 
   function edit(row: Payment) {
@@ -214,6 +242,7 @@ export function Payments() {
         {isPostedAllocation ? <div className="payment-editor-heading">{t("reallocatePostedPayment")} #{allocatingPaymentId}</div> : null}
         <div className="form-grid">
           <div className="field"><label>{t("date")}</label><input type="date" value={paymentDate} disabled={isPostedAllocation} onChange={(event) => setPaymentDate(event.target.value)} /></div>
+          <div className="field"><label>{t("search")}: {t("partner")}</label><input value={partnerSearch} onChange={(event) => setPartnerSearch(event.target.value)} disabled={isPostedAllocation} /></div>
           <div className="field">
             <label>{t("partner")}</label>
             <select

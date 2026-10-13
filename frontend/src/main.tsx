@@ -16,6 +16,7 @@ import { Products } from "./pages/Products";
 import { Reports } from "./pages/Reports";
 import { Settings } from "./pages/Settings";
 import { Login } from "./pages/Login";
+import { ChangePassword } from "./pages/ChangePassword";
 import { Logistics } from "./pages/Logistics";
 import { Stock } from "./pages/Stock";
 import { Warehouses } from "./pages/Warehouses";
@@ -26,6 +27,7 @@ import "./styles.css";
 
 const router = createBrowserRouter([
   { path: "/login", element: <Login /> },
+  { path: "/change-password", element: <ChangePassword /> },
   {
     path: "/",
     element: <ProtectedRoute />,

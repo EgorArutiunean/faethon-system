@@ -28,6 +28,7 @@ export function DocumentEditor() {
   const [quantity, setQuantity] = useState("1");
   const [price, setPrice] = useState("0");
   const [productSearch, setProductSearch] = useState("");
+  const [partnerSearch, setPartnerSearch] = useState("");
   const [stockBalance, setStockBalance] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [header, setHeader] = useState({
@@ -72,11 +73,6 @@ export function DocumentEditor() {
       costChanged
     };
   }, [isIncoming, selectedProduct, baseUnitCost]);
-  const filteredProducts = useMemo(() => {
-    const search = productSearch.trim().toLowerCase();
-    if (!search) return products;
-    return products.filter((product) => `${product.name} ${product.sku ?? ""}`.toLowerCase().includes(search));
-  }, [products, productSearch]);
   const filteredPartners = useMemo(() => {
     if (header.document_type === "transfer" || header.document_type === "adjustment") {
       return [];
@@ -110,6 +106,11 @@ export function DocumentEditor() {
       exchange_rate: doc.exchange_rate ?? "1",
       note: doc.note ?? ""
     });
+    if (doc.partner_id) {
+      api.partner(doc.partner_id).then((partner) => {
+        setPartners((current) => current.some((item) => item.id === partner.id) ? current : [partner, ...current]);
+      }).catch(() => undefined);
+    }
   }
 
   function load() {
@@ -132,14 +133,54 @@ export function DocumentEditor() {
         .then((rows) => active && setRevisions(rows))
         .catch(() => active && setRevisions([]));
     }
-    api.products().then((rows) => active && setProducts(rows)).catch(() => active && setProducts([]));
-    api.partners().then((rows) => active && setPartners(rows)).catch(() => active && setPartners([]));
     api.warehouses().then((rows) => active && setWarehouses(rows)).catch(() => active && setWarehouses([]));
     api.currencies().then((rows) => active && setCurrencies(rows)).catch(() => active && setCurrencies([]));
     return () => {
       active = false;
     };
   }, [documentId]);
+
+  useEffect(() => {
+    let active = true;
+    const timeout = window.setTimeout(() => {
+      api.productOptions(productSearch)
+        .then((rows) => {
+          if (!active) return;
+          setProducts((current) => {
+            const selected = current.find((item) => String(item.id) === productId);
+            return selected && !rows.some((item) => item.id === selected.id) ? [selected, ...rows] : rows;
+          });
+        })
+        .catch(() => active && setProducts([]));
+    }, 250);
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+    };
+  }, [productSearch]);
+
+  useEffect(() => {
+    if (header.document_type === "transfer" || header.document_type === "adjustment") {
+      setPartners([]);
+      return;
+    }
+    let active = true;
+    const timeout = window.setTimeout(() => {
+      api.partnerOptions(partnerSearch, header.document_type === "incoming" ? "supplier" : "customer")
+        .then((rows) => {
+          if (!active) return;
+          setPartners((current) => {
+            const selected = current.find((item) => String(item.id) === header.partner_id);
+            return selected && !rows.some((item) => item.id === selected.id) ? [selected, ...rows] : rows;
+          });
+        })
+        .catch(() => active && setPartners([]));
+    }, 250);
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+    };
+  }, [header.document_type, partnerSearch]);
 
   useEffect(() => {
     if (!productId || !header.warehouse_id || !can("stock.read")) {
@@ -237,6 +278,9 @@ export function DocumentEditor() {
     }
     if (correctionMode) {
       const product = products.find((item) => item.id === Number(productId));
+      const existingLine = editingCorrectionLineId === null
+        ? undefined
+        : correctionLines.find((line) => line.id === editingCorrectionLineId);
       const foreignPrice = isIncoming ? Number(price) : null;
       const basePrice = isIncoming ? Number(price) * Number(header.exchange_rate || 1) : Number(price);
       const lineId = editingCorrectionLineId ?? (Math.min(0, ...correctionLines.map((line) => line.id)) - 1);
@@ -244,7 +288,7 @@ export function DocumentEditor() {
           id: lineId,
           document_id: documentId,
           product_id: Number(productId),
-          product_name: product?.name,
+          product_name: product?.name ?? existingLine?.product_name,
           quantity: Number(quantity).toFixed(3),
           price: basePrice.toFixed(2),
           foreign_price: foreignPrice === null ? null : foreignPrice.toFixed(2),
@@ -449,6 +493,7 @@ export function DocumentEditor() {
         </div>
       ) : null}
       <div className="panel form-grid">
+        <div className="field"><label>{t("search")}: {t("partner")}</label><input value={partnerSearch} onChange={(event) => setPartnerSearch(event.target.value)} disabled={!isEditable} /></div>
         <div className="field">
           <label>{t("type")}</label>
           <select
@@ -516,7 +561,7 @@ export function DocumentEditor() {
           <label>{t("product")}</label>
           <select data-testid="document-product" value={productId} onChange={(event) => setSelectedProduct(event.target.value)} disabled={!isEditable}>
             <option value="">{t("selectProduct")}</option>
-            {filteredProducts.map((product) => <option key={product.id} value={product.id}>{product.name}{product.sku ? ` (${product.sku})` : ""}</option>)}
+            {products.map((product) => <option key={product.id} value={product.id}>{product.name}{product.sku ? ` (${product.sku})` : ""}</option>)}
           </select>
         </div>
         <div className="field"><label>{t("quantity")}</label><input data-testid="document-line-quantity" value={quantity} onChange={(event) => setQuantity(event.target.value)} disabled={!isEditable} /></div>

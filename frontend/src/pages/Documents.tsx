@@ -10,8 +10,10 @@ import { useToast } from "../toast";
 import { Document, Partner, Warehouse, api } from "../lib/api";
 
 type DraftDocumentType = "incoming" | "outgoing" | "adjustment" | "transfer";
+type DocumentSort = "id" | "number" | "document_date" | "status" | "document_type" | "total_amount" | "created_at";
 
 const today = new Date().toISOString().slice(0, 10);
+const PAGE_SIZE = 25;
 
 function isDraftDocumentType(value: string | null): value is DraftDocumentType {
   return value === "incoming" || value === "outgoing" || value === "adjustment" || value === "transfer";
@@ -22,7 +24,16 @@ export function Documents() {
   const { showToast } = useToast();
   const { can } = useAuth();
   const [rows, setRows] = useState<Document[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
+  const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [sortBy, setSortBy] = useState<DocumentSort>("document_date");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [refreshVersion, setRefreshVersion] = useState(0);
   const [partners, setPartners] = useState<Partner[]>([]);
+  const [partnerSearch, setPartnerSearch] = useState("");
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [error, setError] = useState("");
   const [searchParams] = useSearchParams();
@@ -120,15 +131,7 @@ export function Documents() {
       });
   }
 
-  function load() {
-    api.documents().then(setRows).catch((exc) => {
-      setRows([]);
-      setError(exc instanceof Error ? exc.message : t("apiLoadDocumentsError"));
-    });
-    api.partners().then(setPartners).catch((exc) => {
-      const message = exc instanceof Error ? exc.message : t("apiLoadPartnersError");
-      setError(message);
-    });
+  function loadDirectories() {
     api.warehouses().then((warehouseRows) => {
       setWarehouses(warehouseRows);
       if (warehouseRows.length === 1) {
@@ -143,12 +146,16 @@ export function Documents() {
     });
   }
 
+  function refreshRegistry() {
+    setRefreshVersion((current) => current + 1);
+  }
+
   function deleteDraft(documentId: number) {
     if (!window.confirm(t("deleteDraftConfirm"))) return;
     api.deleteDocument(documentId)
       .then(() => {
         showToast("success", t("deleteDraft"));
-        load();
+        refreshRegistry();
       })
       .catch((exc) => {
         const message = exc instanceof Error ? exc.message : String(exc);
@@ -162,7 +169,7 @@ export function Documents() {
     api.cancelDocument(documentId)
       .then(() => {
         showToast("success", t("cancelledSuccess"));
-        load();
+        refreshRegistry();
       })
       .catch((exc) => {
         const message = exc instanceof Error ? exc.message : String(exc);
@@ -172,8 +179,60 @@ export function Documents() {
   }
 
   useEffect(() => {
-    load();
+    loadDirectories();
   }, []);
+
+  useEffect(() => {
+    if (draftForm.document_type === "transfer" || draftForm.document_type === "adjustment") {
+      setPartners([]);
+      return;
+    }
+    let active = true;
+    const timeout = window.setTimeout(() => {
+      api.partnerOptions(partnerSearch, draftForm.document_type === "incoming" ? "supplier" : "customer")
+        .then((items) => active && setPartners(items))
+        .catch((exc) => active && setError(exc instanceof Error ? exc.message : t("apiLoadPartnersError")));
+    }, 250);
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+    };
+  }, [draftForm.document_type, partnerSearch, t]);
+
+  useEffect(() => {
+    let active = true;
+    const timeout = window.setTimeout(() => {
+      api.documentPage({
+        offset: page * PAGE_SIZE,
+        limit: PAGE_SIZE,
+        search,
+        document_type: typeFilter,
+        status: statusFilter,
+        sort_by: sortBy,
+        sort_order: sortOrder
+      }).then((result) => {
+        if (!active) return;
+        if (result.total > 0 && page * PAGE_SIZE >= result.total) {
+          setPage(Math.max(0, Math.ceil(result.total / PAGE_SIZE) - 1));
+          return;
+        }
+        setRows(result.items);
+        setTotal(result.total);
+        setError("");
+      }).catch((exc) => {
+        if (!active) return;
+        setRows([]);
+        setTotal(0);
+        setError(exc instanceof Error ? exc.message : t("apiLoadDocumentsError"));
+      });
+    }, 250);
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+    };
+  }, [page, refreshVersion, search, sortBy, sortOrder, statusFilter, t, typeFilter]);
+
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <PageScaffold title={t("documents")}>
@@ -220,35 +279,62 @@ export function Documents() {
           </div>
         ) : null}
         {draftForm.document_type === "incoming" || draftForm.document_type === "outgoing" ? (
-          <div className="field">
-            <label>{draftForm.document_type === "incoming" ? t("supplier") : t("customer")}</label>
-            <select data-testid="draft-document-partner" value={draftForm.partner_id} onChange={(event) => setDraftForm({ ...draftForm, partner_id: event.target.value })}>
-              <option value="">{t("selectPartner")}</option>
-              {partnersForType.map((partner) => (
-                <option key={partner.id} value={partner.id}>{partner.name}</option>
-              ))}
-            </select>
-          </div>
+          <>
+            <div className="field"><label>{t("search")}: {t("partner")}</label><input value={partnerSearch} onChange={(event) => setPartnerSearch(event.target.value)} /></div>
+            <div className="field">
+              <label>{draftForm.document_type === "incoming" ? t("supplier") : t("customer")}</label>
+              <select data-testid="draft-document-partner" value={draftForm.partner_id} onChange={(event) => setDraftForm({ ...draftForm, partner_id: event.target.value })}>
+                <option value="">{t("selectPartner")}</option>
+                {partnersForType.map((partner) => (
+                  <option key={partner.id} value={partner.id}>{partner.name}</option>
+                ))}
+              </select>
+            </div>
+          </>
         ) : null}
       </div>
       <div className="toolbar">
         <button data-testid="draft-document-create" className="button primary" title={!can("documents.create") ? t("noPermission") : ""} disabled={!can("documents.create")} onClick={createDraft}>{t("createDocument")}</button>
       </div>
       {error ? <div className="panel error-panel">{error}</div> : null}
+      <div className="panel toolbar" style={{ padding: "8px 10px", marginBottom: 10 }}>
+        <input className="search" value={search} onChange={(event) => { setSearch(event.target.value); setPage(0); }} placeholder={t("search")} />
+        <select value={typeFilter} onChange={(event) => { setTypeFilter(event.target.value); setPage(0); }}>
+          <option value="">{t("all")}: {t("type")}</option>
+          <option value="incoming">{t("incoming")}</option>
+          <option value="outgoing">{t("outgoing")}</option>
+          <option value="adjustment">{t("adjustment")}</option>
+          <option value="transfer">{t("transfer")}</option>
+        </select>
+        <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(0); }}>
+          <option value="">{t("all")}: {t("status")}</option>
+          <option value="draft">{t("draft")}</option>
+          <option value="posted">{t("posted")}</option>
+          <option value="cancelled">{t("cancelled")}</option>
+        </select>
+        <select value={sortBy} onChange={(event) => { setSortBy(event.target.value as DocumentSort); setPage(0); }}>
+          <option value="document_date">{t("date")}</option>
+          <option value="id">ID</option>
+          <option value="number">{t("number")}</option>
+          <option value="total_amount">{t("total")}</option>
+          <option value="status">{t("status")}</option>
+        </select>
+        <button className="button" onClick={() => { setSortOrder((current) => current === "asc" ? "desc" : "asc"); setPage(0); }}>{sortOrder === "asc" ? "↑" : "↓"}</button>
+      </div>
       <DataTable<Document>
         rows={rows}
         emptyMessage={t("noDocuments")}
-        searchable
+        pageSize={PAGE_SIZE}
         columns={[
-          { key: "id", header: "ID", sortable: true, render: (row) => <Link to={`/documents/${row.id}`}>{row.id}</Link> },
-          { key: "document_type", header: t("type"), sortable: true, render: (row) => formatCode(row.document_type, t) },
-          { key: "number", header: t("number"), sortable: true },
-          { key: "document_date", header: t("date"), sortable: true, render: (row) => formatDate(row.document_date) },
-          { key: "status", header: t("status"), sortable: true, render: (row) => <StatusBadge status={row.status} label={formatCode(row.status, t)} /> },
-          { key: "partner_name", header: t("partner"), sortable: true },
-          { key: "warehouse_name", header: t("warehouse"), sortable: true },
-          { key: "destination_warehouse_name", header: t("destinationWarehouse"), sortable: true },
-          { key: "total_amount", header: t("total"), sortable: true, render: (row) => formatMoney(row.total_amount) },
+          { key: "id", header: "ID", render: (row) => <Link to={`/documents/${row.id}`}>{row.id}</Link> },
+          { key: "document_type", header: t("type"), render: (row) => formatCode(row.document_type, t) },
+          { key: "number", header: t("number") },
+          { key: "document_date", header: t("date"), render: (row) => formatDate(row.document_date) },
+          { key: "status", header: t("status"), render: (row) => <StatusBadge status={row.status} label={formatCode(row.status, t)} /> },
+          { key: "partner_name", header: t("partner") },
+          { key: "warehouse_name", header: t("warehouse") },
+          { key: "destination_warehouse_name", header: t("destinationWarehouse") },
+          { key: "total_amount", header: t("total"), render: (row) => formatMoney(row.total_amount) },
           {
             key: "actions",
             header: t("actions"),
@@ -267,6 +353,15 @@ export function Documents() {
           }
         ]}
       />
+      {pageCount > 1 ? (
+        <div className="panel table-footer">
+          <span>{page + 1} / {pageCount} · {t("total")}: {total}</span>
+          <span>
+            <button className="button" disabled={page === 0} onClick={() => setPage((current) => Math.max(0, current - 1))}>‹</button>
+            <button className="button" disabled={page >= pageCount - 1} onClick={() => setPage((current) => Math.min(pageCount - 1, current + 1))}>›</button>
+          </span>
+        </div>
+      ) : null}
     </PageScaffold>
   );
 }

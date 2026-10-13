@@ -7,6 +7,7 @@ type AuthContextValue = {
   user: CurrentUser | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   logout: () => void;
   can: (permission: string) => boolean;
 };
@@ -44,7 +45,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem("buy-modern-token", response.access_token);
       setToken(response.access_token);
     },
+    async changePassword(currentPassword: string, newPassword: string) {
+      if (!user) {
+        throw new Error("Not authenticated");
+      }
+      const currentUser = await api.changePassword({
+        current_password: currentPassword,
+        new_password: newPassword,
+      });
+      const response = await api.login({ email: user.email, password: newPassword });
+      localStorage.setItem("buy-modern-token", response.access_token);
+      setToken(response.access_token);
+      setUser(currentUser);
+    },
     logout() {
+      void api.logout().catch(() => undefined);
       localStorage.removeItem("buy-modern-token");
       setToken(null);
       setUser(null);

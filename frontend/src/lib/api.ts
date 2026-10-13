@@ -17,6 +17,27 @@ export type Product = {
   is_active: boolean;
 };
 
+export type ProductPage = {
+  items: Product[];
+  total: number;
+  offset: number;
+  limit: number;
+};
+
+export type ProductGroupCounts = {
+  total: number;
+  items: Array<{ group_id: number; count: number }>;
+};
+
+export type ProductPageParams = {
+  offset?: number;
+  limit?: number;
+  search?: string;
+  sort_by?: "name" | "sku" | "base_price" | "created_at" | "is_active";
+  sort_order?: "asc" | "desc";
+  group_ids?: number[];
+};
+
 export type ProductGroup = {
   id: number;
   name: string;
@@ -33,6 +54,16 @@ export type Partner = {
   partner_type: "customer" | "supplier" | "both";
   phone?: string | null;
   is_active: boolean;
+};
+
+export type PartnerPage = { items: Partner[]; total: number; offset: number; limit: number };
+export type PartnerPageParams = {
+  offset?: number;
+  limit?: number;
+  search?: string;
+  partner_type?: string;
+  sort_by?: "name" | "code" | "partner_type" | "created_at" | "is_active";
+  sort_order?: "asc" | "desc";
 };
 
 export type Warehouse = {
@@ -73,6 +104,17 @@ export type Document = {
   posting_version: number;
   note?: string | null;
   lines?: DocumentLine[];
+};
+
+export type DocumentPage = { items: Document[]; total: number; offset: number; limit: number };
+export type DocumentPageParams = {
+  offset?: number;
+  limit?: number;
+  search?: string;
+  document_type?: string;
+  status?: string;
+  sort_by?: "id" | "number" | "document_date" | "status" | "document_type" | "total_amount" | "created_at";
+  sort_order?: "asc" | "desc";
 };
 
 export type DocumentRevision = {
@@ -231,6 +273,16 @@ export type CashBookRow = CashOperation & {
   balance: string;
 };
 
+export type CashBookPage = {
+  items: CashBookRow[];
+  total: number;
+  offset: number;
+  limit: number;
+  current_balance: string;
+  page_opening_balance: string;
+  page_closing_balance: string;
+};
+
 export type ReportResponse<T> = {
   rows: T[];
 };
@@ -239,6 +291,9 @@ export type StockBalanceReportRow = Omit<StockBalance, "id">;
 
 export type StockBalancesReport = ReportResponse<StockBalanceReportRow> & {
   total_quantity: string;
+  total: number;
+  offset: number;
+  limit: number;
 };
 
 export type StockMovementsReport = ReportResponse<StockMovement> & {
@@ -284,6 +339,7 @@ export type CurrentUser = {
   full_name?: string | null;
   role_names: string[];
   permissions: string[];
+  must_change_password: boolean;
   warehouse_ids: number[];
   warehouse_names: string[];
 };
@@ -301,6 +357,7 @@ export type ManagedUser = {
   email: string;
   full_name?: string | null;
   is_active: boolean;
+  must_change_password: boolean;
   role_names: string[];
   warehouse_ids: number[];
   warehouse_names: string[];
@@ -408,6 +465,23 @@ export type AuditLog = {
   updated_at: string;
 };
 
+export type DashboardSummary = {
+  date_from?: string | null;
+  products_count?: number | null;
+  partners_count?: number | null;
+  documents_count?: number | null;
+  outgoing_total?: string | null;
+  incoming_total?: string | null;
+  document_statuses?: Record<string, number> | null;
+  document_types?: Record<string, number> | null;
+  payment_statuses?: Record<string, number> | null;
+  stock_positions_count?: number | null;
+  stock_total_quantity?: string | null;
+  top_warehouses?: Array<{ name: string; quantity: string }> | null;
+  cash_balance?: string | null;
+  recent_documents?: Document[] | null;
+};
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = localStorage.getItem("buy-modern-token");
   const { headers, ...rest } = options;
@@ -454,13 +528,36 @@ export const api = {
   login: (payload: { email: string; password: string }) =>
     request<LoginResponse>("/auth/login", { method: "POST", body: JSON.stringify(payload) }),
   me: () => request<CurrentUser>("/auth/me"),
+  changePassword: (payload: { current_password: string; new_password: string }) =>
+    request<CurrentUser>("/auth/change-password", { method: "POST", body: JSON.stringify(payload) }),
+  logout: () => request<void>("/auth/logout", { method: "POST" }),
+  dashboardSummary: (dateFrom?: string) => {
+    const query = new URLSearchParams({ recent_limit: "6" });
+    if (dateFrom) query.set("date_from", dateFrom);
+    return request<DashboardSummary>(`/dashboard/summary?${query.toString()}`);
+  },
   users: () => request<ManagedUser[]>("/users"),
   roles: () => request<Role[]>("/users/roles"),
   createUser: (payload: { email?: string; password: string; full_name?: string | null; is_active?: boolean; role_names?: string[]; warehouse_ids?: number[] }) =>
     request<ManagedUser>("/users", { method: "POST", body: JSON.stringify(payload) }),
   updateUser: (id: number, payload: { email?: string; password?: string; full_name?: string | null; is_active?: boolean; role_names?: string[]; warehouse_ids?: number[] }) =>
     request<ManagedUser>(`/users/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
-  products: () => request<Product[]>("/products"),
+  products: (params: ProductPageParams = {}) => {
+    const query = new URLSearchParams();
+    query.set("offset", String(params.offset ?? 0));
+    query.set("limit", String(params.limit ?? 25));
+    if (params.search?.trim()) query.set("search", params.search.trim());
+    if (params.sort_by) query.set("sort_by", params.sort_by);
+    if (params.sort_order) query.set("sort_order", params.sort_order);
+    params.group_ids?.forEach((id) => query.append("group_ids", String(id)));
+    return request<ProductPage>(`/products/page?${query.toString()}`);
+  },
+  productOptions: (search = "") => {
+    const query = new URLSearchParams({ limit: "50" });
+    if (search.trim()) query.set("search", search.trim());
+    return request<Product[]>(`/products/options?${query.toString()}`);
+  },
+  productGroupCounts: () => request<ProductGroupCounts>("/products/group-counts"),
   productGroups: () => request<ProductGroup[]>("/product-groups"),
   createProductGroup: (payload: Partial<ProductGroup>) =>
     request<ProductGroup>("/product-groups", { method: "POST", body: JSON.stringify(payload) }),
@@ -473,6 +570,21 @@ export const api = {
     request<Product>(`/products/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
   deleteProduct: (id: number) => request<void>(`/products/${id}`, { method: "DELETE" }),
   partners: (params = "") => request<Partner[]>(`/partners${params}`),
+  partnerPage: (params: PartnerPageParams = {}) => {
+    const query = new URLSearchParams({ offset: String(params.offset ?? 0), limit: String(params.limit ?? 25) });
+    if (params.search?.trim()) query.set("search", params.search.trim());
+    if (params.partner_type) query.set("partner_type", params.partner_type);
+    if (params.sort_by) query.set("sort_by", params.sort_by);
+    if (params.sort_order) query.set("sort_order", params.sort_order);
+    return request<PartnerPage>(`/partners/page?${query.toString()}`);
+  },
+  partnerOptions: (search = "", role?: "customer" | "supplier") => {
+    const query = new URLSearchParams({ limit: "50" });
+    if (search.trim()) query.set("search", search.trim());
+    if (role) query.set("role", role);
+    return request<Partner[]>(`/partners/options?${query.toString()}`);
+  },
+  partner: (id: number) => request<Partner>(`/partners/${id}`),
   createPartner: (payload: Partial<Partner>) =>
     request<Partner>("/partners", { method: "POST", body: JSON.stringify(payload) }),
   updatePartner: (id: number, payload: Partial<Partner>) =>
@@ -485,6 +597,15 @@ export const api = {
     request<Warehouse>(`/warehouses/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
   deleteWarehouse: (id: number) => request<void>(`/warehouses/${id}`, { method: "DELETE" }),
   documents: (params = "") => request<Document[]>(`/documents${params}`),
+  documentPage: (params: DocumentPageParams = {}) => {
+    const query = new URLSearchParams({ offset: String(params.offset ?? 0), limit: String(params.limit ?? 25) });
+    if (params.search?.trim()) query.set("search", params.search.trim());
+    if (params.document_type) query.set("document_type", params.document_type);
+    if (params.status) query.set("status", params.status);
+    if (params.sort_by) query.set("sort_by", params.sort_by);
+    if (params.sort_order) query.set("sort_order", params.sort_order);
+    return request<DocumentPage>(`/documents/page?${query.toString()}`);
+  },
   document: (id: number) => request<Document>(`/documents/${id}`),
   createDocument: (payload: Partial<Document>) =>
     request<Document>("/documents", { method: "POST", body: JSON.stringify(payload) }),
@@ -538,7 +659,12 @@ export const api = {
   deletePayment: (id: number) => request<void>(`/payments/${id}`, { method: "DELETE" }),
   postPayment: (paymentId: number) => request<Payment>(`/payments/${paymentId}/post`, { method: "POST" }),
   cancelPayment: (paymentId: number) => request<Payment>(`/payments/${paymentId}/cancel`, { method: "POST" }),
-  partnerBalances: () => request<PartnerBalance[]>("/partners/balances"),
+  partnerBalances: (partnerIds?: number[]) => {
+    const query = new URLSearchParams();
+    partnerIds?.forEach((id) => query.append("partner_ids", String(id)));
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return request<PartnerBalance[]>(`/partners/balances${suffix}`);
+  },
   partnerBalance: (partnerId: number) => request<PartnerBalance>(`/partners/${partnerId}/balance`),
   partnerStatement: (partnerId: number) => request<PartnerStatementRow[]>(`/partners/${partnerId}/statement`),
   cashOperations: () => request<CashOperation[]>("/cash/operations"),
@@ -547,6 +673,7 @@ export const api = {
   cancelCashOperation: (operationId: number) => request<CashOperation>(`/cash/operations/${operationId}/cancel`, { method: "POST" }),
   cashBalance: () => request<CashBalance>("/cash/balance"),
   cashBook: () => request<CashBookRow[]>("/cash/book"),
+  cashBookPage: (offset = 0, limit = 25) => request<CashBookPage>(`/cash/book/page?offset=${offset}&limit=${limit}`),
   logisticsDocuments: (status = "") =>
     request<LogisticsDocument[]>(`/logistics/documents${status ? `?status=${encodeURIComponent(status)}` : ""}`),
   warehouseTasks: (status = "") =>

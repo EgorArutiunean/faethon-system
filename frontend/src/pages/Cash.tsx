@@ -8,11 +8,17 @@ import { formatCode, formatDate, formatMoney, StatusBadge } from "../format";
 import { useI18n } from "../i18n";
 import { CashBookRow, api } from "../lib/api";
 
+const PAGE_SIZE = 25;
+
 export function Cash() {
   const { t } = useI18n();
   const { can } = useAuth();
   const [rows, setRows] = useState<CashBookRow[]>([]);
   const [balance, setBalance] = useState("0");
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
+  const [pageOpeningBalance, setPageOpeningBalance] = useState("0");
+  const [pageClosingBalance, setPageClosingBalance] = useState("0");
   const [searchParams] = useSearchParams();
   const [operationDate, setOperationDate] = useState(new Date().toISOString().slice(0, 10));
   const [operationType, setOperationType] = useState(() => {
@@ -24,10 +30,14 @@ export function Cash() {
   const [error, setError] = useState("");
 
   function load() {
-    Promise.all([api.cashBalance(), api.cashBook()])
-      .then(([cashBalance, book]) => {
-        setBalance(cashBalance.balance);
-        setRows(book);
+    api.cashBookPage(page * PAGE_SIZE, PAGE_SIZE)
+      .then((book) => {
+        setBalance(book.current_balance);
+        setRows(book.items);
+        setTotal(book.total);
+        setPageOpeningBalance(book.page_opening_balance);
+        setPageClosingBalance(book.page_closing_balance);
+        setError("");
       })
       .catch((err) => setError(err instanceof Error ? err.message : t("apiLoadCashError")));
   }
@@ -66,7 +76,9 @@ export function Cash() {
 
   useEffect(() => {
     load();
-  }, []);
+  }, [page]);
+
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <PageScaffold title={t("cash")}>
@@ -101,16 +113,16 @@ export function Cash() {
       <DataTable<CashBookRow>
         rows={rows}
         emptyMessage={t("noCash")}
-        searchable
+        pageSize={PAGE_SIZE}
         columns={[
-          { key: "operation_date", header: t("date"), sortable: true, render: (row) => formatDate(row.operation_date) },
-          { key: "operation_type", header: t("type"), sortable: true, render: (row) => formatCode(row.operation_type, t) },
-          { key: "amount", header: t("amount"), sortable: true, render: (row) => formatMoney(row.amount) },
-          { key: "target_balance", header: t("targetCashBalance"), sortable: true, render: (row) => row.target_balance == null ? "-" : formatMoney(row.target_balance) },
-          { key: "partner_name", header: t("partner"), sortable: true },
-          { key: "payment_id", header: t("payment"), sortable: true },
-          { key: "status", header: t("status"), sortable: true, render: (row) => <StatusBadge status={row.status} label={formatCode(row.status, t)} /> },
-          { key: "balance", header: t("balance"), sortable: true, render: (row) => formatMoney(row.balance) },
+          { key: "operation_date", header: t("date"), render: (row) => formatDate(row.operation_date) },
+          { key: "operation_type", header: t("type"), render: (row) => formatCode(row.operation_type, t) },
+          { key: "amount", header: t("amount"), render: (row) => formatMoney(row.amount) },
+          { key: "target_balance", header: t("targetCashBalance"), render: (row) => row.target_balance == null ? "-" : formatMoney(row.target_balance) },
+          { key: "partner_name", header: t("partner") },
+          { key: "payment_id", header: t("payment") },
+          { key: "status", header: t("status"), render: (row) => <StatusBadge status={row.status} label={formatCode(row.status, t)} /> },
+          { key: "balance", header: t("balance"), render: (row) => formatMoney(row.balance) },
           { key: "note", header: t("note") },
           {
             key: "actions",
@@ -121,6 +133,16 @@ export function Cash() {
           }
         ]}
       />
+      {rows.length ? (
+        <div className="panel table-footer">
+          <span>{t("balance")}: {formatMoney(pageOpeningBalance)} → {formatMoney(pageClosingBalance)} · {t("total")}: {total}</span>
+          <span>
+            <button className="button" disabled={page === 0} onClick={() => setPage((current) => Math.max(0, current - 1))}>‹</button>
+            <span style={{ padding: "0 8px" }}>{page + 1} / {pageCount}</span>
+            <button className="button" disabled={page >= pageCount - 1} onClick={() => setPage((current) => Math.min(pageCount - 1, current + 1))}>›</button>
+          </span>
+        </div>
+      ) : null}
     </PageScaffold>
   );
 }

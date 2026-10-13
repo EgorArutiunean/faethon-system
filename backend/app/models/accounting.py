@@ -1,7 +1,17 @@
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import Boolean, CheckConstraint, Date, ForeignKey, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Date,
+    ForeignKey,
+    Index,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -89,7 +99,11 @@ class Payment(TimestampMixin, Base):
     @property
     def document_number(self) -> str | None:
         if self.allocations:
-            numbers = [allocation.document_number for allocation in self.allocations if allocation.document_number]
+            numbers = [
+                allocation.document_number
+                for allocation in self.allocations
+                if allocation.document_number
+            ]
             if numbers:
                 return ", ".join(numbers)
         return self.document.number if self.document else None
@@ -104,13 +118,27 @@ class Payment(TimestampMixin, Base):
 
     @property
     def cash_operation_id(self) -> int | None:
-        posted_operation = next((operation for operation in self.cash_operations if operation.status == CashOperation.STATUS_POSTED), None)
+        posted_operation = next(
+            (
+                operation
+                for operation in self.cash_operations
+                if operation.status == CashOperation.STATUS_POSTED
+            ),
+            None,
+        )
         operation = posted_operation or next(iter(self.cash_operations), None)
         return operation.id if operation else None
 
     @property
     def cash_operation_status(self) -> str | None:
-        posted_operation = next((operation for operation in self.cash_operations if operation.status == CashOperation.STATUS_POSTED), None)
+        posted_operation = next(
+            (
+                operation
+                for operation in self.cash_operations
+                if operation.status == CashOperation.STATUS_POSTED
+            ),
+            None,
+        )
         operation = posted_operation or next(iter(self.cash_operations), None)
         return operation.status if operation else None
 
@@ -123,6 +151,7 @@ class CashOperation(TimestampMixin, Base):
             "target_balance IS NULL OR target_balance >= 0",
             name="ck_cash_operations_target_balance_nonnegative",
         ),
+        Index("ix_cash_operations_date_id", "operation_date", "id"),
     )
 
     TYPE_CASH_IN = "cash_in"
@@ -162,12 +191,16 @@ class CashOperation(TimestampMixin, Base):
 class PaymentAllocation(TimestampMixin, Base):
     __tablename__ = "payment_allocations"
     __table_args__ = (
-        UniqueConstraint("payment_id", "document_id", name="uq_payment_allocations_payment_document"),
+        UniqueConstraint(
+            "payment_id", "document_id", name="uq_payment_allocations_payment_document"
+        ),
         CheckConstraint("amount > 0", name="ck_payment_allocations_amount_positive"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    payment_id: Mapped[int] = mapped_column(ForeignKey("payments.id", ondelete="CASCADE"), index=True)
+    payment_id: Mapped[int] = mapped_column(
+        ForeignKey("payments.id", ondelete="CASCADE"), index=True
+    )
     document_id: Mapped[int] = mapped_column(ForeignKey("documents.id"), index=True)
     amount: Mapped[Decimal] = mapped_column(Numeric(14, 2))
 

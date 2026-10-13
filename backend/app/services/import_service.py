@@ -1,20 +1,21 @@
+import csv
 from collections import Counter
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from io import BytesIO, StringIO
-import csv
+from zipfile import BadZipFile, ZipFile
 
 from openpyxl import Workbook, load_workbook
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.models.documents import Document
 from app.models.partners import Partner
 from app.models.products import Product, ProductGroup
 from app.models.stock import StockBalance, StockMovement, Warehouse
 from app.schemas.imports import ImportIssue, ImportSummary
 from app.services.audit_writer import write_audit
-
 
 TEMPLATES: dict[str, list[str]] = {
     "products": ["sku", "name", "category", "base_price", "description", "legacy_name"],
@@ -33,13 +34,46 @@ REQUIRED: dict[str, list[str]] = {
 }
 
 
+class ImportLimitError(ValueError):
+    pass
+
+
+class ImportFormatError(ValueError):
+    pass
+
+
+def _check_xlsx_archive(content: bytes) -> None:
+    settings = get_settings()
+    try:
+        with ZipFile(BytesIO(content)) as archive:
+            entries = archive.infolist()
+            if len(entries) > settings.import_xlsx_max_entries:
+                raise ImportLimitError("XLSX archive contains too many entries")
+            total_uncompressed = sum(entry.file_size for entry in entries)
+            if total_uncompressed > settings.import_xlsx_max_uncompressed_bytes:
+                raise ImportLimitError("XLSX uncompressed content is too large")
+            for entry in entries:
+                if entry.flag_bits & 0x1:
+                    raise ImportFormatError("Encrypted XLSX files are not supported")
+                if (
+                    entry.file_size
+                    and entry.file_size / max(entry.compress_size, 1)
+                    > settings.import_xlsx_max_compression_ratio
+                ):
+                    raise ImportLimitError("XLSX compression ratio is unsafe")
+    except BadZipFile as exc:
+        raise ImportFormatError("Invalid XLSX file") from exc
+
+
 def build_template(import_type: str) -> bytes:
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = import_type
     for index, column in enumerate(TEMPLATES[import_type], start=1):
         sheet.cell(row=1, column=index, value=column)
-        sheet.column_dimensions[sheet.cell(row=1, column=index).column_letter].width = max(16, len(column) + 4)
+        sheet.column_dimensions[sheet.cell(row=1, column=index).column_letter].width = max(
+            16, len(column) + 4
+        )
     output = BytesIO()
     workbook.save(output)
     return output.getvalue()
@@ -50,31 +84,58 @@ def _compact_row(row: dict[str, str]) -> dict[str, str]:
 
 
 def _parse_file(content: bytes, filename: str) -> tuple[list[dict[str, str]], list[ImportIssue]]:
+    settings = get_settings()
     if filename.lower().endswith(".xlsx"):
-        workbook = load_workbook(BytesIO(content), read_only=True, data_only=True)
-        sheet = workbook.active
-        rows = list(sheet.iter_rows(values_only=True))
-        if not rows:
-            return [], [ImportIssue(row=1, field=None, message="File is empty")]
-        headers = [str(value or "").strip() for value in rows[0]]
-        parsed = []
-        for values in rows[1:]:
-            row = _compact_row({header: "" if value is None else str(value).strip() for header, value in zip(headers, values)})
-            if any(row.values()):
-                parsed.append(row)
-        return parsed, []
+        _check_xlsx_archive(content)
+        try:
+            workbook = load_workbook(
+                BytesIO(content), read_only=True, data_only=True, keep_links=False
+            )
+        except (BadZipFile, KeyError, ValueError) as exc:
+            raise ImportFormatError("Invalid XLSX file") from exc
+        try:
+            sheet = workbook.active
+            iterator = sheet.iter_rows(values_only=True)
+            first_row = next(iterator, None)
+            if first_row is None:
+                return [], [ImportIssue(row=1, field=None, message="File is empty")]
+            headers = [str(value or "").strip() for value in first_row]
+            parsed = []
+            for values in iterator:
+                row = _compact_row(
+                    {
+                        header: "" if value is None else str(value).strip()
+                        for header, value in zip(headers, values)
+                    }
+                )
+                if any(row.values()):
+                    parsed.append(row)
+                    if len(parsed) > settings.import_max_rows:
+                        raise ImportLimitError("Import contains too many data rows")
+            return parsed, []
+        finally:
+            workbook.close()
 
-    text = content.decode("utf-8-sig")
+    if not filename.lower().endswith(".csv"):
+        raise ImportFormatError("Only CSV and XLSX files are supported")
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise ImportFormatError("CSV must use UTF-8 encoding") from exc
     reader = csv.DictReader(StringIO(text))
     parsed = []
     for row in reader:
         normalized = _compact_row({key: (value or "").strip() for key, value in row.items()})
         if any(normalized.values()):
             parsed.append(normalized)
+            if len(parsed) > settings.import_max_rows:
+                raise ImportLimitError("Import contains too many data rows")
     return parsed, []
 
 
-def _decimal(value: str, row: int, field: str, errors: list[ImportIssue], *, allow_negative: bool = False) -> Decimal | None:
+def _decimal(
+    value: str, row: int, field: str, errors: list[ImportIssue], *, allow_negative: bool = False
+) -> Decimal | None:
     try:
         number = Decimal(value)
     except (InvalidOperation, TypeError):
@@ -86,11 +147,15 @@ def _decimal(value: str, row: int, field: str, errors: list[ImportIssue], *, all
     return number
 
 
-def _validate_common(import_type: str, rows: list[dict[str, str]], errors: list[ImportIssue]) -> None:
+def _validate_common(
+    import_type: str, rows: list[dict[str, str]], errors: list[ImportIssue]
+) -> None:
     for row_index, row in enumerate(rows, start=2):
         for field in REQUIRED[import_type]:
             if not row.get(field):
-                errors.append(ImportIssue(row=row_index, field=field, message="Required field is missing"))
+                errors.append(
+                    ImportIssue(row=row_index, field=field, message="Required field is missing")
+                )
 
 
 def _duplicate_warnings(rows: list[dict[str, str]], key: str) -> list[ImportIssue]:
@@ -102,7 +167,9 @@ def _duplicate_warnings(rows: list[dict[str, str]], key: str) -> list[ImportIssu
     ]
 
 
-def validate_import(db: Session, import_type: str, content: bytes, filename: str) -> tuple[ImportSummary, list[dict[str, str]]]:
+def validate_import(
+    db: Session, import_type: str, content: bytes, filename: str
+) -> tuple[ImportSummary, list[dict[str, str]]]:
     rows, parse_errors = _parse_file(content, filename)
     errors = list(parse_errors)
     warnings: list[ImportIssue] = []
@@ -120,17 +187,33 @@ def validate_import(db: Session, import_type: str, content: bytes, filename: str
 
     if import_type == "partners":
         for index, row in enumerate(rows, start=2):
-            if row.get("partner_type") and row["partner_type"] not in {Partner.TYPE_CUSTOMER, Partner.TYPE_SUPPLIER, Partner.TYPE_BOTH}:
-                errors.append(ImportIssue(row=index, field="partner_type", message="Invalid partner_type. Use customer, supplier, or both"))
+            if row.get("partner_type") and row["partner_type"] not in {
+                Partner.TYPE_CUSTOMER,
+                Partner.TYPE_SUPPLIER,
+                Partner.TYPE_BOTH,
+            }:
+                errors.append(
+                    ImportIssue(
+                        row=index,
+                        field="partner_type",
+                        message="Invalid partner_type. Use customer, supplier, or both",
+                    )
+                )
 
     if import_type == "opening-stock":
         for index, row in enumerate(rows, start=2):
             product = _find_product(db, row.get("product_sku"), row.get("product_name"))
             warehouse = _find_warehouse(db, row.get("warehouse_name"))
             if product is None:
-                errors.append(ImportIssue(row=index, field="product_sku", message="Product not found by sku/name"))
+                errors.append(
+                    ImportIssue(
+                        row=index, field="product_sku", message="Product not found by sku/name"
+                    )
+                )
             if warehouse is None:
-                errors.append(ImportIssue(row=index, field="warehouse_name", message="Warehouse not found"))
+                errors.append(
+                    ImportIssue(row=index, field="warehouse_name", message="Warehouse not found")
+                )
             if row.get("quantity"):
                 _decimal(row["quantity"], index, "quantity", errors)
 
@@ -138,7 +221,9 @@ def validate_import(db: Session, import_type: str, content: bytes, filename: str
         warnings.extend(_duplicate_warnings(rows, "partner_name"))
         for index, row in enumerate(rows, start=2):
             if _find_partner(db, row.get("partner_name")) is None:
-                errors.append(ImportIssue(row=index, field="partner_name", message="Partner not found"))
+                errors.append(
+                    ImportIssue(row=index, field="partner_name", message="Partner not found")
+                )
             if row.get("balance"):
                 _decimal(row["balance"], index, "balance", errors, allow_negative=True)
 
@@ -270,15 +355,25 @@ def _apply_warehouses(db: Session, rows: list[dict[str, str]]) -> tuple[int, int
         if _find_warehouse(db, row.get("name")):
             skipped += 1
             continue
-        db.add(Warehouse(name=row["name"], code=row.get("code") or None, address=row.get("address") or None))
+        db.add(
+            Warehouse(
+                name=row["name"], code=row.get("code") or None, address=row.get("address") or None
+            )
+        )
         created += 1
     return created, skipped
 
 
 def _balance(db: Session, product_id: int, warehouse_id: int) -> StockBalance:
-    balance = db.scalar(select(StockBalance).where(StockBalance.product_id == product_id, StockBalance.warehouse_id == warehouse_id))
+    balance = db.scalar(
+        select(StockBalance).where(
+            StockBalance.product_id == product_id, StockBalance.warehouse_id == warehouse_id
+        )
+    )
     if balance is None:
-        balance = StockBalance(product_id=product_id, warehouse_id=warehouse_id, quantity=Decimal("0"))
+        balance = StockBalance(
+            product_id=product_id, warehouse_id=warehouse_id, quantity=Decimal("0")
+        )
         db.add(balance)
         db.flush()
     return balance
@@ -295,7 +390,14 @@ def _apply_opening_stock(db: Session, rows: list[dict[str, str]]) -> tuple[int, 
         delta = quantity - balance.quantity
         balance.quantity = quantity
         # TODO LEGACY_RULE_REQUIRED: confirm opening-stock import should be represented as adjustment document or direct movement.
-        db.add(StockMovement(product_id=product.id, warehouse_id=warehouse.id, quantity_delta=delta, reason="opening:import"))
+        db.add(
+            StockMovement(
+                product_id=product.id,
+                warehouse_id=warehouse.id,
+                quantity_delta=delta,
+                reason="opening:import",
+            )
+        )
         created += 1
     return created, 0
 

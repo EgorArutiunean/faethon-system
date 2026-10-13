@@ -14,6 +14,7 @@ class UserRead(Timestamped):
     email: str
     full_name: str | None = None
     is_active: bool
+    must_change_password: bool
     role_names: list[str]
     warehouse_ids: list[int] = Field(default_factory=list)
     warehouse_names: list[str] = Field(default_factory=list)

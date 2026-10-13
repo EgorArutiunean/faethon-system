@@ -18,7 +18,9 @@ def db() -> Session:
         poolclass=StaticPool,
     )
     Base.metadata.create_all(engine)
-    TestingSession = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+    TestingSession = sessionmaker(
+        bind=engine, autoflush=False, autocommit=False, expire_on_commit=False
+    )
     session = TestingSession()
     seed_auth_defaults(session)
     try:
@@ -40,7 +42,9 @@ def client(db: Session) -> TestClient:
         app.dependency_overrides.clear()
 
 
-def auth_header(client: TestClient, email: str = "admin@example.com", password: str = "admin123") -> dict[str, str]:
+def auth_header(
+    client: TestClient, email: str = "admin@example.com", password: str = "admin123"
+) -> dict[str, str]:
     response = client.post("/api/v1/auth/login", json={"email": email, "password": password})
     assert response.status_code == 200
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
@@ -58,12 +62,20 @@ def test_default_currencies_are_available(client: TestClient) -> None:
 def test_admin_can_create_and_read_exchange_rate(client: TestClient) -> None:
     response = client.post(
         "/api/v1/currencies/rates",
-        json={"currency_code": "USD", "rate_date": "2026-06-19", "rate_to_base": "16.200000", "note": "manual"},
+        json={
+            "currency_code": "USD",
+            "rate_date": "2026-06-19",
+            "rate_to_base": "16.200000",
+            "note": "manual",
+        },
         headers=auth_header(client),
     )
 
     assert response.status_code == 200
     assert response.json()["currency_code"] == "USD"
-    latest = client.get("/api/v1/currencies/rates/latest?currency_code=USD&on_date=2026-06-19", headers=auth_header(client))
+    latest = client.get(
+        "/api/v1/currencies/rates/latest?currency_code=USD&on_date=2026-06-19",
+        headers=auth_header(client),
+    )
     assert latest.status_code == 200
     assert latest.json()["rate_to_base"] == 16.2

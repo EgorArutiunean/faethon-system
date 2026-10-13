@@ -5,8 +5,9 @@ Revises: 0006_payment_draft_permissions
 Create Date: 2026-06-19
 """
 
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 revision = "0007_multicurrency"
 down_revision = "0006_payment_draft_permissions"
@@ -17,8 +18,12 @@ depends_on = None
 def upgrade() -> None:
     op.alter_column("currencies", "code", type_=sa.String(12), existing_type=sa.String(3))
     op.add_column("currencies", sa.Column("symbol", sa.String(12), nullable=True))
-    op.add_column("currencies", sa.Column("is_base", sa.Boolean(), nullable=False, server_default=sa.false()))
-    op.add_column("currencies", sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.true()))
+    op.add_column(
+        "currencies", sa.Column("is_base", sa.Boolean(), nullable=False, server_default=sa.false())
+    )
+    op.add_column(
+        "currencies", sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.true())
+    )
 
     op.create_table(
         "exchange_rates",
@@ -33,11 +38,22 @@ def upgrade() -> None:
     op.create_index("ix_exchange_rates_currency_id", "exchange_rates", ["currency_id"])
     op.create_index("ix_exchange_rates_rate_date", "exchange_rates", ["rate_date"])
 
-    op.add_column("documents", sa.Column("currency_code", sa.String(12), nullable=False, server_default="RUB_PMR"))
-    op.add_column("documents", sa.Column("exchange_rate", sa.Numeric(14, 6), nullable=False, server_default="1"))
-    op.add_column("documents", sa.Column("foreign_total_amount", sa.Numeric(14, 2), nullable=False, server_default="0"))
+    op.add_column(
+        "documents",
+        sa.Column("currency_code", sa.String(12), nullable=False, server_default="RUB_PMR"),
+    )
+    op.add_column(
+        "documents",
+        sa.Column("exchange_rate", sa.Numeric(14, 6), nullable=False, server_default="1"),
+    )
+    op.add_column(
+        "documents",
+        sa.Column("foreign_total_amount", sa.Numeric(14, 2), nullable=False, server_default="0"),
+    )
     op.add_column("document_lines", sa.Column("foreign_price", sa.Numeric(14, 2), nullable=True))
-    op.add_column("document_lines", sa.Column("foreign_line_total", sa.Numeric(14, 2), nullable=True))
+    op.add_column(
+        "document_lines", sa.Column("foreign_line_total", sa.Numeric(14, 2), nullable=True)
+    )
 
     currencies = sa.table(
         "currencies",
@@ -50,9 +66,27 @@ def upgrade() -> None:
     op.bulk_insert(
         currencies,
         [
-            {"code": "RUB_PMR", "name": "Рубль ПМР", "symbol": "р.", "is_base": True, "is_active": True},
-            {"code": "MDL", "name": "Молдавский лей", "symbol": "L", "is_base": False, "is_active": True},
-            {"code": "USD", "name": "Доллар США", "symbol": "$", "is_base": False, "is_active": True},
+            {
+                "code": "RUB_PMR",
+                "name": "Рубль ПМР",
+                "symbol": "р.",
+                "is_base": True,
+                "is_active": True,
+            },
+            {
+                "code": "MDL",
+                "name": "Молдавский лей",
+                "symbol": "L",
+                "is_base": False,
+                "is_active": True,
+            },
+            {
+                "code": "USD",
+                "name": "Доллар США",
+                "symbol": "$",
+                "is_base": False,
+                "is_active": True,
+            },
             {"code": "EUR", "name": "Евро", "symbol": "€", "is_base": False, "is_active": True},
         ],
     )

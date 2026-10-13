@@ -5,9 +5,9 @@ Revises: 0009_integrity_guards
 Create Date: 2026-09-01
 """
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "0010_document_revisions"
 down_revision = "0009_integrity_guards"
@@ -37,7 +37,9 @@ def _snapshot(document, lines, products) -> dict:
                 "quantity": str(line.quantity),
                 "price": str(line.price),
                 "line_total": str(line.line_total),
-                "foreign_price": str(line.foreign_price) if line.foreign_price is not None else None,
+                "foreign_price": str(line.foreign_price)
+                if line.foreign_price is not None
+                else None,
                 "foreign_line_total": (
                     str(line.foreign_line_total) if line.foreign_line_total is not None else None
                 ),
@@ -58,9 +60,11 @@ def _backfill_revisions() -> None:
         row.id: {"name": row.name, "sku": row.sku}
         for row in bind.execute(sa.select(product_table)).mappings()
     }
-    rows = list(bind.execute(
-        sa.select(documents).where(documents.c.status.in_(["posted", "cancelled"]))
-    ).mappings())
+    rows = list(
+        bind.execute(
+            sa.select(documents).where(documents.c.status.in_(["posted", "cancelled"]))
+        ).mappings()
+    )
     for document in rows:
         document_lines = list(
             bind.execute(
@@ -116,14 +120,25 @@ def upgrade() -> None:
     op.create_table(
         "document_revisions",
         sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("document_id", sa.Integer(), sa.ForeignKey("documents.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "document_id",
+            sa.Integer(),
+            sa.ForeignKey("documents.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("version", sa.Integer(), nullable=False),
         sa.Column("reason", sa.Text(), nullable=False),
         sa.Column("actor_user_id", sa.Integer(), sa.ForeignKey("users.id"), nullable=True),
         sa.Column("snapshot", sa.JSON(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.UniqueConstraint("document_id", "version", name="uq_document_revisions_document_version"),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.UniqueConstraint(
+            "document_id", "version", name="uq_document_revisions_document_version"
+        ),
         sa.CheckConstraint("version > 0", name="ck_document_revisions_version_positive"),
     )
     op.create_index("ix_document_revisions_document_id", "document_revisions", ["document_id"])
@@ -134,7 +149,9 @@ def downgrade() -> None:
     op.drop_index("ix_document_revisions_document_id", table_name="document_revisions")
     op.drop_table("document_revisions")
     op.drop_constraint("ck_stock_movements_kind", "stock_movements", type_="check")
-    op.drop_constraint("ck_stock_movements_posting_version_positive", "stock_movements", type_="check")
+    op.drop_constraint(
+        "ck_stock_movements_posting_version_positive", "stock_movements", type_="check"
+    )
     op.drop_index("ix_stock_movements_movement_kind", table_name="stock_movements")
     op.drop_index("ix_stock_movements_posting_version", table_name="stock_movements")
     op.drop_column("stock_movements", "movement_kind")

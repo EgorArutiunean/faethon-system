@@ -1,7 +1,7 @@
+import sys
 from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
-import sys
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
@@ -21,7 +21,11 @@ from app.schemas.documents import DocumentCreate, DocumentLineCreate
 from app.schemas.payments import PaymentCreate
 from app.services.auth_seed import seed_auth_defaults
 from app.services.cash_service import create_cash_operation, get_cash_book
-from app.services.currency_service import create_exchange_rate, get_currency, seed_default_currencies
+from app.services.currency_service import (
+    create_exchange_rate,
+    get_currency,
+    seed_default_currencies,
+)
 from app.services.documents_service import add_document_line, create_document, post_document
 from app.services.payments_service import create_payment, post_payment
 
@@ -72,12 +76,21 @@ def _warehouse(db: Session, index: int) -> Warehouse:
     warehouse = db.scalar(select(Warehouse).where(Warehouse.code == code))
     if warehouse:
         return warehouse
-    return _commit_refresh(db, Warehouse(code=code, name=f"{PREFIX} Warehouse {index:02d}", address=f"{PREFIX} address {index:02d}"))
+    return _commit_refresh(
+        db,
+        Warehouse(
+            code=code,
+            name=f"{PREFIX} Warehouse {index:02d}",
+            address=f"{PREFIX} address {index:02d}",
+        ),
+    )
 
 
 def _partner(db: Session, index: int) -> Partner:
     code = f"{PREFIX}-C{index:02d}"
-    partner_type = [Partner.TYPE_SUPPLIER, Partner.TYPE_CUSTOMER, Partner.TYPE_BOTH][(index - 1) % 3]
+    partner_type = [Partner.TYPE_SUPPLIER, Partner.TYPE_CUSTOMER, Partner.TYPE_BOTH][
+        (index - 1) % 3
+    ]
     partner = db.scalar(select(Partner).where(Partner.code == code))
     if partner:
         partner.name = f"{PREFIX} Partner {index:02d}"
@@ -101,7 +114,14 @@ def _partner(db: Session, index: int) -> Partner:
 
 def _rate_exists(db: Session, currency_code: str, rate_date: date) -> bool:
     currency = get_currency(db, currency_code)
-    return db.scalar(select(ExchangeRate.id).where(ExchangeRate.currency_id == currency.id, ExchangeRate.rate_date == rate_date)) is not None
+    return (
+        db.scalar(
+            select(ExchangeRate.id).where(
+                ExchangeRate.currency_id == currency.id, ExchangeRate.rate_date == rate_date
+            )
+        )
+        is not None
+    )
 
 
 def _seed_rates(db: Session) -> None:
@@ -145,18 +165,34 @@ def _cash_exists(db: Session, note: str) -> bool:
 
 
 def _supplier_for(partners: list[Partner], index: int) -> Partner:
-    suppliers = [partner for partner in partners if partner.partner_type in {Partner.TYPE_SUPPLIER, Partner.TYPE_BOTH}]
+    suppliers = [
+        partner
+        for partner in partners
+        if partner.partner_type in {Partner.TYPE_SUPPLIER, Partner.TYPE_BOTH}
+    ]
     return suppliers[(index - 1) % len(suppliers)]
 
 
 def _customer_for(partners: list[Partner], index: int) -> Partner:
-    customers = [partner for partner in partners if partner.partner_type in {Partner.TYPE_CUSTOMER, Partner.TYPE_BOTH}]
+    customers = [
+        partner
+        for partner in partners
+        if partner.partner_type in {Partner.TYPE_CUSTOMER, Partner.TYPE_BOTH}
+    ]
     return customers[(index - 1) % len(customers)]
 
 
-def _seed_documents(db: Session, products: list[Product], warehouses: list[Warehouse], partners: list[Partner]) -> None:
+def _seed_documents(
+    db: Session, products: list[Product], warehouses: list[Warehouse], partners: list[Partner]
+) -> None:
     currency_cycle = ["RUB_PMR", "USD", "MDL", "EUR", "USD"]
-    rate_cycle = [Decimal("1"), Decimal("16.20"), Decimal("0.92"), Decimal("17.50"), Decimal("16.35")]
+    rate_cycle = [
+        Decimal("1"),
+        Decimal("16.20"),
+        Decimal("0.92"),
+        Decimal("17.50"),
+        Decimal("16.35"),
+    ]
     for index in range(1, 11):
         note = f"{PREFIX}:document:{index:02d}"
         if _document_exists(db, note):
@@ -168,10 +204,18 @@ def _seed_documents(db: Session, products: list[Product], warehouses: list[Wareh
             DocumentCreate(
                 document_type=Document.TYPE_INCOMING if is_incoming else Document.TYPE_OUTGOING,
                 document_date=START_DATE + timedelta(days=index),
-                partner_id=(_supplier_for(partners, index).id if is_incoming else _customer_for(partners, index).id),
+                partner_id=(
+                    _supplier_for(partners, index).id
+                    if is_incoming
+                    else _customer_for(partners, index).id
+                ),
                 warehouse_id=warehouses[(stock_source_index - 1) % len(warehouses)].id,
-                currency_code=currency_cycle[(index - 1) % len(currency_cycle)] if is_incoming else "RUB_PMR",
-                exchange_rate=rate_cycle[(index - 1) % len(rate_cycle)] if is_incoming else Decimal("1"),
+                currency_code=currency_cycle[(index - 1) % len(currency_cycle)]
+                if is_incoming
+                else "RUB_PMR",
+                exchange_rate=rate_cycle[(index - 1) % len(rate_cycle)]
+                if is_incoming
+                else Decimal("1"),
                 note=note,
             ),
         )
@@ -182,13 +226,21 @@ def _seed_documents(db: Session, products: list[Product], warehouses: list[Wareh
                 add_document_line(
                     db,
                     document.id,
-                    DocumentLineCreate(product_id=product.id, quantity=quantity, foreign_price=Decimal("5.00") + Decimal(index + line_offset)),
+                    DocumentLineCreate(
+                        product_id=product.id,
+                        quantity=quantity,
+                        foreign_price=Decimal("5.00") + Decimal(index + line_offset),
+                    ),
                 )
             else:
                 add_document_line(
                     db,
                     document.id,
-                    DocumentLineCreate(product_id=product.id, quantity=quantity, price=Decimal(product.base_price or Decimal("100.00"))),
+                    DocumentLineCreate(
+                        product_id=product.id,
+                        quantity=quantity,
+                        price=Decimal(product.base_price or Decimal("100.00")),
+                    ),
                 )
         post_document(db, document.id)
 
@@ -217,7 +269,9 @@ def _seed_payments(db: Session, partners: list[Partner]) -> None:
                 PaymentCreate(
                     partner_id=partner.id,
                     payment_date=payment_date,
-                    payment_type=Payment.TYPE_CUSTOMER_PAYMENT if is_customer else Payment.TYPE_SUPPLIER_PAYMENT,
+                    payment_type=Payment.TYPE_CUSTOMER_PAYMENT
+                    if is_customer
+                    else Payment.TYPE_SUPPLIER_PAYMENT,
                     amount=Decimal("50.00") + Decimal(index * 10),
                     method="cash",
                     note=note,
@@ -238,7 +292,11 @@ def _seed_cash_operations(db: Session, partners: list[Partner]) -> None:
             db,
             CashOperationCreate(
                 operation_date=START_DATE + timedelta(days=40 + index),
-                operation_type=[CashOperation.TYPE_CASH_IN, CashOperation.TYPE_CASH_OUT, CashOperation.TYPE_CORRECTION][(index - 1) % 3],
+                operation_type=[
+                    CashOperation.TYPE_CASH_IN,
+                    CashOperation.TYPE_CASH_OUT,
+                    CashOperation.TYPE_CORRECTION,
+                ][(index - 1) % 3],
                 amount=Decimal("20.00") + Decimal(index * 5),
                 partner_id=partners[(index - 1) % len(partners)].id,
                 note=note,

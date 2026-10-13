@@ -21,7 +21,13 @@ from app.models.stock import Warehouse
 from app.schemas.documents import DocumentCreate, DocumentLineCreate, DocumentRepost
 from app.schemas.payments import PaymentAllocationInput, PaymentCreate
 from app.services.auth_seed import seed_auth_defaults
-from app.services.documents_service import add_document_line, cancel_document, create_document, post_document, repost_document
+from app.services.documents_service import (
+    add_document_line,
+    cancel_document,
+    create_document,
+    post_document,
+    repost_document,
+)
 from app.services.payments_service import (
     cancel_payment,
     create_payment,
@@ -40,7 +46,9 @@ def db() -> Session:
         poolclass=StaticPool,
     )
     Base.metadata.create_all(engine)
-    TestingSession = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+    TestingSession = sessionmaker(
+        bind=engine, autoflush=False, autocommit=False, expire_on_commit=False
+    )
     session = TestingSession()
     try:
         yield session
@@ -52,8 +60,12 @@ def db() -> Session:
 def setup_two_sales(db: Session) -> tuple[Product, Warehouse, Partner, Document, Document]:
     product = Product(name="Allocated product", sku="ALLOC-P", base_price=Decimal("15"))
     warehouse = Warehouse(name="Allocation warehouse", code="ALLOC-W")
-    supplier = Partner(name="Allocation supplier", code="ALLOC-S", partner_type=Partner.TYPE_SUPPLIER)
-    customer = Partner(name="Allocation customer", code="ALLOC-C", partner_type=Partner.TYPE_CUSTOMER)
+    supplier = Partner(
+        name="Allocation supplier", code="ALLOC-S", partner_type=Partner.TYPE_SUPPLIER
+    )
+    customer = Partner(
+        name="Allocation customer", code="ALLOC-C", partner_type=Partner.TYPE_CUSTOMER
+    )
     db.add_all([product, warehouse, supplier, customer])
     db.commit()
     incoming = create_document(
@@ -86,7 +98,9 @@ def setup_two_sales(db: Session) -> tuple[Product, Warehouse, Partner, Document,
         add_document_line(
             db,
             sale.id,
-            DocumentLineCreate(product_id=product.id, quantity=Decimal(quantity), price=Decimal("10")),
+            DocumentLineCreate(
+                product_id=product.id, quantity=Decimal(quantity), price=Decimal("10")
+            ),
         )
         sales.append(post_document(db, sale.id))
     return product, warehouse, customer, sales[0], sales[1]
@@ -158,18 +172,22 @@ def test_posted_payment_can_be_reallocated_without_cash_change(db: Session) -> N
     _product, _warehouse, customer, first, second = setup_two_sales(db)
     payment = make_allocated_payment(db, customer.id, "20", [(first.id, "20")])
     post_payment(db, payment.id)
-    cash_before = list(db.scalars(select(CashOperation).where(CashOperation.payment_id == payment.id)))
+    cash_before = list(
+        db.scalars(select(CashOperation).where(CashOperation.payment_id == payment.id))
+    )
 
     reallocated = replace_posted_payment_allocations(
         db,
         payment.id,
         [PaymentAllocationInput(document_id=second.id, amount=Decimal("20"))],
     )
-    cash_after = list(db.scalars(select(CashOperation).where(CashOperation.payment_id == payment.id)))
+    cash_after = list(
+        db.scalars(select(CashOperation).where(CashOperation.payment_id == payment.id))
+    )
 
-    assert [(allocation.document_id, allocation.amount) for allocation in reallocated.allocations] == [
-        (second.id, Decimal("20.00"))
-    ]
+    assert [
+        (allocation.document_id, allocation.amount) for allocation in reallocated.allocations
+    ] == [(second.id, Decimal("20.00"))]
     assert len(cash_before) == len(cash_after) == 1
     assert cash_after[0].amount == Decimal("20.00")
     assert cash_after[0].status == CashOperation.STATUS_POSTED
@@ -212,7 +230,9 @@ def test_document_total_cannot_drop_below_posted_allocations(db: Session) -> Non
                 warehouse_id=warehouse.id,
                 reason="Reduce sale",
                 lines=[
-                    DocumentLineCreate(product_id=product.id, quantity=Decimal("1"), price=Decimal("10"))
+                    DocumentLineCreate(
+                        product_id=product.id, quantity=Decimal("1"), price=Decimal("10")
+                    )
                 ],
             ),
         )
@@ -224,7 +244,10 @@ def test_cancelled_payment_releases_document_outstanding(db: Session) -> None:
     _product, _warehouse, customer, first, _second = setup_two_sales(db)
     payment = make_allocated_payment(db, customer.id, "20", [(first.id, "20")])
     post_payment(db, payment.id)
-    assert all(option.document_id != first.id for option in get_payment_allocation_options(db, customer.id, Payment.TYPE_CUSTOMER_PAYMENT))
+    assert all(
+        option.document_id != first.id
+        for option in get_payment_allocation_options(db, customer.id, Payment.TYPE_CUSTOMER_PAYMENT)
+    )
 
     cancel_payment(db, payment.id)
 

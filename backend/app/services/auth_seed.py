@@ -1,10 +1,10 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.security import hash_password
 from app.models.identity import Permission, Role, User
 from app.services.currency_service import seed_default_currencies
-
 
 PERMISSIONS = [
     "products.read",
@@ -111,7 +111,7 @@ ROLE_PERMISSIONS = {
 }
 
 
-def seed_auth_defaults(db: Session) -> User:
+def seed_permissions_and_roles(db: Session) -> dict[str, Role]:
     seed_default_currencies(db)
 
     permissions_by_code: dict[str, Permission] = {}
@@ -132,6 +132,14 @@ def seed_auth_defaults(db: Session) -> User:
         role.permissions = [permissions_by_code[code] for code in codes]
         roles_by_name[name] = role
     db.flush()
+    return roles_by_name
+
+
+def seed_auth_defaults(db: Session) -> User:
+    if get_settings().app_env == "production":
+        raise RuntimeError("Demo authentication seed is disabled in production")
+
+    roles_by_name = seed_permissions_and_roles(db)
 
     demo_users = [
         ("admin@example.com", "admin123", "Demo Admin", "admin"),
@@ -152,6 +160,9 @@ def seed_auth_defaults(db: Session) -> User:
         user.full_name = full_name
         user.hashed_password = hash_password(password)
         user.is_active = True
+        user.must_change_password = False
+        user.failed_login_attempts = 0
+        user.locked_until = None
         user.roles = [roles_by_name[role_name]]
         if role_name == "admin":
             admin = user

@@ -5,21 +5,19 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
-from sqlalchemy import select, create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.core.security import create_access_token, hash_password
 from app.db.base import *  # noqa: F401,F403
-from app.db.session import Base
-from app.db.session import get_db
+from app.db.session import Base, get_db
 from app.main import app
-from app.core.security import create_access_token
 from app.models.documents import Document, DocumentRevision
 from app.models.identity import Role, User
 from app.models.partners import Partner
 from app.models.products import Product
-from app.models.stock import StockBalance, StockMovement
-from app.models.stock import Warehouse
+from app.models.stock import StockBalance, StockMovement, Warehouse
 from app.schemas.documents import (
     DocumentCreate,
     DocumentLineCreate,
@@ -27,6 +25,7 @@ from app.schemas.documents import (
     DocumentRepost,
     DocumentUpdate,
 )
+from app.services.auth_seed import seed_auth_defaults
 from app.services.documents_service import (
     add_document_line,
     cancel_document,
@@ -38,8 +37,6 @@ from app.services.documents_service import (
     update_document_header,
     update_document_line,
 )
-from app.core.security import hash_password
-from app.services.auth_seed import seed_auth_defaults
 
 
 @pytest.fixture()
@@ -50,7 +47,9 @@ def db() -> Session:
         poolclass=StaticPool,
     )
     Base.metadata.create_all(engine)
-    TestingSession = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+    TestingSession = sessionmaker(
+        bind=engine, autoflush=False, autocommit=False, expire_on_commit=False
+    )
     session = TestingSession()
     try:
         yield session
@@ -68,7 +67,9 @@ def seed_catalog(db: Session) -> tuple[Product, Warehouse, Partner]:
     return product, warehouse, partner
 
 
-def make_document(db: Session, document_type: str, warehouse_id: int, partner_id: int | None = None) -> Document:
+def make_document(
+    db: Session, document_type: str, warehouse_id: int, partner_id: int | None = None
+) -> Document:
     return create_document(
         db,
         DocumentCreate(
@@ -84,7 +85,9 @@ def add_line(db: Session, document_id: int, product_id: int, quantity: str) -> N
     add_document_line(
         db,
         document_id,
-        DocumentLineCreate(product_id=product_id, quantity=Decimal(quantity), price=Decimal("10.00")),
+        DocumentLineCreate(
+            product_id=product_id, quantity=Decimal(quantity), price=Decimal("10.00")
+        ),
     )
 
 
@@ -312,7 +315,9 @@ def test_incoming_document_converts_foreign_price_to_base_amount(db: Session) ->
     line = add_document_line(
         db,
         document.id,
-        DocumentLineCreate(product_id=product.id, quantity=Decimal("2"), foreign_price=Decimal("10.00")),
+        DocumentLineCreate(
+            product_id=product.id, quantity=Decimal("2"), foreign_price=Decimal("10.00")
+        ),
     )
 
     db.refresh(document)
@@ -342,7 +347,9 @@ def test_posted_foreign_incoming_keeps_original_exchange_rate(db: Session) -> No
     add_document_line(
         db,
         document.id,
-        DocumentLineCreate(product_id=product.id, quantity=Decimal("2"), foreign_price=Decimal("10.00")),
+        DocumentLineCreate(
+            product_id=product.id, quantity=Decimal("2"), foreign_price=Decimal("10.00")
+        ),
     )
     post_document(db, document.id)
 
@@ -443,7 +450,9 @@ def test_can_edit_draft_header(db: Session) -> None:
     _product, warehouse, partner = seed_catalog(db)
     document = make_document(db, Document.TYPE_INCOMING, warehouse.id, partner.id)
 
-    updated = update_document_header(db, document.id, DocumentUpdate(note="changed", document_date=date(2026, 5, 2)))
+    updated = update_document_header(
+        db, document.id, DocumentUpdate(note="changed", document_date=date(2026, 5, 2))
+    )
 
     assert updated.note == "changed"
     assert updated.document_date == date(2026, 5, 2)
@@ -464,9 +473,17 @@ def test_cannot_edit_posted_header(db: Session) -> None:
 def test_can_delete_draft_line_and_total_recalculates(db: Session) -> None:
     product, warehouse, partner = seed_catalog(db)
     document = make_document(db, Document.TYPE_INCOMING, warehouse.id, partner.id)
-    first = add_document_line(db, document.id, DocumentLineCreate(product_id=product.id, quantity=Decimal("2"), price=Decimal("5.00")))
+    first = add_document_line(
+        db,
+        document.id,
+        DocumentLineCreate(product_id=product.id, quantity=Decimal("2"), price=Decimal("5.00")),
+    )
     first_id = first.id
-    add_document_line(db, document.id, DocumentLineCreate(product_id=product.id, quantity=Decimal("3"), price=Decimal("4.00")))
+    add_document_line(
+        db,
+        document.id,
+        DocumentLineCreate(product_id=product.id, quantity=Decimal("3"), price=Decimal("4.00")),
+    )
 
     delete_document_line(db, document.id, first_id)
 
@@ -478,7 +495,11 @@ def test_can_delete_draft_line_and_total_recalculates(db: Session) -> None:
 def test_cannot_delete_posted_line(db: Session) -> None:
     product, warehouse, partner = seed_catalog(db)
     document = make_document(db, Document.TYPE_INCOMING, warehouse.id, partner.id)
-    line = add_document_line(db, document.id, DocumentLineCreate(product_id=product.id, quantity=Decimal("1"), price=Decimal("5.00")))
+    line = add_document_line(
+        db,
+        document.id,
+        DocumentLineCreate(product_id=product.id, quantity=Decimal("1"), price=Decimal("5.00")),
+    )
     post_document(db, document.id)
 
     with pytest.raises(HTTPException) as exc:
@@ -524,7 +545,12 @@ def test_cancelled_document_cannot_be_edited(db: Session) -> None:
 def test_viewer_cannot_delete_or_edit_document(db: Session) -> None:
     seed_auth_defaults(db)
     role = db.scalar(select(Role).where(Role.name == "viewer"))
-    user = User(username="viewer-doc@example.com", hashed_password=hash_password("password"), is_active=True, roles=[role])
+    user = User(
+        username="viewer-doc@example.com",
+        hashed_password=hash_password("password"),
+        is_active=True,
+        roles=[role],
+    )
     db.add(user)
     db.commit()
     _product, warehouse, partner = seed_catalog(db)
@@ -536,8 +562,12 @@ def test_viewer_cannot_delete_or_edit_document(db: Session) -> None:
     app.dependency_overrides[get_db] = override_get_db
     try:
         headers = {"Authorization": f"Bearer {create_access_token(str(user.id))}"}
-        patch_response = TestClient(app).patch(f"/api/v1/documents/{document.id}", json={"note": "blocked"}, headers=headers)
-        delete_response = TestClient(app).delete(f"/api/v1/documents/{document.id}", headers=headers)
+        patch_response = TestClient(app).patch(
+            f"/api/v1/documents/{document.id}", json={"note": "blocked"}, headers=headers
+        )
+        delete_response = TestClient(app).delete(
+            f"/api/v1/documents/{document.id}", headers=headers
+        )
     finally:
         app.dependency_overrides.clear()
 
@@ -661,7 +691,9 @@ def test_posting_creates_versioned_revision_and_movements(db: Session) -> None:
 
     posted = post_document(db, document.id)
 
-    revision = db.scalar(select(DocumentRevision).where(DocumentRevision.document_id == document.id))
+    revision = db.scalar(
+        select(DocumentRevision).where(DocumentRevision.document_id == document.id)
+    )
     movement = db.scalar(select(StockMovement).where(StockMovement.document_id == document.id))
     assert posted.posting_version == 1
     assert revision is not None
@@ -703,7 +735,10 @@ def test_repost_replaces_stock_and_preserves_both_revisions(db: Session) -> None
     assert revisions[0].snapshot["lines"][0]["quantity"] == "5.000"
     assert revisions[1].snapshot["lines"][0]["quantity"] == "8.000"
     assert revisions[1].reason == "Correct actual quantity"
-    assert [(movement.posting_version, movement.movement_kind, movement.quantity_delta) for movement in movements] == [
+    assert [
+        (movement.posting_version, movement.movement_kind, movement.quantity_delta)
+        for movement in movements
+    ] == [
         (1, "apply", Decimal("5.000")),
         (1, "reverse", Decimal("-5.000")),
         (2, "apply", Decimal("8.000")),
@@ -739,7 +774,9 @@ def test_failed_repost_rolls_back_document_stock_and_history(db: Session) -> Non
 
     db.expire_all()
     unchanged = db.get(Document, incoming.id)
-    revisions = list(db.scalars(select(DocumentRevision).where(DocumentRevision.document_id == incoming.id)))
+    revisions = list(
+        db.scalars(select(DocumentRevision).where(DocumentRevision.document_id == incoming.id))
+    )
     assert exc.value.status_code == 409
     assert unchanged is not None
     assert unchanged.posting_version == 1

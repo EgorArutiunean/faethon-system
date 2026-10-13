@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session, selectinload
 from app.models.documents import Document, DocumentLine
 from app.models.products import Product
 
-
 TEMPLATE_PATH = Path(__file__).resolve().parents[1] / "templates" / "invoice.html"
 FONT_CANDIDATES = [
     Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
@@ -41,8 +40,27 @@ ONES = {
     19: "девятнадцать",
 }
 FEMININE_ONES = {1: "одна", 2: "две"}
-TENS = {2: "двадцать", 3: "тридцать", 4: "сорок", 5: "пятьдесят", 6: "шестьдесят", 7: "семьдесят", 8: "восемьдесят", 9: "девяносто"}
-HUNDREDS = {1: "сто", 2: "двести", 3: "триста", 4: "четыреста", 5: "пятьсот", 6: "шестьсот", 7: "семьсот", 8: "восемьсот", 9: "девятьсот"}
+TENS = {
+    2: "двадцать",
+    3: "тридцать",
+    4: "сорок",
+    5: "пятьдесят",
+    6: "шестьдесят",
+    7: "семьдесят",
+    8: "восемьдесят",
+    9: "девяносто",
+}
+HUNDREDS = {
+    1: "сто",
+    2: "двести",
+    3: "триста",
+    4: "четыреста",
+    5: "пятьсот",
+    6: "шестьсот",
+    7: "семьсот",
+    8: "восемьсот",
+    9: "девятьсот",
+}
 
 
 def _text(value: object) -> str:
@@ -123,17 +141,19 @@ def _line_rows(document: Document) -> str:
         product = line.product
         rows.append(
             "<tr>"
-            f"<td class=\"center\">{index}</td>"
-            f"<td class=\"center\">{_text(product.sku if product else line.product_id)}</td>"
+            f'<td class="center">{index}</td>'
+            f'<td class="center">{_text(product.sku if product else line.product_id)}</td>'
             f"<td>{_text(line.product_name or line.product_id)}</td>"
-            f"<td class=\"center\">{_text(product.unit.short_name if product and product.unit else 'шт')}</td>"
-            f"<td class=\"num\">{_quantity(line.quantity)}</td>"
-            f"<td class=\"num\">{_price(line.price)}</td>"
-            f"<td class=\"num strong\">{_money(line.line_total)}</td>"
+            f'<td class="center">{_text(product.unit.short_name if product and product.unit else "шт")}</td>'
+            f'<td class="num">{_quantity(line.quantity)}</td>'
+            f'<td class="num">{_price(line.price)}</td>'
+            f'<td class="num strong">{_money(line.line_total)}</td>'
             "</tr>"
         )
     if not rows:
-        rows.append("<tr><td colspan=\"7\" class=\"empty\">\u041d\u0435\u0442 \u0441\u0442\u0440\u043e\u043a</td></tr>")
+        rows.append(
+            '<tr><td colspan="7" class="empty">\u041d\u0435\u0442 \u0441\u0442\u0440\u043e\u043a</td></tr>'
+        )
     return "\n".join(rows)
 
 
@@ -155,9 +175,9 @@ def _document_number(document: Document) -> str:
 
 def _watermark(document: Document) -> str:
     if document.status == Document.STATUS_DRAFT:
-        return "<div class=\"watermark\">\u0427\u0415\u0420\u041d\u041e\u0412\u0418\u041a</div>"
+        return '<div class="watermark">\u0427\u0415\u0420\u041d\u041e\u0412\u0418\u041a</div>'
     if document.status == Document.STATUS_CANCELLED:
-        return "<div class=\"watermark danger\">\u041e\u0422\u041c\u0415\u041d\u0401\u041d</div>"
+        return '<div class="watermark danger">\u041e\u0422\u041c\u0415\u041d\u0401\u041d</div>'
     return ""
 
 
@@ -169,7 +189,9 @@ def _load_print_document(db: Session, document_id: int) -> Document:
             selectinload(Document.partner),
             selectinload(Document.warehouse),
             selectinload(Document.destination_warehouse),
-            selectinload(Document.lines).selectinload(DocumentLine.product).selectinload(Product.unit),
+            selectinload(Document.lines)
+            .selectinload(DocumentLine.product)
+            .selectinload(Product.unit),
         )
     )
     if document is None:
@@ -219,7 +241,14 @@ def get_invoice_pdf(db: Session, document_id: int) -> bytes:
     if font_name not in pdfmetrics.getRegisteredFontNames():
         pdfmetrics.registerFont(TTFont(font_name, str(_pdf_font_path())))
 
-    def draw_text(x: float, y: float, text: object, size: int = 10, align: str = "left", max_width: float | None = None) -> None:
+    def draw_text(
+        x: float,
+        y: float,
+        text: object,
+        size: int = 10,
+        align: str = "left",
+        max_width: float | None = None,
+    ) -> None:
         value = "" if text is None else str(text)
         pdf.setFont(font_name, size)
         if max_width is not None:
@@ -281,7 +310,9 @@ def get_invoice_pdf(db: Session, document_id: int) -> bytes:
         aligns = ["center", "center", "left", "center", "right", "right", "right"]
         for width, value, max_width, align in zip(col_widths, row_values, max_widths, aligns):
             pdf.rect(x, current_y, width, row_h)
-            text_x = x + 4 if align == "left" else x + width / 2 if align == "center" else x + width - 4
+            text_x = (
+                x + 4 if align == "left" else x + width / 2 if align == "center" else x + width - 4
+            )
             draw_text(text_x, current_y + 7, value, 8, align=align, max_width=max_width)
             x += width
         current_y -= row_h

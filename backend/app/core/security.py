@@ -39,18 +39,24 @@ def _b64decode(data: str) -> bytes:
     return base64.urlsafe_b64decode(data + "=" * (-len(data) % 4))
 
 
-def create_access_token(subject: str) -> str:
+def create_access_token(subject: str, token_version: int = 0) -> str:
     settings = get_settings()
     header = {"alg": "HS256", "typ": "JWT"}
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_minutes)
-    payload: dict[str, Any] = {"sub": subject, "exp": int(expires_at.timestamp())}
+    payload: dict[str, Any] = {
+        "sub": subject,
+        "ver": token_version,
+        "exp": int(expires_at.timestamp()),
+    }
     signing_input = ".".join(
         [
             _b64encode(json.dumps(header, separators=(",", ":")).encode()),
             _b64encode(json.dumps(payload, separators=(",", ":")).encode()),
         ]
     )
-    signature = hmac.new(settings.auth_secret_key.encode(), signing_input.encode(), hashlib.sha256).digest()
+    signature = hmac.new(
+        settings.auth_secret_key.encode(), signing_input.encode(), hashlib.sha256
+    ).digest()
     return f"{signing_input}.{_b64encode(signature)}"
 
 
@@ -59,7 +65,9 @@ def decode_access_token(token: str) -> dict[str, Any]:
     try:
         header_raw, payload_raw, signature_raw = token.split(".", 2)
         signing_input = f"{header_raw}.{payload_raw}"
-        expected = hmac.new(settings.auth_secret_key.encode(), signing_input.encode(), hashlib.sha256).digest()
+        expected = hmac.new(
+            settings.auth_secret_key.encode(), signing_input.encode(), hashlib.sha256
+        ).digest()
         actual = _b64decode(signature_raw)
         if not hmac.compare_digest(actual, expected):
             raise ValueError("bad signature")
@@ -68,4 +76,6 @@ def decode_access_token(token: str) -> dict[str, Any]:
             raise ValueError("expired")
         return payload
     except (ValueError, json.JSONDecodeError, TypeError) as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token") from exc
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token"
+        ) from exc

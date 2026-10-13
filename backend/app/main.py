@@ -1,11 +1,34 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import audit, auth, cash, currencies, documents, health, imports, logistics, partners, payments, product_groups, products, reports, stock, users, warehouses
+from app.api.routes import (
+    audit,
+    auth,
+    cash,
+    currencies,
+    dashboard,
+    documents,
+    health,
+    imports,
+    logistics,
+    metrics,
+    partners,
+    payments,
+    product_groups,
+    products,
+    reports,
+    stock,
+    users,
+    warehouses,
+)
 from app.core.config import get_settings
-import app.db.base  # noqa: F401
+from app.core.error_tracking import configure_error_tracking
+from app.core.observability import configure_logging, install_request_logging
+from app.db import base as db_base  # noqa: F401
 
 settings = get_settings()
+configure_logging(settings.log_level, json_logs=settings.log_format == "json")
+configure_error_tracking(settings)
 
 app = FastAPI(
     title=settings.app_name,
@@ -13,21 +36,33 @@ app = FastAPI(
     openapi_tags=[
         {"name": "health", "description": "Service health checks"},
         {"name": "auth", "description": "Login and current user"},
+        {"name": "dashboard", "description": "Permission-aware operational aggregates"},
         {"name": "products", "description": "Product catalog"},
         {"name": "partners", "description": "Customers, suppliers, and counterparties"},
         {"name": "warehouses", "description": "Warehouse directory"},
-        {"name": "documents", "description": "Accounting documents; posting rules pending legacy confirmation"},
+        {
+            "name": "documents",
+            "description": "Accounting documents; posting rules pending legacy confirmation",
+        },
         {"name": "stock", "description": "Stock balances and movements"},
         {"name": "payments", "description": "Payments, partner balances, and debt statements"},
         {"name": "cash", "description": "Cash operations, cash balance, and cash book"},
-        {"name": "logistics", "description": "Warehouse-scoped execution tasks and logistics history"},
+        {
+            "name": "logistics",
+            "description": "Warehouse-scoped execution tasks and logistics history",
+        },
         {"name": "currencies", "description": "Currencies and historical exchange rates"},
         {"name": "reports", "description": "BuySell-like operational reports"},
-        {"name": "import", "description": "CSV/XLSX import templates, dry-run validation, and apply"},
+        {
+            "name": "import",
+            "description": "CSV/XLSX import templates, dry-run validation, and apply",
+        },
         {"name": "audit", "description": "Read-only operational audit log"},
         {"name": "users", "description": "User and role administration"},
     ],
 )
+
+install_request_logging(app)
 
 app.add_middleware(
     CORSMiddleware,
@@ -35,10 +70,13 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID"],
 )
 
 app.include_router(health.router)
+app.include_router(metrics.router)
 app.include_router(auth.router, prefix=settings.api_prefix)
+app.include_router(dashboard.router, prefix=settings.api_prefix)
 app.include_router(products.router, prefix=settings.api_prefix)
 app.include_router(product_groups.router, prefix=settings.api_prefix)
 app.include_router(partners.router, prefix=settings.api_prefix)

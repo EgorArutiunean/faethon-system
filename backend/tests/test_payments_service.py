@@ -16,8 +16,20 @@ from app.models.products import Product
 from app.models.stock import Warehouse
 from app.schemas.documents import DocumentCreate, DocumentLineCreate
 from app.schemas.payments import PaymentCreate, PaymentUpdate
-from app.services.documents_service import add_document_line, cancel_document, create_document, post_document
-from app.services.payments_service import cancel_payment, create_payment, delete_draft_payment, get_partner_balance, post_payment, update_payment
+from app.services.documents_service import (
+    add_document_line,
+    cancel_document,
+    create_document,
+    post_document,
+)
+from app.services.payments_service import (
+    cancel_payment,
+    create_payment,
+    delete_draft_payment,
+    get_partner_balance,
+    post_payment,
+    update_payment,
+)
 
 
 @pytest.fixture()
@@ -28,7 +40,9 @@ def db() -> Session:
         poolclass=StaticPool,
     )
     Base.metadata.create_all(engine)
-    TestingSession = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+    TestingSession = sessionmaker(
+        bind=engine, autoflush=False, autocommit=False, expire_on_commit=False
+    )
     session = TestingSession()
     try:
         yield session
@@ -46,7 +60,9 @@ def seed(db: Session) -> tuple[Product, Warehouse, Partner]:
     return product, warehouse, partner
 
 
-def posted_document(db: Session, document_type: str, total_qty: str = "2") -> tuple[Document, Partner]:
+def posted_document(
+    db: Session, document_type: str, total_qty: str = "2"
+) -> tuple[Document, Partner]:
     product, warehouse, partner = seed(db)
     if document_type == Document.TYPE_OUTGOING:
         supplier = Partner(name="Supplier", code="SUP")
@@ -54,15 +70,33 @@ def posted_document(db: Session, document_type: str, total_qty: str = "2") -> tu
         db.commit()
         incoming = create_document(
             db,
-            DocumentCreate(document_type=Document.TYPE_INCOMING, document_date=date(2026, 5, 1), warehouse_id=warehouse.id, partner_id=supplier.id),
+            DocumentCreate(
+                document_type=Document.TYPE_INCOMING,
+                document_date=date(2026, 5, 1),
+                warehouse_id=warehouse.id,
+                partner_id=supplier.id,
+            ),
         )
-        add_document_line(db, incoming.id, DocumentLineCreate(product_id=product.id, quantity=Decimal("10"), price=Decimal("1")))
+        add_document_line(
+            db,
+            incoming.id,
+            DocumentLineCreate(product_id=product.id, quantity=Decimal("10"), price=Decimal("1")),
+        )
         post_document(db, incoming.id)
     document = create_document(
         db,
-        DocumentCreate(document_type=document_type, document_date=date(2026, 5, 2), warehouse_id=warehouse.id, partner_id=partner.id),
+        DocumentCreate(
+            document_type=document_type,
+            document_date=date(2026, 5, 2),
+            warehouse_id=warehouse.id,
+            partner_id=partner.id,
+        ),
     )
-    add_document_line(db, document.id, DocumentLineCreate(product_id=product.id, quantity=Decimal(total_qty), price=Decimal("10")))
+    add_document_line(
+        db,
+        document.id,
+        DocumentLineCreate(product_id=product.id, quantity=Decimal(total_qty), price=Decimal("10")),
+    )
     post_document(db, document.id)
     return document, partner
 
@@ -174,6 +208,17 @@ def test_update_draft_payment_changes_editable_fields(db: Session) -> None:
     assert updated.note == "corrected before posting"
 
 
+@pytest.mark.parametrize("field", ["partner_id", "payment_type", "amount"])
+def test_update_draft_payment_rejects_null_required_fields(db: Session, field: str) -> None:
+    _document, partner = posted_document(db, Document.TYPE_OUTGOING)
+    payment = make_payment(db, partner.id, "5.00")
+
+    with pytest.raises(HTTPException) as exc:
+        update_payment(db, payment.id, PaymentUpdate.model_validate({field: None}))
+
+    assert exc.value.status_code == 422
+
+
 @pytest.mark.parametrize(
     ("payment_type", "method"),
     [
@@ -273,14 +318,20 @@ def test_update_payment_validates_partner_type(db: Session) -> None:
     payment = make_payment(db, partner.id, "5.00")
 
     with pytest.raises(HTTPException) as exc:
-        update_payment(db, payment.id, PaymentUpdate(partner_id=supplier.id, payment_type=Payment.TYPE_CUSTOMER_PAYMENT))
+        update_payment(
+            db,
+            payment.id,
+            PaymentUpdate(partner_id=supplier.id, payment_type=Payment.TYPE_CUSTOMER_PAYMENT),
+        )
 
     assert exc.value.status_code == 409
 
 
 def test_payment_rejects_document_of_another_partner(db: Session) -> None:
     document, partner = posted_document(db, Document.TYPE_OUTGOING)
-    other_customer = Partner(name="Other Customer", code="OTHER", partner_type=Partner.TYPE_CUSTOMER)
+    other_customer = Partner(
+        name="Other Customer", code="OTHER", partner_type=Partner.TYPE_CUSTOMER
+    )
     db.add(other_customer)
     db.commit()
 

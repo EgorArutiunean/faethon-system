@@ -17,7 +17,13 @@ from app.models.products import Product
 from app.models.stock import Warehouse
 from app.schemas.documents import DocumentCreate, DocumentLineCreate, DocumentRepost
 from app.services.auth_seed import seed_auth_defaults
-from app.services.documents_service import add_document_line, cancel_document, create_document, post_document, repost_document
+from app.services.documents_service import (
+    add_document_line,
+    cancel_document,
+    create_document,
+    post_document,
+    repost_document,
+)
 from app.services.product_pricing_service import attach_single_product_pricing
 
 
@@ -29,7 +35,9 @@ def db() -> Session:
         poolclass=StaticPool,
     )
     Base.metadata.create_all(engine)
-    TestingSession = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+    TestingSession = sessionmaker(
+        bind=engine, autoflush=False, autocommit=False, expire_on_commit=False
+    )
     session = TestingSession()
     try:
         yield session
@@ -41,7 +49,9 @@ def db() -> Session:
 def seed_catalog(db: Session, sale_price: str = "120.00") -> tuple[Product, Warehouse, Partner]:
     product = Product(name="Pricing product", sku="PRICE-1", base_price=Decimal(sale_price))
     warehouse = Warehouse(name="Pricing warehouse", code="PRICE-WH")
-    supplier = Partner(name="Pricing supplier", code="PRICE-SUP", partner_type=Partner.TYPE_SUPPLIER)
+    supplier = Partner(
+        name="Pricing supplier", code="PRICE-SUP", partner_type=Partner.TYPE_SUPPLIER
+    )
     db.add_all([product, warehouse, supplier])
     db.commit()
     return product, warehouse, supplier
@@ -133,7 +143,9 @@ def test_reposting_latest_purchase_recalculates_cost(db: Session) -> None:
             warehouse_id=warehouse.id,
             reason="Purchase cost correction",
             lines=[
-                DocumentLineCreate(product_id=product.id, quantity=Decimal("1"), price=Decimal("100.00"))
+                DocumentLineCreate(
+                    product_id=product.id, quantity=Decimal("1"), price=Decimal("100.00")
+                )
             ],
         ),
     )

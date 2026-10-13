@@ -1,8 +1,8 @@
+import csv
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from io import BytesIO, StringIO
-import csv
 
 from openpyxl import Workbook
 from openpyxl.styles import Font
@@ -102,7 +102,9 @@ def _row_value(row: BaseModel, key: str) -> object:
 
 
 def _active_filters(filters: dict[str, object]) -> list[tuple[str, str]]:
-    return [(key, _stringify(value)) for key, value in filters.items() if value not in (None, "", False)]
+    return [
+        (key, _stringify(value)) for key, value in filters.items() if value not in (None, "", False)
+    ]
 
 
 def _totals(report_key: str, report: BaseModel) -> list[tuple[str, str]]:
@@ -114,7 +116,7 @@ def _build_csv(report_key: str, report: BaseModel) -> bytes:
     writer = csv.writer(output)
     columns = REPORT_COLUMNS[report_key]
     writer.writerow([column.header for column in columns])
-    for row in report.rows:
+    for row in getattr(report, "rows", []):
         writer.writerow([_stringify(_row_value(row, column.key)) for column in columns])
     totals = _totals(report_key, report)
     if totals:
@@ -149,9 +151,11 @@ def _build_xlsx(report_key: str, report: BaseModel, filters: dict[str, object]) 
         sheet.cell(row=row_index, column=column_index, value=column.header).font = Font(bold=True)
     row_index += 1
 
-    for row in report.rows:
+    for row in getattr(report, "rows", []):
         for column_index, column in enumerate(columns, start=1):
-            sheet.cell(row=row_index, column=column_index, value=_stringify(_row_value(row, column.key)))
+            sheet.cell(
+                row=row_index, column=column_index, value=_stringify(_row_value(row, column.key))
+            )
         row_index += 1
 
     row_index += 1
@@ -162,14 +166,18 @@ def _build_xlsx(report_key: str, report: BaseModel, filters: dict[str, object]) 
 
     for column_cells in sheet.columns:
         max_length = max(len(_stringify(cell.value)) for cell in column_cells)
-        sheet.column_dimensions[column_cells[0].column_letter].width = min(max(max_length + 2, 12), 40)
+        sheet.column_dimensions[column_cells[0].column_letter].width = min(
+            max(max_length + 2, 12), 40
+        )
 
     output = BytesIO()
     workbook.save(output)
     return output.getvalue()
 
 
-def export_report(report_key: str, report: BaseModel, export_format: str, filters: dict[str, object]) -> ExportFile:
+def export_report(
+    report_key: str, report: BaseModel, export_format: str, filters: dict[str, object]
+) -> ExportFile:
     if export_format == "csv":
         return ExportFile(
             content=_build_csv(report_key, report),

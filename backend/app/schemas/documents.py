@@ -52,6 +52,13 @@ class DocumentRead(DocumentBase, Timestamped):
     destination_warehouse_name: str | None = None
 
 
+class DocumentPage(BaseModel):
+    items: list[DocumentRead]
+    total: int
+    offset: int
+    limit: int
+
+
 class DocumentLineBase(BaseModel):
     product_id: int
     quantity: Decimal = Field(ge=0)

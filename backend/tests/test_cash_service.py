@@ -1,12 +1,11 @@
 from datetime import date
 from decimal import Decimal
 
+import pytest
+from fastapi import HTTPException
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
-
-import pytest
-from fastapi import HTTPException
 
 from app.db.base import *  # noqa: F401,F403
 from app.db.session import Base
@@ -14,7 +13,13 @@ from app.models.accounting import CashOperation, Payment
 from app.models.partners import Partner
 from app.schemas.cash import CashOperationCreate
 from app.schemas.payments import PaymentCreate
-from app.services.cash_service import cancel_cash_operation, create_cash_operation, get_cash_balance, get_cash_book
+from app.services.cash_service import (
+    cancel_cash_operation,
+    create_cash_operation,
+    get_cash_balance,
+    get_cash_book,
+    get_cash_book_page,
+)
 from app.services.payments_service import cancel_payment, create_payment, post_payment
 
 
@@ -26,7 +31,9 @@ def db() -> Session:
         poolclass=StaticPool,
     )
     Base.metadata.create_all(engine)
-    TestingSession = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+    TestingSession = sessionmaker(
+        bind=engine, autoflush=False, autocommit=False, expire_on_commit=False
+    )
     session = TestingSession()
     try:
         yield session
@@ -71,7 +78,11 @@ def test_supplier_payment_creates_cash_out(db: Session) -> None:
     obj = partner(db)
     create_cash_operation(
         db,
-        CashOperationCreate(operation_date=date(2026, 5, 1), operation_type=CashOperation.TYPE_CASH_IN, amount=Decimal("30.00")),
+        CashOperationCreate(
+            operation_date=date(2026, 5, 1),
+            operation_type=CashOperation.TYPE_CASH_IN,
+            amount=Decimal("30.00"),
+        ),
     )
     payment = make_payment(db, obj.id, Payment.TYPE_SUPPLIER_PAYMENT)
 
@@ -99,7 +110,11 @@ def test_cancel_payment_cancels_linked_cash_operation(db: Session) -> None:
 def test_manual_cash_in_increases_balance(db: Session) -> None:
     create_cash_operation(
         db,
-        CashOperationCreate(operation_date=date(2026, 5, 1), operation_type=CashOperation.TYPE_CASH_IN, amount=Decimal("10.00")),
+        CashOperationCreate(
+            operation_date=date(2026, 5, 1),
+            operation_type=CashOperation.TYPE_CASH_IN,
+            amount=Decimal("10.00"),
+        ),
     )
 
     assert get_cash_balance(db).balance == Decimal("10.00")
@@ -108,11 +123,19 @@ def test_manual_cash_in_increases_balance(db: Session) -> None:
 def test_manual_cash_out_decreases_balance(db: Session) -> None:
     create_cash_operation(
         db,
-        CashOperationCreate(operation_date=date(2026, 5, 1), operation_type=CashOperation.TYPE_CASH_IN, amount=Decimal("10.00")),
+        CashOperationCreate(
+            operation_date=date(2026, 5, 1),
+            operation_type=CashOperation.TYPE_CASH_IN,
+            amount=Decimal("10.00"),
+        ),
     )
     create_cash_operation(
         db,
-        CashOperationCreate(operation_date=date(2026, 5, 1), operation_type=CashOperation.TYPE_CASH_OUT, amount=Decimal("4.00")),
+        CashOperationCreate(
+            operation_date=date(2026, 5, 1),
+            operation_type=CashOperation.TYPE_CASH_OUT,
+            amount=Decimal("4.00"),
+        ),
     )
 
     assert get_cash_balance(db).balance == Decimal("6.00")
@@ -121,7 +144,11 @@ def test_manual_cash_out_decreases_balance(db: Session) -> None:
 def test_cancelled_cash_operation_does_not_affect_balance(db: Session) -> None:
     operation = create_cash_operation(
         db,
-        CashOperationCreate(operation_date=date(2026, 5, 1), operation_type=CashOperation.TYPE_CASH_IN, amount=Decimal("10.00")),
+        CashOperationCreate(
+            operation_date=date(2026, 5, 1),
+            operation_type=CashOperation.TYPE_CASH_IN,
+            amount=Decimal("10.00"),
+        ),
     )
 
     cancel_cash_operation(db, operation.id)
@@ -134,11 +161,19 @@ def test_cancelled_cash_operation_does_not_affect_balance(db: Session) -> None:
 def test_cash_book_returns_operations_by_date(db: Session) -> None:
     create_cash_operation(
         db,
-        CashOperationCreate(operation_date=date(2026, 5, 1), operation_type=CashOperation.TYPE_CASH_IN, amount=Decimal("3.00")),
+        CashOperationCreate(
+            operation_date=date(2026, 5, 1),
+            operation_type=CashOperation.TYPE_CASH_IN,
+            amount=Decimal("3.00"),
+        ),
     )
     create_cash_operation(
         db,
-        CashOperationCreate(operation_date=date(2026, 5, 3), operation_type=CashOperation.TYPE_CASH_OUT, amount=Decimal("1.00")),
+        CashOperationCreate(
+            operation_date=date(2026, 5, 3),
+            operation_type=CashOperation.TYPE_CASH_OUT,
+            amount=Decimal("1.00"),
+        ),
     )
 
     rows = get_cash_book(db)
@@ -147,11 +182,68 @@ def test_cash_book_returns_operations_by_date(db: Session) -> None:
     assert [row.balance for row in rows] == [Decimal("3.00"), Decimal("2.00")]
 
 
+def test_cash_book_page_preserves_running_balance_across_pages(db: Session) -> None:
+    create_cash_operation(
+        db,
+        CashOperationCreate(
+            operation_date=date(2026, 5, 1),
+            operation_type=CashOperation.TYPE_CASH_IN,
+            amount=Decimal("100.00"),
+        ),
+    )
+    create_cash_operation(
+        db,
+        CashOperationCreate(
+            operation_date=date(2026, 5, 2),
+            operation_type=CashOperation.TYPE_CASH_OUT,
+            amount=Decimal("10.00"),
+        ),
+    )
+    cancelled = create_cash_operation(
+        db,
+        CashOperationCreate(
+            operation_date=date(2026, 5, 3),
+            operation_type=CashOperation.TYPE_CASH_IN,
+            amount=Decimal("20.00"),
+        ),
+    )
+    cancel_cash_operation(db, cancelled.id)
+    create_cash_operation(
+        db,
+        CashOperationCreate(
+            operation_date=date(2026, 5, 4),
+            operation_type=CashOperation.TYPE_CASH_IN,
+            amount=Decimal("5.00"),
+        ),
+    )
+
+    newest_page = get_cash_book_page(db, offset=0, limit=2)
+    older_page = get_cash_book_page(db, offset=2, limit=2)
+
+    assert newest_page.total == 4
+    assert newest_page.current_balance == Decimal("95.00")
+    assert [row.operation_date for row in newest_page.items] == [date(2026, 5, 4), date(2026, 5, 3)]
+    assert [row.balance for row in newest_page.items] == [Decimal("95.00"), Decimal("90.00")]
+    assert newest_page.page_opening_balance == Decimal("90.00")
+    assert newest_page.page_closing_balance == Decimal("95.00")
+
+    assert older_page.total == 4
+    assert older_page.current_balance == Decimal("95.00")
+    assert [row.operation_date for row in older_page.items] == [date(2026, 5, 2), date(2026, 5, 1)]
+    assert [row.balance for row in older_page.items] == [Decimal("90.00"), Decimal("100.00")]
+    assert older_page.page_opening_balance == Decimal("0.00")
+    assert older_page.page_closing_balance == Decimal("90.00")
+
+
 def test_cash_out_cannot_make_balance_negative(db: Session) -> None:
     with pytest.raises(HTTPException) as exc:
         create_cash_operation(
             db,
-            CashOperationCreate(operation_date=date(2026, 5, 1), operation_type=CashOperation.TYPE_CASH_OUT, amount=Decimal("0.01")),
+            CashOperationCreate(
+                operation_date=date(2026, 5, 1),
+                operation_type=CashOperation.TYPE_CASH_OUT,
+                amount=Decimal("0.01"),
+            ),
         )
 
     assert exc.value.status_code == 409
@@ -161,7 +253,11 @@ def test_cash_out_cannot_make_balance_negative(db: Session) -> None:
 def test_cash_correction_sets_final_balance_and_stores_difference(db: Session) -> None:
     create_cash_operation(
         db,
-        CashOperationCreate(operation_date=date(2026, 5, 1), operation_type=CashOperation.TYPE_CASH_IN, amount=Decimal("1000.00")),
+        CashOperationCreate(
+            operation_date=date(2026, 5, 1),
+            operation_type=CashOperation.TYPE_CASH_IN,
+            amount=Decimal("1000.00"),
+        ),
     )
 
     correction = create_cash_operation(
@@ -197,11 +293,19 @@ def test_cash_correction_requires_reason(db: Session) -> None:
 def test_cancelling_cash_in_cannot_make_historical_balance_negative(db: Session) -> None:
     cash_in = create_cash_operation(
         db,
-        CashOperationCreate(operation_date=date(2026, 5, 1), operation_type=CashOperation.TYPE_CASH_IN, amount=Decimal("10.00")),
+        CashOperationCreate(
+            operation_date=date(2026, 5, 1),
+            operation_type=CashOperation.TYPE_CASH_IN,
+            amount=Decimal("10.00"),
+        ),
     )
     create_cash_operation(
         db,
-        CashOperationCreate(operation_date=date(2026, 5, 2), operation_type=CashOperation.TYPE_CASH_OUT, amount=Decimal("4.00")),
+        CashOperationCreate(
+            operation_date=date(2026, 5, 2),
+            operation_type=CashOperation.TYPE_CASH_OUT,
+            amount=Decimal("4.00"),
+        ),
     )
 
     with pytest.raises(HTTPException) as exc:

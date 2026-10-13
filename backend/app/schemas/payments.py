@@ -5,7 +5,6 @@ from pydantic import BaseModel, Field
 
 from app.schemas.common import Timestamped
 
-
 PAYMENT_STATUSES = {"draft", "posted", "cancelled"}
 PAYMENT_TYPES = {"customer_payment", "supplier_payment"}
 

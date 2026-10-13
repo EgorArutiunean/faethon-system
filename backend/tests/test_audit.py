@@ -8,9 +8,9 @@ from app.db.base import *  # noqa: F401,F403
 from app.db.session import Base, get_db
 from app.main import app
 from app.schemas.products import ProductCreate
+from app.schemas.warehouses import WarehouseCreate
 from app.services.auth_seed import seed_auth_defaults
 from app.services.directory_service import create_product, create_warehouse
-from app.schemas.warehouses import WarehouseCreate
 
 
 @pytest.fixture()
@@ -21,7 +21,9 @@ def db() -> Session:
         poolclass=StaticPool,
     )
     Base.metadata.create_all(engine)
-    TestingSession = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+    TestingSession = sessionmaker(
+        bind=engine, autoflush=False, autocommit=False, expire_on_commit=False
+    )
     session = TestingSession()
     seed_auth_defaults(session)
     try:
@@ -43,7 +45,9 @@ def client(db: Session) -> TestClient:
         app.dependency_overrides.clear()
 
 
-def auth_header(client: TestClient, email: str = "admin@example.com", password: str = "admin123") -> dict[str, str]:
+def auth_header(
+    client: TestClient, email: str = "admin@example.com", password: str = "admin123"
+) -> dict[str, str]:
     response = client.post("/api/v1/auth/login", json={"email": email, "password": password})
     assert response.status_code == 200
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
@@ -56,7 +60,9 @@ def test_audit_requires_auth(client: TestClient) -> None:
 
 
 def test_audit_requires_audit_read_permission(client: TestClient) -> None:
-    response = client.get("/api/v1/audit", headers=auth_header(client, "viewer@example.com", "viewer123"))
+    response = client.get(
+        "/api/v1/audit", headers=auth_header(client, "viewer@example.com", "viewer123")
+    )
 
     assert response.status_code == 403
 

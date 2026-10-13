@@ -16,7 +16,6 @@ from app.schemas.logistics import (
 )
 from app.services.audit_writer import write_audit
 
-
 ACTIVE_TASK_STATUSES = {
     WarehouseTask.STATUS_BLOCKED,
     WarehouseTask.STATUS_PENDING,
@@ -92,17 +91,37 @@ def _event(
 
 def _task_specs(document: Document) -> list[tuple[int, str, str]]:
     if document.document_type == Document.TYPE_INCOMING and document.warehouse_id is not None:
-        return [(document.warehouse_id, WarehouseTask.TYPE_INCOMING_RECEIVE, WarehouseTask.STATUS_PENDING)]
+        return [
+            (
+                document.warehouse_id,
+                WarehouseTask.TYPE_INCOMING_RECEIVE,
+                WarehouseTask.STATUS_PENDING,
+            )
+        ]
     if document.document_type == Document.TYPE_OUTGOING and document.warehouse_id is not None:
-        return [(document.warehouse_id, WarehouseTask.TYPE_OUTGOING_DISPATCH, WarehouseTask.STATUS_PENDING)]
+        return [
+            (
+                document.warehouse_id,
+                WarehouseTask.TYPE_OUTGOING_DISPATCH,
+                WarehouseTask.STATUS_PENDING,
+            )
+        ]
     if (
         document.document_type == Document.TYPE_TRANSFER
         and document.warehouse_id is not None
         and document.destination_warehouse_id is not None
     ):
         return [
-            (document.warehouse_id, WarehouseTask.TYPE_TRANSFER_DISPATCH, WarehouseTask.STATUS_PENDING),
-            (document.destination_warehouse_id, WarehouseTask.TYPE_TRANSFER_RECEIVE, WarehouseTask.STATUS_BLOCKED),
+            (
+                document.warehouse_id,
+                WarehouseTask.TYPE_TRANSFER_DISPATCH,
+                WarehouseTask.STATUS_PENDING,
+            ),
+            (
+                document.destination_warehouse_id,
+                WarehouseTask.TYPE_TRANSFER_RECEIVE,
+                WarehouseTask.STATUS_BLOCKED,
+            ),
         ]
     return []
 
@@ -190,7 +209,11 @@ def list_tasks(
         statement = statement.where(WarehouseTask.warehouse_id.in_(user.warehouse_ids))
     if status is not None:
         statement = statement.where(WarehouseTask.status == status)
-    statement = statement.order_by(WarehouseTask.created_at.desc(), WarehouseTask.id.desc()).offset(skip).limit(limit)
+    statement = (
+        statement.order_by(WarehouseTask.created_at.desc(), WarehouseTask.id.desc())
+        .offset(skip)
+        .limit(limit)
+    )
     return list(db.scalars(statement).all())
 
 
@@ -213,11 +236,15 @@ def start_task(db: Session, task_id: int, user: User) -> WarehouseTask:
     return _load_task(db, task.id, user)
 
 
-def _validate_confirmation(task: WarehouseTask, payload: WarehouseTaskConfirmation) -> dict[int, tuple[Decimal, str | None]]:
+def _validate_confirmation(
+    task: WarehouseTask, payload: WarehouseTaskConfirmation
+) -> dict[int, tuple[Decimal, str | None]]:
     submitted_ids = [line.line_id for line in payload.lines]
     expected_ids = {line.id for line in task.lines}
     if len(submitted_ids) != len(set(submitted_ids)) or set(submitted_ids) != expected_ids:
-        raise HTTPException(status_code=422, detail="Every warehouse task line must be confirmed exactly once")
+        raise HTTPException(
+            status_code=422, detail="Every warehouse task line must be confirmed exactly once"
+        )
     values: dict[int, tuple[Decimal, str | None]] = {}
     task_lines = {line.id: line for line in task.lines}
     for item in payload.lines:
@@ -280,7 +307,9 @@ def confirm_task(
             task_line.status = WarehouseTaskLine.STATUS_DISCREPANCY
             has_discrepancy = True
     previous = task.status
-    task.status = WarehouseTask.STATUS_NEEDS_REVIEW if has_discrepancy else WarehouseTask.STATUS_COMPLETED
+    task.status = (
+        WarehouseTask.STATUS_NEEDS_REVIEW if has_discrepancy else WarehouseTask.STATUS_COMPLETED
+    )
     task.completed_at = datetime.now(timezone.utc) if not has_discrepancy else None
     event_type = "discrepancy_reported" if has_discrepancy else "completed"
     _event(db, task, event_type, from_status=previous, to_status=task.status)

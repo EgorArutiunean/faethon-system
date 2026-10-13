@@ -1,5 +1,5 @@
-from decimal import Decimal
 from datetime import date
+from decimal import Decimal
 
 from pydantic import BaseModel, Field
 
@@ -59,3 +59,20 @@ class ProductRead(ProductBase, Timestamped):
     markup_percent: Decimal | None = None
     minimum_sale_price: Decimal | None = None
     price_review_required: bool = False
+
+
+class ProductPage(BaseModel):
+    items: list[ProductRead]
+    total: int
+    offset: int
+    limit: int
+
+
+class ProductGroupCount(BaseModel):
+    group_id: int
+    count: int
+
+
+class ProductGroupCounts(BaseModel):
+    total: int
+    items: list[ProductGroupCount]

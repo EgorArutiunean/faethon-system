@@ -35,7 +35,9 @@ def list_warehouse_tasks(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("logistics.read")),
 ):
-    return [serialize_task(task) for task in list_tasks(db, user, status=status, skip=skip, limit=limit)]
+    return [
+        serialize_task(task) for task in list_tasks(db, user, status=status, skip=skip, limit=limit)
+    ]
 
 
 @router.get("/tasks/{task_id}", response_model=WarehouseTaskRead)
@@ -97,7 +99,11 @@ def _document_query(warehouse_ids: list[int]):
 def _to_logistics_document(document: Document) -> LogisticsDocumentRead:
     lines: list[LogisticsDocumentLineRead] = []
     for line in document.lines:
-        sale_price = line.price if document.document_type == Document.TYPE_OUTGOING else (line.product.base_price or Decimal("0"))
+        sale_price = (
+            line.price
+            if document.document_type == Document.TYPE_OUTGOING
+            else (line.product.base_price or Decimal("0"))
+        )
         lines.append(
             LogisticsDocumentLineRead(
                 id=line.id,
@@ -137,7 +143,9 @@ def list_logistics_documents(
     stmt = _document_query(warehouse_ids)
     if status:
         stmt = stmt.where(Document.status == status)
-    stmt = stmt.order_by(Document.document_date.desc(), Document.id.desc()).offset(skip).limit(limit)
+    stmt = (
+        stmt.order_by(Document.document_date.desc(), Document.id.desc()).offset(skip).limit(limit)
+    )
     return [_to_logistics_document(document) for document in db.scalars(stmt).all()]
 
 

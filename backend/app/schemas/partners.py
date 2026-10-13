@@ -2,7 +2,6 @@ from pydantic import BaseModel, field_validator
 
 from app.schemas.common import Timestamped
 
-
 PARTNER_TYPES = {"customer", "supplier", "both"}
 
 
@@ -48,3 +47,10 @@ class PartnerUpdate(BaseModel):
 
 class PartnerRead(PartnerBase, Timestamped):
     id: int
+
+
+class PartnerPage(BaseModel):
+    items: list[PartnerRead]
+    total: int
+    offset: int
+    limit: int

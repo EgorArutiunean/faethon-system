@@ -20,11 +20,17 @@ def _load_roles(db: Session, role_names: list[str]) -> list[Role]:
 
 
 def _load_warehouses(db: Session, warehouse_ids: list[int]) -> list[Warehouse]:
-    warehouses = list(db.scalars(select(Warehouse).where(Warehouse.id.in_(warehouse_ids))).all()) if warehouse_ids else []
+    warehouses = (
+        list(db.scalars(select(Warehouse).where(Warehouse.id.in_(warehouse_ids))).all())
+        if warehouse_ids
+        else []
+    )
     found = {warehouse.id for warehouse in warehouses}
     missing = sorted(set(warehouse_ids) - found)
     if missing:
-        raise HTTPException(status_code=422, detail=f"Unknown warehouses: {', '.join(map(str, missing))}")
+        raise HTTPException(
+            status_code=422, detail=f"Unknown warehouses: {', '.join(map(str, missing))}"
+        )
     return warehouses
 
 
@@ -32,9 +38,13 @@ def _validate_logistics_assignment(roles: list[Role], warehouses: list[Warehouse
     if not any(role.name == "logist" for role in roles):
         return
     if len(roles) != 1:
-        raise HTTPException(status_code=422, detail="Logistics role cannot be combined with other roles")
+        raise HTTPException(
+            status_code=422, detail="Logistics role cannot be combined with other roles"
+        )
     if not warehouses:
-        raise HTTPException(status_code=422, detail="Logistics user requires at least one warehouse")
+        raise HTTPException(
+            status_code=422, detail="Logistics user requires at least one warehouse"
+        )
 
 
 def list_roles(db: Session) -> list[Role]:
@@ -61,6 +71,7 @@ def create_user(db: Session, payload: UserCreate) -> User:
         full_name=payload.full_name,
         hashed_password=hash_password(payload.password),
         is_active=payload.is_active,
+        must_change_password=True,
         roles=roles,
         warehouses=warehouses,
     )
@@ -96,6 +107,10 @@ def update_user(db: Session, user_id: int, payload: UserUpdate, *, current_user_
         user.is_active = values["is_active"]
     if values.get("password"):
         user.hashed_password = hash_password(values["password"])
+        user.must_change_password = True
+        user.failed_login_attempts = 0
+        user.locked_until = None
+        user.token_version += 1
     next_roles = user.roles
     if "role_names" in values and values["role_names"] is not None:
         next_roles = _load_roles(db, values["role_names"])

@@ -18,7 +18,11 @@ from app.services import payments_service
 router = APIRouter(prefix="/payments", tags=["payments"])
 
 
-@router.get("", response_model=list[PaymentRead], dependencies=[Depends(require_permission("payments.read"))])
+@router.get(
+    "",
+    response_model=list[PaymentRead],
+    dependencies=[Depends(require_permission("payments.read"))],
+)
 def list_payments(
     db: Session = Depends(get_db),
     skip: int = 0,
@@ -44,8 +48,12 @@ def create_payment(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("payments.create")),
 ):
-    if (payload.allocations or payload.document_id is not None) and "payments.allocate" not in user.permissions:
-        raise HTTPException(status_code=403, detail="Payment allocation requires manager permission")
+    if (
+        payload.allocations or payload.document_id is not None
+    ) and "payments.allocate" not in user.permissions:
+        raise HTTPException(
+            status_code=403, detail="Payment allocation requires manager permission"
+        )
     return payments_service.create_payment(db, payload)
 
 
@@ -68,7 +76,11 @@ def payment_allocation_options(
     )
 
 
-@router.get("/{payment_id}", response_model=PaymentRead, dependencies=[Depends(require_permission("payments.read"))])
+@router.get(
+    "/{payment_id}",
+    response_model=PaymentRead,
+    dependencies=[Depends(require_permission("payments.read"))],
+)
 def get_payment(payment_id: int, db: Session = Depends(get_db)):
     return payments_service._load_payment(db, payment_id)
 
@@ -80,17 +92,27 @@ def update_payment(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("payments.update")),
 ):
-    if (payload.allocations is not None or "document_id" in payload.model_fields_set) and "payments.allocate" not in user.permissions:
-        raise HTTPException(status_code=403, detail="Payment allocation requires manager permission")
+    if (
+        payload.allocations is not None or "document_id" in payload.model_fields_set
+    ) and "payments.allocate" not in user.permissions:
+        raise HTTPException(
+            status_code=403, detail="Payment allocation requires manager permission"
+        )
     return payments_service.update_payment(db, payment_id, payload)
 
 
-@router.delete("/{payment_id}", status_code=204, dependencies=[Depends(require_permission("payments.delete"))])
+@router.delete(
+    "/{payment_id}", status_code=204, dependencies=[Depends(require_permission("payments.delete"))]
+)
 def delete_payment(payment_id: int, db: Session = Depends(get_db)):
     payments_service.delete_draft_payment(db, payment_id)
 
 
-@router.post("/{payment_id}/post", response_model=PaymentRead, dependencies=[Depends(require_permission("payments.post"))])
+@router.post(
+    "/{payment_id}/post",
+    response_model=PaymentRead,
+    dependencies=[Depends(require_permission("payments.post"))],
+)
 def post_payment(payment_id: int, db: Session = Depends(get_db)):
     return payments_service.post_payment(db, payment_id)
 
@@ -108,6 +130,10 @@ def replace_payment_allocations(
     return payments_service.replace_posted_payment_allocations(db, payment_id, payload.allocations)
 
 
-@router.post("/{payment_id}/cancel", response_model=PaymentRead, dependencies=[Depends(require_permission("payments.cancel"))])
+@router.post(
+    "/{payment_id}/cancel",
+    response_model=PaymentRead,
+    dependencies=[Depends(require_permission("payments.cancel"))],
+)
 def cancel_payment(payment_id: int, db: Session = Depends(get_db)):
     return payments_service.cancel_payment(db, payment_id)

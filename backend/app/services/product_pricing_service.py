@@ -1,11 +1,10 @@
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.documents import Document, DocumentLine
 from app.models.products import Product
-
 
 MINIMUM_MARKUP_PERCENT = Decimal("10.00")
 MONEY_QUANTUM = Decimal("0.01")
@@ -47,7 +46,9 @@ def _pricing_values(sale_price: Decimal | None, purchase_cost: Decimal | None) -
             "minimum_sale_price": None,
             "price_review_required": False,
         }
-    minimum_sale_price = (purchase_cost * (Decimal("1") + MINIMUM_MARKUP_PERCENT / Decimal("100"))).quantize(
+    minimum_sale_price = (
+        purchase_cost * (Decimal("1") + MINIMUM_MARKUP_PERCENT / Decimal("100"))
+    ).quantize(
         MONEY_QUANTUM,
         rounding=ROUND_HALF_UP,
     )
@@ -89,10 +90,14 @@ def attach_product_pricing(db: Session, products: list[Product]) -> list[Product
     for product in products:
         latest = latest_by_product.get(product.id)
         purchase_cost = latest["purchase_cost"] if latest else None
-        product.latest_purchase_cost = purchase_cost
-        product.latest_purchase_document_id = latest["document_id"] if latest else None
-        product.latest_purchase_document_number = latest["document_number"] if latest else None
-        product.latest_purchase_date = latest["document_date"] if latest else None
+        setattr(product, "latest_purchase_cost", purchase_cost)
+        setattr(product, "latest_purchase_document_id", latest["document_id"] if latest else None)
+        setattr(
+            product,
+            "latest_purchase_document_number",
+            latest["document_number"] if latest else None,
+        )
+        setattr(product, "latest_purchase_date", latest["document_date"] if latest else None)
         for name, value in _pricing_values(product.base_price, purchase_cost).items():
             setattr(product, name, value)
     return products

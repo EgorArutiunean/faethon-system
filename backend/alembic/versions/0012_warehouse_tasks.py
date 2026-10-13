@@ -5,9 +5,9 @@ Revises: 0011_payment_allocations
 Create Date: 2026-09-02
 """
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "0012_warehouse_tasks"
 down_revision = "0011_payment_allocations"
@@ -84,7 +84,9 @@ def _backfill_tasks() -> None:
                                 line.price
                                 if document.document_type == "outgoing"
                                 else bind.execute(
-                                    sa.select(products.c.base_price).where(products.c.id == line.product_id)
+                                    sa.select(products.c.base_price).where(
+                                        products.c.id == line.product_id
+                                    )
                                 ).scalar()
                                 or 0
                             ),
@@ -115,9 +117,7 @@ def _seed_logistics_permissions() -> None:
         permission_id = bind.scalar(sa.select(permissions.c.id).where(permissions.c.code == code))
         if permission_id is None:
             result = bind.execute(
-                permissions.insert()
-                .values(code=code, description=code)
-                .returning(permissions.c.id)
+                permissions.insert().values(code=code, description=code).returning(permissions.c.id)
             )
             permission_id = result.scalar_one()
         permission_ids[code] = permission_id
@@ -179,7 +179,9 @@ def _remove_logistics_permissions() -> None:
         )
     )
     if removable_ids:
-        bind.execute(role_permissions.delete().where(role_permissions.c.permission_id.in_(removable_ids)))
+        bind.execute(
+            role_permissions.delete().where(role_permissions.c.permission_id.in_(removable_ids))
+        )
         bind.execute(permissions.delete().where(permissions.c.id.in_(removable_ids)))
 
 
@@ -195,8 +197,12 @@ def upgrade() -> None:
         sa.Column("assigned_to_id", sa.Integer(), sa.ForeignKey("users.id"), nullable=True),
         sa.Column("started_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
         sa.UniqueConstraint(
             "document_id",
             "posting_version",
@@ -204,7 +210,9 @@ def upgrade() -> None:
             "task_type",
             name="uq_warehouse_tasks_document_version_warehouse_type",
         ),
-        sa.CheckConstraint("posting_version > 0", name="ck_warehouse_tasks_posting_version_positive"),
+        sa.CheckConstraint(
+            "posting_version > 0", name="ck_warehouse_tasks_posting_version_positive"
+        ),
         sa.CheckConstraint(
             "task_type IN ('incoming_receive', 'outgoing_dispatch', 'transfer_dispatch', 'transfer_receive')",
             name="ck_warehouse_tasks_type",
@@ -224,7 +232,12 @@ def upgrade() -> None:
     op.create_table(
         "warehouse_task_lines",
         sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("task_id", sa.Integer(), sa.ForeignKey("warehouse_tasks.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "task_id",
+            sa.Integer(),
+            sa.ForeignKey("warehouse_tasks.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column(
             "document_line_id",
             sa.Integer(),
@@ -237,38 +250,59 @@ def upgrade() -> None:
         sa.Column("sale_price", sa.Numeric(14, 2), nullable=False, server_default="0"),
         sa.Column("status", sa.String(length=30), nullable=False, server_default="pending"),
         sa.Column("comment", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.CheckConstraint("expected_quantity >= 0", name="ck_warehouse_task_lines_expected_nonnegative"),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.CheckConstraint(
+            "expected_quantity >= 0", name="ck_warehouse_task_lines_expected_nonnegative"
+        ),
         sa.CheckConstraint(
             "actual_quantity IS NULL OR actual_quantity >= 0",
             name="ck_warehouse_task_lines_actual_nonnegative",
         ),
-        sa.CheckConstraint("sale_price >= 0", name="ck_warehouse_task_lines_sale_price_nonnegative"),
+        sa.CheckConstraint(
+            "sale_price >= 0", name="ck_warehouse_task_lines_sale_price_nonnegative"
+        ),
         sa.CheckConstraint(
             "status IN ('pending', 'confirmed', 'discrepancy')",
             name="ck_warehouse_task_lines_status",
         ),
     )
     op.create_index("ix_warehouse_task_lines_task_id", "warehouse_task_lines", ["task_id"])
-    op.create_index("ix_warehouse_task_lines_document_line_id", "warehouse_task_lines", ["document_line_id"])
+    op.create_index(
+        "ix_warehouse_task_lines_document_line_id", "warehouse_task_lines", ["document_line_id"]
+    )
     op.create_index("ix_warehouse_task_lines_product_id", "warehouse_task_lines", ["product_id"])
     op.create_index("ix_warehouse_task_lines_status", "warehouse_task_lines", ["status"])
 
     op.create_table(
         "warehouse_task_events",
         sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("task_id", sa.Integer(), sa.ForeignKey("warehouse_tasks.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "task_id",
+            sa.Integer(),
+            sa.ForeignKey("warehouse_tasks.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("actor_user_id", sa.Integer(), sa.ForeignKey("users.id"), nullable=True),
         sa.Column("event_type", sa.String(length=40), nullable=False),
         sa.Column("from_status", sa.String(length=30), nullable=True),
         sa.Column("to_status", sa.String(length=30), nullable=True),
         sa.Column("note", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
     )
     op.create_index("ix_warehouse_task_events_task_id", "warehouse_task_events", ["task_id"])
-    op.create_index("ix_warehouse_task_events_actor_user_id", "warehouse_task_events", ["actor_user_id"])
+    op.create_index(
+        "ix_warehouse_task_events_actor_user_id", "warehouse_task_events", ["actor_user_id"]
+    )
     op.create_index("ix_warehouse_task_events_event_type", "warehouse_task_events", ["event_type"])
     _seed_logistics_permissions()
     _backfill_tasks()

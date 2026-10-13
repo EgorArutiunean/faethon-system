@@ -15,9 +15,15 @@ from app.models.logistics import WarehouseTask
 from app.models.partners import Partner
 from app.models.products import Product
 from app.models.stock import StockBalance, StockMovement, Warehouse
-from app.services.auth_seed import seed_auth_defaults
 from app.schemas.documents import DocumentCreate, DocumentLineCreate, DocumentRepost
-from app.services.documents_service import add_document_line, cancel_document, create_document, post_document, repost_document
+from app.services.auth_seed import seed_auth_defaults
+from app.services.documents_service import (
+    add_document_line,
+    cancel_document,
+    create_document,
+    post_document,
+    repost_document,
+)
 
 
 @pytest.fixture()
@@ -28,7 +34,9 @@ def db() -> Session:
         poolclass=StaticPool,
     )
     Base.metadata.create_all(engine)
-    TestingSession = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+    TestingSession = sessionmaker(
+        bind=engine, autoflush=False, autocommit=False, expire_on_commit=False
+    )
     session = TestingSession()
     seed_auth_defaults(session)
     try:
@@ -59,9 +67,15 @@ def login(client: TestClient, email: str, password: str) -> dict[str, str]:
 def seed_logistics_data(db: Session) -> tuple[Warehouse, Document, Document]:
     assigned = Warehouse(code="LOG-A", name="Assigned Warehouse")
     other = Warehouse(code="LOG-B", name="Other Warehouse")
-    supplier = Partner(code="LOG-SUP", name="Logistics Supplier", partner_type=Partner.TYPE_SUPPLIER)
-    customer = Partner(code="LOG-CUST", name="Logistics Customer", partner_type=Partner.TYPE_CUSTOMER)
-    product = Product(sku="LOG-P", name="Logistics Product", base_price=Decimal("150.00"), is_active=True)
+    supplier = Partner(
+        code="LOG-SUP", name="Logistics Supplier", partner_type=Partner.TYPE_SUPPLIER
+    )
+    customer = Partner(
+        code="LOG-CUST", name="Logistics Customer", partner_type=Partner.TYPE_CUSTOMER
+    )
+    product = Product(
+        sku="LOG-P", name="Logistics Product", base_price=Decimal("150.00"), is_active=True
+    )
     db.add_all([assigned, other, supplier, customer, product])
     db.flush()
 
@@ -126,7 +140,14 @@ def create_logistics_user(client: TestClient, warehouse_id: int) -> dict[str, st
         },
     )
     assert response.status_code == 201
-    return login(client, "logist@example.com", "logist123")
+    temporary_headers = login(client, "logist@example.com", "logist123")
+    changed = client.post(
+        "/api/v1/auth/change-password",
+        headers=temporary_headers,
+        json={"current_password": "logist123", "new_password": "logistics-password"},
+    )
+    assert changed.status_code == 200
+    return login(client, "logist@example.com", "logistics-password")
 
 
 def create_logistics_user_with_email(
@@ -147,13 +168,24 @@ def create_logistics_user_with_email(
         },
     )
     assert response.status_code == 201
-    return login(client, email, "logist123")
+    temporary_headers = login(client, email, "logist123")
+    changed = client.post(
+        "/api/v1/auth/change-password",
+        headers=temporary_headers,
+        json={"current_password": "logist123", "new_password": "logistics-password"},
+    )
+    assert changed.status_code == 200
+    return login(client, email, "logistics-password")
 
 
-def post_incoming_task(db: Session, *, quantity: str = "5") -> tuple[Document, Product, Warehouse, Partner]:
+def post_incoming_task(
+    db: Session, *, quantity: str = "5"
+) -> tuple[Document, Product, Warehouse, Partner]:
     warehouse = Warehouse(code="TASK-W", name="Task Warehouse")
     supplier = Partner(code="TASK-S", name="Task Supplier", partner_type=Partner.TYPE_SUPPLIER)
-    product = Product(sku="TASK-P", name="Task Product", base_price=Decimal("150.00"), is_active=True)
+    product = Product(
+        sku="TASK-P", name="Task Product", base_price=Decimal("150.00"), is_active=True
+    )
     db.add_all([warehouse, supplier, product])
     db.commit()
     document = create_document(
@@ -168,12 +200,16 @@ def post_incoming_task(db: Session, *, quantity: str = "5") -> tuple[Document, P
     add_document_line(
         db,
         document.id,
-        DocumentLineCreate(product_id=product.id, quantity=Decimal(quantity), price=Decimal("70.00")),
+        DocumentLineCreate(
+            product_id=product.id, quantity=Decimal(quantity), price=Decimal("70.00")
+        ),
     )
     return post_document(db, document.id), product, warehouse, supplier
 
 
-def test_logistics_sees_only_assigned_documents_and_sale_price(client: TestClient, db: Session) -> None:
+def test_logistics_sees_only_assigned_documents_and_sale_price(
+    client: TestClient, db: Session
+) -> None:
     assigned, incoming, other_outgoing = seed_logistics_data(db)
     headers = create_logistics_user(client, assigned.id)
 
@@ -228,16 +264,29 @@ def test_posting_creates_scoped_task_without_purchase_data(client: TestClient, d
     assert forbidden_fields.isdisjoint(payload[0]["lines"][0])
 
 
-def test_task_is_taken_exclusively_and_confirmation_does_not_move_stock(client: TestClient, db: Session) -> None:
+def test_task_is_taken_exclusively_and_confirmation_does_not_move_stock(
+    client: TestClient, db: Session
+) -> None:
     _document, product, warehouse, _supplier = post_incoming_task(db)
-    first_headers = create_logistics_user_with_email(client, warehouse.id, "first-logist@example.com")
-    second_headers = create_logistics_user_with_email(client, warehouse.id, "second-logist@example.com")
+    first_headers = create_logistics_user_with_email(
+        client, warehouse.id, "first-logist@example.com"
+    )
+    second_headers = create_logistics_user_with_email(
+        client, warehouse.id, "second-logist@example.com"
+    )
     task = client.get("/api/v1/logistics/tasks", headers=first_headers).json()[0]
 
     started = client.post(f"/api/v1/logistics/tasks/{task['id']}/start", headers=first_headers)
-    second_start = client.post(f"/api/v1/logistics/tasks/{task['id']}/start", headers=second_headers)
+    second_start = client.post(
+        f"/api/v1/logistics/tasks/{task['id']}/start", headers=second_headers
+    )
     movement_count = db.query(StockMovement).count()
-    balance_before = db.query(StockBalance).filter_by(product_id=product.id, warehouse_id=warehouse.id).one().quantity
+    balance_before = (
+        db.query(StockBalance)
+        .filter_by(product_id=product.id, warehouse_id=warehouse.id)
+        .one()
+        .quantity
+    )
     confirmed = client.put(
         f"/api/v1/logistics/tasks/{task['id']}/confirm",
         headers=first_headers,
@@ -250,7 +299,13 @@ def test_task_is_taken_exclusively_and_confirmation_does_not_move_stock(client: 
     assert confirmed.status_code == 200
     assert confirmed.json()["status"] == "completed"
     assert db.query(StockMovement).count() == movement_count
-    assert db.query(StockBalance).filter_by(product_id=product.id, warehouse_id=warehouse.id).one().quantity == balance_before
+    assert (
+        db.query(StockBalance)
+        .filter_by(product_id=product.id, warehouse_id=warehouse.id)
+        .one()
+        .quantity
+        == balance_before
+    )
 
 
 def test_discrepancy_requires_comment_and_goes_to_manager(client: TestClient, db: Session) -> None:
@@ -269,12 +324,18 @@ def test_discrepancy_requires_comment_and_goes_to_manager(client: TestClient, db
         headers=headers,
         json={
             "lines": [
-                {"line_id": task["lines"][0]["id"], "actual_quantity": "4", "comment": "Недостача 1 шт."}
+                {
+                    "line_id": task["lines"][0]["id"],
+                    "actual_quantity": "4",
+                    "comment": "Недостача 1 шт.",
+                }
             ]
         },
     )
     manager_headers = login(client, "manager@example.com", "manager123")
-    manager_tasks = client.get("/api/v1/logistics/tasks?status=needs_review", headers=manager_headers)
+    manager_tasks = client.get(
+        "/api/v1/logistics/tasks?status=needs_review", headers=manager_headers
+    )
 
     assert rejected.status_code == 422
     assert accepted.status_code == 200
@@ -304,10 +365,15 @@ def test_transfer_receive_is_unblocked_after_dispatch(client: TestClient, db: Se
         DocumentLineCreate(product_id=product.id, quantity=Decimal("2"), price=Decimal("0")),
     )
     post_document(db, transfer.id)
-    source_headers = create_logistics_user_with_email(client, source.id, "source-logist@example.com")
-    destination_headers = create_logistics_user_with_email(client, destination.id, "destination-logist@example.com")
+    source_headers = create_logistics_user_with_email(
+        client, source.id, "source-logist@example.com"
+    )
+    destination_headers = create_logistics_user_with_email(
+        client, destination.id, "destination-logist@example.com"
+    )
     dispatch = next(
-        item for item in client.get("/api/v1/logistics/tasks", headers=source_headers).json()
+        item
+        for item in client.get("/api/v1/logistics/tasks", headers=source_headers).json()
         if item["document_id"] == transfer.id
     )
     receive = client.get("/api/v1/logistics/tasks", headers=destination_headers).json()[0]
@@ -319,7 +385,9 @@ def test_transfer_receive_is_unblocked_after_dispatch(client: TestClient, db: Se
         headers=source_headers,
         json={"lines": [{"line_id": dispatch["lines"][0]["id"], "actual_quantity": "2"}]},
     )
-    refreshed_receive = client.get(f"/api/v1/logistics/tasks/{receive['id']}", headers=destination_headers)
+    refreshed_receive = client.get(
+        f"/api/v1/logistics/tasks/{receive['id']}", headers=destination_headers
+    )
 
     assert incoming.status == Document.STATUS_POSTED
     assert completed.status_code == 200
@@ -343,12 +411,25 @@ def test_repost_versions_tasks_and_cancel_closes_active_task(db: Session) -> Non
             currency_code="RUB_PMR",
             exchange_rate=Decimal("1"),
             reason="Исправлено количество",
-            lines=[DocumentLineCreate(product_id=product.id, quantity=Decimal("6"), price=Decimal("70"))],
+            lines=[
+                DocumentLineCreate(
+                    product_id=product.id, quantity=Decimal("6"), price=Decimal("70")
+                )
+            ],
         ),
     )
-    tasks = list(db.scalars(select(WarehouseTask).where(WarehouseTask.document_id == document.id).order_by(WarehouseTask.posting_version)))
+    tasks = list(
+        db.scalars(
+            select(WarehouseTask)
+            .where(WarehouseTask.document_id == document.id)
+            .order_by(WarehouseTask.posting_version)
+        )
+    )
 
-    assert [(task.posting_version, task.status) for task in tasks] == [(1, "cancelled"), (2, "pending")]
+    assert [(task.posting_version, task.status) for task in tasks] == [
+        (1, "cancelled"),
+        (2, "pending"),
+    ]
     cancel_document(db, document.id)
     db.refresh(tasks[1])
     assert tasks[1].status == "cancelled"

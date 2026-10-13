@@ -1,6 +1,18 @@
+from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import JSON, CheckConstraint, Date, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    CheckConstraint,
+    Date,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -15,6 +27,15 @@ class Document(TimestampMixin, Base):
         CheckConstraint("foreign_total_amount >= 0", name="ck_documents_foreign_total_nonnegative"),
         CheckConstraint("exchange_rate > 0", name="ck_documents_exchange_rate_positive"),
         CheckConstraint("posting_version >= 0", name="ck_documents_posting_version_nonnegative"),
+        Index("ix_documents_partner_id", "partner_id"),
+        Index("ix_documents_type_status_date_id", "document_type", "status", "document_date", "id"),
+        Index("ix_documents_date_id", "document_date", "id"),
+        Index(
+            "ix_documents_number_trgm",
+            "number",
+            postgresql_using="gin",
+            postgresql_ops={"number": "gin_trgm_ops"},
+        ),
     )
 
     STATUS_DRAFT = "draft"
@@ -29,11 +50,13 @@ class Document(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     document_type: Mapped[str] = mapped_column(String(60), index=True)
     number: Mapped[str | None] = mapped_column(String(80), index=True)
-    document_date: Mapped[Date] = mapped_column(Date, index=True)
+    document_date: Mapped[date] = mapped_column(Date, index=True)
     status: Mapped[str] = mapped_column(String(40), default=STATUS_DRAFT, index=True)
     partner_id: Mapped[int | None] = mapped_column(ForeignKey("partners.id"))
     warehouse_id: Mapped[int | None] = mapped_column(ForeignKey("warehouses.id"))
-    destination_warehouse_id: Mapped[int | None] = mapped_column(ForeignKey("warehouses.id"))
+    destination_warehouse_id: Mapped[int | None] = mapped_column(
+        ForeignKey("warehouses.id"), index=True
+    )
     total_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=0)
     currency_code: Mapped[str] = mapped_column(String(12), default="RUB_PMR")
     exchange_rate: Mapped[Decimal] = mapped_column(Numeric(14, 6), default=1)
@@ -71,7 +94,10 @@ class DocumentLine(TimestampMixin, Base):
         CheckConstraint("quantity >= 0", name="ck_document_lines_quantity_nonnegative"),
         CheckConstraint("price >= 0", name="ck_document_lines_price_nonnegative"),
         CheckConstraint("line_total >= 0", name="ck_document_lines_total_nonnegative"),
-        CheckConstraint("foreign_price IS NULL OR foreign_price >= 0", name="ck_document_lines_foreign_price_nonnegative"),
+        CheckConstraint(
+            "foreign_price IS NULL OR foreign_price >= 0",
+            name="ck_document_lines_foreign_price_nonnegative",
+        ),
         CheckConstraint(
             "foreign_line_total IS NULL OR foreign_line_total >= 0",
             name="ck_document_lines_foreign_total_nonnegative",
@@ -79,7 +105,9 @@ class DocumentLine(TimestampMixin, Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    document_id: Mapped[int] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), index=True)
+    document_id: Mapped[int] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), index=True
+    )
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), index=True)
     quantity: Mapped[Decimal] = mapped_column(Numeric(14, 3))
     price: Mapped[Decimal] = mapped_column(Numeric(14, 2))
@@ -102,7 +130,9 @@ class DocumentLine(TimestampMixin, Base):
 class DocumentNumberSequence(Base):
     __tablename__ = "document_number_sequences"
     __table_args__ = (
-        CheckConstraint("last_value >= 0", name="ck_document_number_sequences_last_value_nonnegative"),
+        CheckConstraint(
+            "last_value >= 0", name="ck_document_number_sequences_last_value_nonnegative"
+        ),
     )
 
     document_type: Mapped[str] = mapped_column(String(60), primary_key=True)
@@ -117,7 +147,9 @@ class DocumentRevision(TimestampMixin, Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    document_id: Mapped[int] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), index=True)
+    document_id: Mapped[int] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), index=True
+    )
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)

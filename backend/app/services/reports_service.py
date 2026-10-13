@@ -1,14 +1,14 @@
 from datetime import date, datetime, time
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.accounting import CashOperation
 from app.models.documents import Document
 from app.models.partners import Partner
 from app.models.products import Product
-from app.models.stock import StockBalance, StockMovement
+from app.models.stock import StockBalance, StockMovement, Warehouse
 from app.schemas.reports import (
     CashBookReport,
     CashBookReportRow,
@@ -22,7 +22,7 @@ from app.schemas.reports import (
     StockMovementsReportRow,
 )
 from app.services.cash_service import get_cash_balance
-from app.services.payments_service import get_partner_balance
+from app.services.payments_service import get_partner_balance_values
 
 
 def _date_start(value: date) -> datetime:
@@ -39,14 +39,42 @@ def stock_balances_report(
     warehouse_id: int | None = None,
     product_id: int | None = None,
     search: str | None = None,
+    offset: int | None = None,
+    limit: int | None = None,
 ) -> StockBalancesReport:
-    stmt = select(StockBalance).options(selectinload(StockBalance.product), selectinload(StockBalance.warehouse))
+    filters = []
     if warehouse_id is not None:
-        stmt = stmt.where(StockBalance.warehouse_id == warehouse_id)
+        filters.append(StockBalance.warehouse_id == warehouse_id)
     if product_id is not None:
-        stmt = stmt.where(StockBalance.product_id == product_id)
+        filters.append(StockBalance.product_id == product_id)
     if search:
-        stmt = stmt.join(Product).where(Product.name.ilike(f"%{search}%"))
+        filters.append(Product.name.ilike(f"%{search}%"))
+
+    summary_stmt = (
+        select(func.count(StockBalance.id), func.coalesce(func.sum(StockBalance.quantity), 0))
+        .select_from(StockBalance)
+        .join(Product, Product.id == StockBalance.product_id)
+        .where(*filters)
+    )
+    total, total_quantity = db.execute(summary_stmt).one()
+
+    stmt = (
+        select(
+            StockBalance.product_id,
+            Product.name.label("product_name"),
+            StockBalance.warehouse_id,
+            Warehouse.name.label("warehouse_name"),
+            StockBalance.quantity,
+        )
+        .join(Product, Product.id == StockBalance.product_id)
+        .join(Warehouse, Warehouse.id == StockBalance.warehouse_id)
+        .where(*filters)
+        .order_by(StockBalance.warehouse_id, StockBalance.product_id)
+    )
+    if offset is not None:
+        stmt = stmt.offset(offset)
+    if limit is not None:
+        stmt = stmt.limit(limit)
 
     rows = [
         StockBalancesReportRow(
@@ -56,9 +84,15 @@ def stock_balances_report(
             warehouse_name=item.warehouse_name,
             quantity=item.quantity,
         )
-        for item in db.scalars(stmt.order_by(StockBalance.warehouse_id, StockBalance.product_id))
+        for item in db.execute(stmt)
     ]
-    return StockBalancesReport(rows=rows, total_quantity=sum((row.quantity for row in rows), Decimal("0")))
+    return StockBalancesReport(
+        rows=rows,
+        total_quantity=total_quantity,
+        total=total,
+        offset=offset or 0,
+        limit=limit if limit is not None else total,
+    )
 
 
 def stock_movements_report(
@@ -103,7 +137,9 @@ def stock_movements_report(
         )
         for item in db.scalars(stmt.order_by(StockMovement.created_at, StockMovement.id))
     ]
-    return StockMovementsReport(rows=rows, total_quantity=sum((row.quantity_delta for row in rows), Decimal("0")))
+    return StockMovementsReport(
+        rows=rows, total_quantity=sum((row.quantity_delta for row in rows), Decimal("0"))
+    )
 
 
 def partner_debts_report(
@@ -119,13 +155,24 @@ def partner_debts_report(
     if partner_type:
         stmt = stmt.where(Partner.partner_type == partner_type)
 
+    partners = list(db.scalars(stmt))
+    balances = get_partner_balance_values(db, [partner.id for partner in partners])
     rows: list[PartnerDebtsReportRow] = []
-    for partner in db.scalars(stmt):
-        balance = get_partner_balance(db, partner.id).balance
+    for partner in partners:
+        balance = balances.get(partner.id, Decimal("0"))
         if only_with_balance and balance == Decimal("0"):
             continue
-        rows.append(PartnerDebtsReportRow(partner_id=partner.id, partner_name=partner.name, partner_type=partner.partner_type, balance=balance))
-    return PartnerDebtsReport(rows=rows, total_partner_debt=sum((row.balance for row in rows), Decimal("0")))
+        rows.append(
+            PartnerDebtsReportRow(
+                partner_id=partner.id,
+                partner_name=partner.name,
+                partner_type=partner.partner_type,
+                balance=balance,
+            )
+        )
+    return PartnerDebtsReport(
+        rows=rows, total_partner_debt=sum((row.balance for row in rows), Decimal("0"))
+    )
 
 
 def _cash_effect(operation: CashOperation) -> Decimal:
@@ -147,7 +194,9 @@ def cash_book_report(
     operation_type: str | None = None,
     status: str | None = None,
 ) -> CashBookReport:
-    stmt = select(CashOperation).options(selectinload(CashOperation.partner), selectinload(CashOperation.payment))
+    stmt = select(CashOperation).options(
+        selectinload(CashOperation.partner), selectinload(CashOperation.payment)
+    )
     if date_from is not None:
         stmt = stmt.where(CashOperation.operation_date >= date_from)
     if date_to is not None:
@@ -164,9 +213,15 @@ def cash_book_report(
     for item in db.scalars(stmt.order_by(CashOperation.operation_date, CashOperation.id)):
         effect = _cash_effect(item)
         running_balance += effect
-        if item.status != CashOperation.STATUS_CANCELLED and item.operation_type == CashOperation.TYPE_CASH_IN:
+        if (
+            item.status != CashOperation.STATUS_CANCELLED
+            and item.operation_type == CashOperation.TYPE_CASH_IN
+        ):
             cash_in_total += item.amount
-        if item.status != CashOperation.STATUS_CANCELLED and item.operation_type == CashOperation.TYPE_CASH_OUT:
+        if (
+            item.status != CashOperation.STATUS_CANCELLED
+            and item.operation_type == CashOperation.TYPE_CASH_OUT
+        ):
             cash_out_total += item.amount
         rows.append(
             CashBookReportRow(
@@ -200,7 +255,11 @@ def documents_register_report(
     partner_id: int | None = None,
     warehouse_id: int | None = None,
 ) -> DocumentsRegisterReport:
-    stmt = select(Document).options(selectinload(Document.partner), selectinload(Document.warehouse), selectinload(Document.destination_warehouse))
+    stmt = select(Document).options(
+        selectinload(Document.partner),
+        selectinload(Document.warehouse),
+        selectinload(Document.destination_warehouse),
+    )
     if date_from is not None:
         stmt = stmt.where(Document.document_date >= date_from)
     if date_to is not None:
@@ -231,4 +290,6 @@ def documents_register_report(
         )
         for item in db.scalars(stmt.order_by(Document.document_date, Document.id))
     ]
-    return DocumentsRegisterReport(rows=rows, total_amount=sum((row.total_amount for row in rows), Decimal("0")))
+    return DocumentsRegisterReport(
+        rows=rows, total_amount=sum((row.total_amount for row in rows), Decimal("0"))
+    )

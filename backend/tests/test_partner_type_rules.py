@@ -31,7 +31,9 @@ def db() -> Session:
         poolclass=StaticPool,
     )
     Base.metadata.create_all(engine)
-    TestingSession = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+    TestingSession = sessionmaker(
+        bind=engine, autoflush=False, autocommit=False, expire_on_commit=False
+    )
     session = TestingSession()
     seed_auth_defaults(session)
     try:
@@ -54,7 +56,9 @@ def client(db: Session) -> TestClient:
 
 
 def auth_header(client: TestClient) -> dict[str, str]:
-    response = client.post("/api/v1/auth/login", json={"email": "admin@example.com", "password": "admin123"})
+    response = client.post(
+        "/api/v1/auth/login", json={"email": "admin@example.com", "password": "admin123"}
+    )
     assert response.status_code == 200
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
 
@@ -71,7 +75,9 @@ def seed_catalog(db: Session) -> tuple[Warehouse, Partner, Partner, Partner]:
 
 
 def test_partner_create_requires_partner_type(client: TestClient) -> None:
-    response = client.post("/api/v1/partners", json={"name": "No Type"}, headers=auth_header(client))
+    response = client.post(
+        "/api/v1/partners", json={"name": "No Type"}, headers=auth_header(client)
+    )
 
     assert response.status_code == 422
 
@@ -79,11 +85,35 @@ def test_partner_create_requires_partner_type(client: TestClient) -> None:
 def test_incoming_accepts_supplier_or_both_only(db: Session) -> None:
     warehouse, customer, supplier, both = seed_catalog(db)
 
-    supplier_doc = create_document(db, DocumentCreate(document_type=Document.TYPE_INCOMING, document_date=date(2026, 5, 4), warehouse_id=warehouse.id, partner_id=supplier.id))
-    both_doc = create_document(db, DocumentCreate(document_type=Document.TYPE_INCOMING, document_date=date(2026, 5, 4), warehouse_id=warehouse.id, partner_id=both.id))
+    supplier_doc = create_document(
+        db,
+        DocumentCreate(
+            document_type=Document.TYPE_INCOMING,
+            document_date=date(2026, 5, 4),
+            warehouse_id=warehouse.id,
+            partner_id=supplier.id,
+        ),
+    )
+    both_doc = create_document(
+        db,
+        DocumentCreate(
+            document_type=Document.TYPE_INCOMING,
+            document_date=date(2026, 5, 4),
+            warehouse_id=warehouse.id,
+            partner_id=both.id,
+        ),
+    )
 
     with pytest.raises(HTTPException) as exc:
-        create_document(db, DocumentCreate(document_type=Document.TYPE_INCOMING, document_date=date(2026, 5, 4), warehouse_id=warehouse.id, partner_id=customer.id))
+        create_document(
+            db,
+            DocumentCreate(
+                document_type=Document.TYPE_INCOMING,
+                document_date=date(2026, 5, 4),
+                warehouse_id=warehouse.id,
+                partner_id=customer.id,
+            ),
+        )
 
     assert supplier_doc.id
     assert both_doc.id
@@ -93,11 +123,35 @@ def test_incoming_accepts_supplier_or_both_only(db: Session) -> None:
 def test_outgoing_accepts_customer_or_both_only(db: Session) -> None:
     warehouse, customer, supplier, both = seed_catalog(db)
 
-    customer_doc = create_document(db, DocumentCreate(document_type=Document.TYPE_OUTGOING, document_date=date(2026, 5, 4), warehouse_id=warehouse.id, partner_id=customer.id))
-    both_doc = create_document(db, DocumentCreate(document_type=Document.TYPE_OUTGOING, document_date=date(2026, 5, 4), warehouse_id=warehouse.id, partner_id=both.id))
+    customer_doc = create_document(
+        db,
+        DocumentCreate(
+            document_type=Document.TYPE_OUTGOING,
+            document_date=date(2026, 5, 4),
+            warehouse_id=warehouse.id,
+            partner_id=customer.id,
+        ),
+    )
+    both_doc = create_document(
+        db,
+        DocumentCreate(
+            document_type=Document.TYPE_OUTGOING,
+            document_date=date(2026, 5, 4),
+            warehouse_id=warehouse.id,
+            partner_id=both.id,
+        ),
+    )
 
     with pytest.raises(HTTPException) as exc:
-        create_document(db, DocumentCreate(document_type=Document.TYPE_OUTGOING, document_date=date(2026, 5, 4), warehouse_id=warehouse.id, partner_id=supplier.id))
+        create_document(
+            db,
+            DocumentCreate(
+                document_type=Document.TYPE_OUTGOING,
+                document_date=date(2026, 5, 4),
+                warehouse_id=warehouse.id,
+                partner_id=supplier.id,
+            ),
+        )
 
     assert customer_doc.id
     assert both_doc.id
@@ -107,11 +161,35 @@ def test_outgoing_accepts_customer_or_both_only(db: Session) -> None:
 def test_customer_payment_accepts_customer_or_both_only(db: Session) -> None:
     _warehouse, customer, supplier, both = seed_catalog(db)
 
-    customer_payment = create_payment(db, PaymentCreate(partner_id=customer.id, payment_date=date(2026, 5, 4), payment_type=Payment.TYPE_CUSTOMER_PAYMENT, amount=Decimal("1")))
-    both_payment = create_payment(db, PaymentCreate(partner_id=both.id, payment_date=date(2026, 5, 4), payment_type=Payment.TYPE_CUSTOMER_PAYMENT, amount=Decimal("1")))
+    customer_payment = create_payment(
+        db,
+        PaymentCreate(
+            partner_id=customer.id,
+            payment_date=date(2026, 5, 4),
+            payment_type=Payment.TYPE_CUSTOMER_PAYMENT,
+            amount=Decimal("1"),
+        ),
+    )
+    both_payment = create_payment(
+        db,
+        PaymentCreate(
+            partner_id=both.id,
+            payment_date=date(2026, 5, 4),
+            payment_type=Payment.TYPE_CUSTOMER_PAYMENT,
+            amount=Decimal("1"),
+        ),
+    )
 
     with pytest.raises(HTTPException) as exc:
-        create_payment(db, PaymentCreate(partner_id=supplier.id, payment_date=date(2026, 5, 4), payment_type=Payment.TYPE_CUSTOMER_PAYMENT, amount=Decimal("1")))
+        create_payment(
+            db,
+            PaymentCreate(
+                partner_id=supplier.id,
+                payment_date=date(2026, 5, 4),
+                payment_type=Payment.TYPE_CUSTOMER_PAYMENT,
+                amount=Decimal("1"),
+            ),
+        )
 
     assert customer_payment.id
     assert both_payment.id
@@ -121,11 +199,35 @@ def test_customer_payment_accepts_customer_or_both_only(db: Session) -> None:
 def test_supplier_payment_accepts_supplier_or_both_only(db: Session) -> None:
     _warehouse, customer, supplier, both = seed_catalog(db)
 
-    supplier_payment = create_payment(db, PaymentCreate(partner_id=supplier.id, payment_date=date(2026, 5, 4), payment_type=Payment.TYPE_SUPPLIER_PAYMENT, amount=Decimal("1")))
-    both_payment = create_payment(db, PaymentCreate(partner_id=both.id, payment_date=date(2026, 5, 4), payment_type=Payment.TYPE_SUPPLIER_PAYMENT, amount=Decimal("1")))
+    supplier_payment = create_payment(
+        db,
+        PaymentCreate(
+            partner_id=supplier.id,
+            payment_date=date(2026, 5, 4),
+            payment_type=Payment.TYPE_SUPPLIER_PAYMENT,
+            amount=Decimal("1"),
+        ),
+    )
+    both_payment = create_payment(
+        db,
+        PaymentCreate(
+            partner_id=both.id,
+            payment_date=date(2026, 5, 4),
+            payment_type=Payment.TYPE_SUPPLIER_PAYMENT,
+            amount=Decimal("1"),
+        ),
+    )
 
     with pytest.raises(HTTPException) as exc:
-        create_payment(db, PaymentCreate(partner_id=customer.id, payment_date=date(2026, 5, 4), payment_type=Payment.TYPE_SUPPLIER_PAYMENT, amount=Decimal("1")))
+        create_payment(
+            db,
+            PaymentCreate(
+                partner_id=customer.id,
+                payment_date=date(2026, 5, 4),
+                payment_type=Payment.TYPE_SUPPLIER_PAYMENT,
+                amount=Decimal("1"),
+            ),
+        )
 
     assert supplier_payment.id
     assert both_payment.id
@@ -136,7 +238,11 @@ def test_import_partners_validates_partner_type(client: TestClient) -> None:
     response = client.post(
         "/api/v1/import/partners/dry-run",
         content=b"name,partner_type,code\nBad,invalid,BAD\n",
-        headers={**auth_header(client), "Content-Type": "application/octet-stream", "X-Filename": "data.csv"},
+        headers={
+            **auth_header(client),
+            "Content-Type": "application/octet-stream",
+            "X-Filename": "data.csv",
+        },
     )
 
     assert response.status_code == 200
@@ -145,10 +251,14 @@ def test_import_partners_validates_partner_type(client: TestClient) -> None:
     assert payload["errors"][0]["field"] == "partner_type"
 
 
-def test_partner_debts_report_includes_and_filters_partner_type(client: TestClient, db: Session) -> None:
+def test_partner_debts_report_includes_and_filters_partner_type(
+    client: TestClient, db: Session
+) -> None:
     _warehouse, customer, supplier, _both = seed_catalog(db)
 
-    response = client.get("/api/v1/reports/partner-debts?partner_type=customer", headers=auth_header(client))
+    response = client.get(
+        "/api/v1/reports/partner-debts?partner_type=customer", headers=auth_header(client)
+    )
 
     assert response.status_code == 200
     payload = response.json()
@@ -159,7 +269,15 @@ def test_partner_debts_report_includes_and_filters_partner_type(client: TestClie
 
 def test_used_partner_delete_is_rejected(client: TestClient, db: Session) -> None:
     warehouse, customer, _supplier, _both = seed_catalog(db)
-    create_document(db, DocumentCreate(document_type=Document.TYPE_OUTGOING, document_date=date(2026, 5, 4), warehouse_id=warehouse.id, partner_id=customer.id))
+    create_document(
+        db,
+        DocumentCreate(
+            document_type=Document.TYPE_OUTGOING,
+            document_date=date(2026, 5, 4),
+            warehouse_id=warehouse.id,
+            partner_id=customer.id,
+        ),
+    )
 
     response = client.delete(f"/api/v1/partners/{customer.id}", headers=auth_header(client))
 

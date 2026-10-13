@@ -1,4 +1,12 @@
-from app.models.accounting import AuditLog, CashOperation, Currency, ExchangeRate, Payment, PaymentAllocation, Price
+from app.models.accounting import (
+    AuditLog,
+    CashOperation,
+    Currency,
+    ExchangeRate,
+    Payment,
+    PaymentAllocation,
+    Price,
+)
 from app.models.documents import Document, DocumentLine, DocumentNumberSequence, DocumentRevision
 from app.models.identity import Permission, Role, User
 from app.models.logistics import WarehouseTask, WarehouseTaskEvent, WarehouseTaskLine

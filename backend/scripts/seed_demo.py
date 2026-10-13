@@ -1,13 +1,14 @@
+import sys
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
-import sys
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.security import hash_password
 from app.db import base  # noqa: F401
 from app.db.session import Base, SessionLocal, engine
@@ -55,7 +56,9 @@ def _get_or_create_partner(db: Session, code: str, name: str, partner_type: str)
         db.commit()
         db.refresh(partner)
         return partner
-    partner = Partner(code=code, name=name, partner_type=partner_type, phone="+000 demo", is_active=True)
+    partner = Partner(
+        code=code, name=name, partner_type=partner_type, phone="+000 demo", is_active=True
+    )
     db.add(partner)
     db.commit()
     db.refresh(partner)
@@ -71,6 +74,9 @@ def _payment_exists(db: Session, note: str) -> bool:
 
 
 def seed() -> None:
+    if get_settings().app_env == "production":
+        raise RuntimeError("Demo data seed is disabled in production")
+
     # Helpful for local SQLite demo databases. PostgreSQL environments should still run Alembic first.
     Base.metadata.create_all(engine)
 
@@ -104,7 +110,9 @@ def seed() -> None:
 
         supplier = _get_or_create_partner(db, "DEMO-SUP", "Demo Supplier", Partner.TYPE_SUPPLIER)
         customer = _get_or_create_partner(db, "DEMO-CUST", "Demo Customer", Partner.TYPE_CUSTOMER)
-        cash_customer = _get_or_create_partner(db, "DEMO-CASH", "Demo Cash Customer", Partner.TYPE_CUSTOMER)
+        cash_customer = _get_or_create_partner(
+            db, "DEMO-CASH", "Demo Cash Customer", Partner.TYPE_CUSTOMER
+        )
         _get_or_create_partner(db, "DEMO-BOTH", "Demo Universal Partner", Partner.TYPE_BOTH)
 
         if not _document_exists(db, "demo-seed:incoming"):
@@ -118,9 +126,27 @@ def seed() -> None:
                     note="demo-seed:incoming",
                 ),
             )
-            add_document_line(db, incoming.id, DocumentLineCreate(product_id=bolt.id, quantity=Decimal("20"), price=Decimal("8.00")))
-            add_document_line(db, incoming.id, DocumentLineCreate(product_id=cable.id, quantity=Decimal("12"), price=Decimal("12.00")))
-            add_document_line(db, incoming.id, DocumentLineCreate(product_id=lamp.id, quantity=Decimal("6"), price=Decimal("18.00")))
+            add_document_line(
+                db,
+                incoming.id,
+                DocumentLineCreate(
+                    product_id=bolt.id, quantity=Decimal("20"), price=Decimal("8.00")
+                ),
+            )
+            add_document_line(
+                db,
+                incoming.id,
+                DocumentLineCreate(
+                    product_id=cable.id, quantity=Decimal("12"), price=Decimal("12.00")
+                ),
+            )
+            add_document_line(
+                db,
+                incoming.id,
+                DocumentLineCreate(
+                    product_id=lamp.id, quantity=Decimal("6"), price=Decimal("18.00")
+                ),
+            )
             post_document(db, incoming.id)
 
         if not _document_exists(db, "demo-seed:outgoing"):
@@ -134,8 +160,20 @@ def seed() -> None:
                     note="demo-seed:outgoing",
                 ),
             )
-            add_document_line(db, outgoing.id, DocumentLineCreate(product_id=bolt.id, quantity=Decimal("5"), price=Decimal("10.00")))
-            add_document_line(db, outgoing.id, DocumentLineCreate(product_id=cable.id, quantity=Decimal("2"), price=Decimal("15.50")))
+            add_document_line(
+                db,
+                outgoing.id,
+                DocumentLineCreate(
+                    product_id=bolt.id, quantity=Decimal("5"), price=Decimal("10.00")
+                ),
+            )
+            add_document_line(
+                db,
+                outgoing.id,
+                DocumentLineCreate(
+                    product_id=cable.id, quantity=Decimal("2"), price=Decimal("15.50")
+                ),
+            )
             post_document(db, outgoing.id)
 
         if not _document_exists(db, "demo-seed:retail-outgoing"):
@@ -149,7 +187,13 @@ def seed() -> None:
                     note="demo-seed:retail-outgoing",
                 ),
             )
-            add_document_line(db, retail_doc.id, DocumentLineCreate(product_id=lamp.id, quantity=Decimal("3"), price=Decimal("18.00")))
+            add_document_line(
+                db,
+                retail_doc.id,
+                DocumentLineCreate(
+                    product_id=lamp.id, quantity=Decimal("3"), price=Decimal("18.00")
+                ),
+            )
             post_document(db, retail_doc.id)
 
         if not _payment_exists(db, "demo-seed:customer-payment"):
@@ -180,7 +224,9 @@ def seed() -> None:
             )
             post_payment(db, supplier_payment.id)
 
-        if not db.scalar(select(Payment.id).where(Payment.note == "demo-seed:cash-customer-payment")):
+        if not db.scalar(
+            select(Payment.id).where(Payment.note == "demo-seed:cash-customer-payment")
+        ):
             cash_customer_payment = create_payment(
                 db,
                 PaymentCreate(
@@ -194,7 +240,9 @@ def seed() -> None:
             )
             post_payment(db, cash_customer_payment.id)
 
-        if not db.scalar(select(CashOperation.id).where(CashOperation.note == "demo-seed:manual-correction")):
+        if not db.scalar(
+            select(CashOperation.id).where(CashOperation.note == "demo-seed:manual-correction")
+        ):
             create_cash_operation(
                 db,
                 CashOperationCreate(

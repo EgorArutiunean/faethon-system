@@ -1,13 +1,13 @@
+import os
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from decimal import Decimal
-import os
 from threading import Barrier
 
 import pytest
 from fastapi import HTTPException
 from sqlalchemy import create_engine, select
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import sessionmaker
 
 from app.db.base import *  # noqa: F401,F403
 from app.db.session import Base
@@ -18,7 +18,6 @@ from app.models.stock import StockBalance, Warehouse
 from app.schemas.documents import DocumentCreate, DocumentLineCreate
 from app.services.currency_service import seed_default_currencies
 from app.services.documents_service import add_document_line, create_document, post_document
-
 
 POSTGRES_URL = os.getenv("TEST_POSTGRES_URL")
 pytestmark = pytest.mark.skipif(not POSTGRES_URL, reason="TEST_POSTGRES_URL is not configured")
@@ -44,7 +43,9 @@ def postgres_session_factory():
 def test_concurrent_document_numbers_are_unique(postgres_session_factory) -> None:
     with postgres_session_factory() as db:
         warehouse = Warehouse(name="Concurrent warehouse", code="CON-NUM")
-        supplier = Partner(name="Concurrent supplier", code="CON-SUP", partner_type=Partner.TYPE_SUPPLIER)
+        supplier = Partner(
+            name="Concurrent supplier", code="CON-SUP", partner_type=Partner.TYPE_SUPPLIER
+        )
         db.add_all([warehouse, supplier])
         db.commit()
         warehouse_id = warehouse.id
@@ -78,8 +79,12 @@ def test_concurrent_sales_cannot_consume_same_stock_twice(postgres_session_facto
     with postgres_session_factory() as db:
         product = Product(name="Concurrent product", sku="CON-STOCK")
         warehouse = Warehouse(name="Concurrent stock", code="CON-STOCK")
-        supplier = Partner(name="Stock supplier", code="STOCK-SUP", partner_type=Partner.TYPE_SUPPLIER)
-        customer = Partner(name="Stock customer", code="STOCK-CUS", partner_type=Partner.TYPE_CUSTOMER)
+        supplier = Partner(
+            name="Stock supplier", code="STOCK-SUP", partner_type=Partner.TYPE_SUPPLIER
+        )
+        customer = Partner(
+            name="Stock customer", code="STOCK-CUS", partner_type=Partner.TYPE_CUSTOMER
+        )
         db.add_all([product, warehouse, supplier, customer])
         db.commit()
 
@@ -113,7 +118,9 @@ def test_concurrent_sales_cannot_consume_same_stock_twice(postgres_session_facto
             add_document_line(
                 db,
                 outgoing.id,
-                DocumentLineCreate(product_id=product.id, quantity=Decimal("4"), price=Decimal("2")),
+                DocumentLineCreate(
+                    product_id=product.id, quantity=Decimal("4"), price=Decimal("2")
+                ),
             )
             outgoing_ids.append(outgoing.id)
         product_id = product.id
@@ -144,4 +151,7 @@ def test_concurrent_sales_cannot_consume_same_stock_twice(postgres_session_facto
         documents = list(db.scalars(select(Document).where(Document.id.in_(outgoing_ids))))
         assert balance is not None
         assert balance.quantity == Decimal("1.000")
-        assert sorted(document.status for document in documents) == [Document.STATUS_DRAFT, Document.STATUS_POSTED]
+        assert sorted(document.status for document in documents) == [
+            Document.STATUS_DRAFT,
+            Document.STATUS_POSTED,
+        ]

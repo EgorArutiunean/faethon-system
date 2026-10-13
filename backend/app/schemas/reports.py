@@ -15,6 +15,9 @@ class StockBalancesReportRow(BaseModel):
 class StockBalancesReport(BaseModel):
     rows: list[StockBalancesReportRow]
     total_quantity: Decimal
+    total: int
+    offset: int
+    limit: int
 
 
 class StockMovementsReportRow(BaseModel):

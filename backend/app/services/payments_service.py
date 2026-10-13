@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.accounting import CashOperation, Payment, PaymentAllocation
@@ -10,12 +10,12 @@ from app.models.documents import Document
 from app.models.partners import Partner
 from app.schemas.cash import CashOperationInternalCreate
 from app.schemas.payments import (
+    PartnerBalanceRead,
+    PartnerStatementRow,
     PaymentAllocationInput,
     PaymentAllocationOption,
     PaymentCreate,
     PaymentUpdate,
-    PartnerBalanceRead,
-    PartnerStatementRow,
 )
 from app.services import cash_service
 from app.services.audit_writer import change_details, write_audit
@@ -69,17 +69,33 @@ def _validate_payment_partner(db: Session, payment_type: str, partner_id: int) -
     partner = db.get(Partner, partner_id)
     if partner is None:
         raise HTTPException(status_code=404, detail="Partner not found")
-    if payment_type == Payment.TYPE_CUSTOMER_PAYMENT and partner.partner_type not in {Partner.TYPE_CUSTOMER, Partner.TYPE_BOTH}:
+    if payment_type == Payment.TYPE_CUSTOMER_PAYMENT and partner.partner_type not in {
+        Partner.TYPE_CUSTOMER,
+        Partner.TYPE_BOTH,
+    }:
         raise HTTPException(status_code=409, detail="Customer payment requires customer partner")
-    if payment_type == Payment.TYPE_SUPPLIER_PAYMENT and partner.partner_type not in {Partner.TYPE_SUPPLIER, Partner.TYPE_BOTH}:
+    if payment_type == Payment.TYPE_SUPPLIER_PAYMENT and partner.partner_type not in {
+        Partner.TYPE_SUPPLIER,
+        Partner.TYPE_BOTH,
+    }:
         raise HTTPException(status_code=409, detail="Supplier payment requires supplier partner")
+
+
+def _required_partner_id(partner_id: int | None) -> int:
+    if partner_id is None:
+        raise HTTPException(status_code=422, detail="Payment partner is required")
+    return partner_id
 
 
 def _validate_supported_payment(payment_type: str, method: str | None) -> None:
     if payment_type not in _valid_payment_types():
-        raise HTTPException(status_code=422, detail="Payment type is not enabled for the first release")
+        raise HTTPException(
+            status_code=422, detail="Payment type is not enabled for the first release"
+        )
     if method != "cash":
-        raise HTTPException(status_code=422, detail="Only cash payments are enabled for the first release")
+        raise HTTPException(
+            status_code=422, detail="Only cash payments are enabled for the first release"
+        )
 
 
 def _validate_payment_document(
@@ -152,7 +168,9 @@ def _validate_allocations(
 
     documents: dict[int, Document] = {}
     if document_ids:
-        statement = select(Document).where(Document.id.in_(sorted(document_ids))).order_by(Document.id)
+        statement = (
+            select(Document).where(Document.id.in_(sorted(document_ids))).order_by(Document.id)
+        )
         if lock_documents:
             statement = statement.with_for_update()
         documents = {document.id: document for document in db.scalars(statement).all()}
@@ -251,7 +269,9 @@ def create_payment(db: Session, payload: PaymentCreate) -> Payment:
     _validate_payment_partner(db, payload.payment_type, payload.partner_id)
     allocation_inputs = list(payload.allocations)
     if not allocation_inputs and payload.document_id is not None:
-        allocation_inputs = [PaymentAllocationInput(document_id=payload.document_id, amount=payload.amount)]
+        allocation_inputs = [
+            PaymentAllocationInput(document_id=payload.document_id, amount=payload.amount)
+        ]
     validated_allocations = _validate_allocations(
         db,
         payload.payment_type,
@@ -274,12 +294,21 @@ def update_payment(db: Session, payment_id: int, payload: PaymentUpdate) -> Paym
     payment = _load_payment(db, payment_id)
     _ensure_draft(payment)
     values = payload.model_dump(exclude_unset=True, exclude={"allocations", "document_id"})
-    next_payment_type = values.get("payment_type", payment.payment_type)
-    next_partner_id = values.get("partner_id", payment.partner_id)
-    next_method = values.get("method", payment.method)
+    changed_fields = payload.model_fields_set
+    next_payment_type = (
+        payload.payment_type if "payment_type" in changed_fields else payment.payment_type
+    )
+    if next_payment_type is None:
+        raise HTTPException(status_code=422, detail="Payment type is required")
+    next_partner_id = _required_partner_id(
+        payload.partner_id if "partner_id" in changed_fields else payment.partner_id
+    )
+    next_method = payload.method if "method" in changed_fields else payment.method
     _validate_supported_payment(next_payment_type, next_method)
     _validate_payment_partner(db, next_payment_type, next_partner_id)
-    next_amount = values.get("amount", payment.amount)
+    next_amount = payload.amount if "amount" in changed_fields else payment.amount
+    if next_amount is None:
+        raise HTTPException(status_code=422, detail="Payment amount is required")
     if payload.allocations is not None:
         allocation_inputs = list(payload.allocations)
     elif "document_id" in payload.model_fields_set:
@@ -321,18 +350,21 @@ def post_payment(db: Session, payment_id: int) -> Payment:
     payment = _load_payment(db, payment_id, for_update=True)
     if payment.status != Payment.STATUS_DRAFT:
         raise HTTPException(status_code=409, detail="Only draft payments can be posted")
+    partner_id = _required_partner_id(payment.partner_id)
     _validate_supported_payment(payment.payment_type, payment.method)
-    _validate_payment_partner(db, payment.payment_type, payment.partner_id)
+    _validate_payment_partner(db, payment.payment_type, partner_id)
     try:
         validated_allocations = _validate_allocations(
             db,
             payment.payment_type,
-            payment.partner_id,
+            partner_id,
             payment.amount,
             _allocation_inputs_from_payment(payment),
             lock_documents=True,
         )
-        payment.document_id = validated_allocations[0][0].id if len(validated_allocations) == 1 else None
+        payment.document_id = (
+            validated_allocations[0][0].id if len(validated_allocations) == 1 else None
+        )
         payment.status = Payment.STATUS_POSTED
         # TODO LEGACY_RULE_REQUIRED: refund cash direction must be confirmed against legacy cash rules.
         cash_operation_type = CashOperation.TYPE_CASH_IN
@@ -378,11 +410,12 @@ def replace_posted_payment_allocations(
         {"document_id": allocation.document_id, "amount": str(allocation.amount)}
         for allocation in payment.allocations
     ]
+    partner_id = _required_partner_id(payment.partner_id)
     try:
         validated = _validate_allocations(
             db,
             payment.payment_type,
-            payment.partner_id,
+            partner_id,
             payment.amount,
             allocations,
             exclude_payment_id=payment.id,
@@ -392,8 +425,7 @@ def replace_posted_payment_allocations(
         for cash_operation in payment.cash_operations:
             cash_operation.document_id = payment.document_id
         new_values = [
-            {"document_id": document.id, "amount": str(amount)}
-            for document, amount in validated
+            {"document_id": document.id, "amount": str(amount)} for document, amount in validated
         ]
         write_audit(
             db,
@@ -437,16 +469,89 @@ def get_partner_balance(db: Session, partner_id: int) -> PartnerBalanceRead:
     partner = db.get(Partner, partner_id)
     if partner is None:
         raise HTTPException(status_code=404, detail="Partner not found")
-    balance = Decimal("0")
-    for document in db.scalars(select(Document).where(Document.partner_id == partner_id)):
-        balance += _document_balance_effect(document)
-    for payment in db.scalars(select(Payment).where(Payment.partner_id == partner_id)):
-        balance += _payment_balance_effect(payment)
-    return PartnerBalanceRead(partner_id=partner.id, partner_name=partner.name, partner_type=partner.partner_type, balance=balance)
+    balance = get_partner_balance_values(db, [partner_id]).get(partner_id, Decimal("0"))
+    return PartnerBalanceRead(
+        partner_id=partner.id,
+        partner_name=partner.name,
+        partner_type=partner.partner_type,
+        balance=balance,
+    )
 
 
-def get_partner_balances(db: Session) -> list[PartnerBalanceRead]:
-    return [get_partner_balance(db, partner.id) for partner in db.scalars(select(Partner).order_by(Partner.name))]
+def get_partner_balance_values(
+    db: Session, partner_ids: list[int] | None = None
+) -> dict[int, Decimal]:
+    document_effect = case(
+        (
+            (Document.status == Document.STATUS_POSTED)
+            & (Document.document_type == Document.TYPE_OUTGOING),
+            Document.total_amount,
+        ),
+        (
+            (Document.status == Document.STATUS_POSTED)
+            & (Document.document_type == Document.TYPE_INCOMING),
+            -Document.total_amount,
+        ),
+        else_=0,
+    )
+    payment_effect = case(
+        (
+            (Payment.status == Payment.STATUS_POSTED)
+            & (Payment.payment_type == Payment.TYPE_CUSTOMER_PAYMENT),
+            -Payment.amount,
+        ),
+        (
+            (Payment.status == Payment.STATUS_POSTED)
+            & (Payment.payment_type.in_((Payment.TYPE_SUPPLIER_PAYMENT, Payment.TYPE_REFUND))),
+            Payment.amount,
+        ),
+        else_=0,
+    )
+
+    document_stmt = (
+        select(Document.partner_id, func.coalesce(func.sum(document_effect), 0))
+        .where(Document.partner_id.is_not(None))
+        .group_by(Document.partner_id)
+    )
+    payment_stmt = (
+        select(Payment.partner_id, func.coalesce(func.sum(payment_effect), 0))
+        .where(Payment.partner_id.is_not(None))
+        .group_by(Payment.partner_id)
+    )
+    if partner_ids is not None:
+        ids = set(partner_ids)
+        if not ids:
+            return {}
+        document_stmt = document_stmt.where(Document.partner_id.in_(ids))
+        payment_stmt = payment_stmt.where(Payment.partner_id.in_(ids))
+
+    balances: dict[int, Decimal] = {}
+    for partner_id, value in db.execute(document_stmt):
+        balances[partner_id] = Decimal(value)
+    for partner_id, value in db.execute(payment_stmt):
+        balances[partner_id] = balances.get(partner_id, Decimal("0")) + Decimal(value)
+    return balances
+
+
+def get_partner_balances(
+    db: Session, partner_ids: list[int] | None = None
+) -> list[PartnerBalanceRead]:
+    stmt = select(Partner).order_by(Partner.name)
+    if partner_ids is not None:
+        if not partner_ids:
+            return []
+        stmt = stmt.where(Partner.id.in_(set(partner_ids)))
+    partners = list(db.scalars(stmt))
+    balances = get_partner_balance_values(db, [partner.id for partner in partners])
+    return [
+        PartnerBalanceRead(
+            partner_id=partner.id,
+            partner_name=partner.name,
+            partner_type=partner.partner_type,
+            balance=balances.get(partner.id, Decimal("0")),
+        )
+        for partner in partners
+    ]
 
 
 def get_partner_statement(db: Session, partner_id: int) -> list[PartnerStatementRow]:
@@ -457,12 +562,32 @@ def get_partner_statement(db: Session, partner_id: int) -> list[PartnerStatement
         effect = _document_balance_effect(document)
         debit = effect if effect > 0 else Decimal("0")
         credit = -effect if effect < 0 else Decimal("0")
-        raw_rows.append((document.document_date, "document", document.id, document.number, debit, credit, document.status))
+        raw_rows.append(
+            (
+                document.document_date,
+                "document",
+                document.id,
+                document.number,
+                debit,
+                credit,
+                document.status,
+            )
+        )
     for payment in db.scalars(select(Payment).where(Payment.partner_id == partner_id)):
         effect = _payment_balance_effect(payment)
         debit = effect if effect > 0 else Decimal("0")
         credit = -effect if effect < 0 else Decimal("0")
-        raw_rows.append((payment.payment_date, "payment", payment.id, payment.document_number, debit, credit, payment.status))
+        raw_rows.append(
+            (
+                payment.payment_date,
+                "payment",
+                payment.id,
+                payment.document_number,
+                debit,
+                credit,
+                payment.status,
+            )
+        )
     raw_rows.sort(key=lambda row: (row[0], row[1], row[2]))
     balance = Decimal("0")
     statement: list[PartnerStatementRow] = []

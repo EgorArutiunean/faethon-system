@@ -23,7 +23,9 @@ def seed_default_currencies(db: Session) -> None:
     for code, name, symbol, is_base in DEFAULT_CURRENCIES:
         currency = db.scalar(select(Currency).where(Currency.code == code))
         if currency is None:
-            currency = Currency(code=code, name=name, symbol=symbol, is_base=is_base, is_active=True)
+            currency = Currency(
+                code=code, name=name, symbol=symbol, is_base=is_base, is_active=True
+            )
             db.add(currency)
         else:
             currency.name = name
@@ -36,7 +38,13 @@ def seed_default_currencies(db: Session) -> None:
 def list_currencies(db: Session) -> list[Currency]:
     seed_default_currencies(db)
     db.commit()
-    return list(db.scalars(select(Currency).where(Currency.is_active.is_(True)).order_by(Currency.is_base.desc(), Currency.code)).all())
+    return list(
+        db.scalars(
+            select(Currency)
+            .where(Currency.is_active.is_(True))
+            .order_by(Currency.is_base.desc(), Currency.code)
+        ).all()
+    )
 
 
 def get_currency(db: Session, code: str) -> Currency:
@@ -53,7 +61,12 @@ def create_exchange_rate(db: Session, payload: ExchangeRateCreate) -> ExchangeRa
         raise HTTPException(status_code=422, detail="Base currency rate must be 1")
     if payload.rate_to_base <= 0:
         raise HTTPException(status_code=422, detail="Exchange rate must be greater than zero")
-    rate = ExchangeRate(currency_id=currency.id, rate_date=payload.rate_date, rate_to_base=payload.rate_to_base, note=payload.note)
+    rate = ExchangeRate(
+        currency_id=currency.id,
+        rate_date=payload.rate_date,
+        rate_to_base=payload.rate_to_base,
+        note=payload.note,
+    )
     db.add(rate)
     db.flush()
     write_audit(db, "exchange_rate", rate.id, "create", f"{currency.code}={rate.rate_to_base}")
@@ -64,7 +77,11 @@ def create_exchange_rate(db: Session, payload: ExchangeRateCreate) -> ExchangeRa
 
 def list_exchange_rates(db: Session, currency_code: str | None = None) -> list[ExchangeRate]:
     seed_default_currencies(db)
-    stmt = select(ExchangeRate).options(selectinload(ExchangeRate.currency)).order_by(ExchangeRate.rate_date.desc(), ExchangeRate.id.desc())
+    stmt = (
+        select(ExchangeRate)
+        .options(selectinload(ExchangeRate.currency))
+        .order_by(ExchangeRate.rate_date.desc(), ExchangeRate.id.desc())
+    )
     if currency_code:
         currency = get_currency(db, currency_code)
         stmt = stmt.where(ExchangeRate.currency_id == currency.id)

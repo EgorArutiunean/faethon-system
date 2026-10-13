@@ -7,9 +7,9 @@ Create Date: 2026-09-02
 
 from decimal import Decimal
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "0011_payment_allocations"
 down_revision = "0010_document_revisions"
@@ -23,10 +23,7 @@ def _backfill_allocations() -> None:
     payments = sa.Table("payments", metadata, autoload_with=bind)
     documents = sa.Table("documents", metadata, autoload_with=bind)
     allocations = sa.Table("payment_allocations", metadata, autoload_with=bind)
-    document_rows = {
-        row.id: row
-        for row in bind.execute(sa.select(documents)).mappings()
-    }
+    document_rows = {row.id: row for row in bind.execute(sa.select(documents)).mappings()}
     remaining = {
         document_id: Decimal(str(document.total_amount))
         for document_id, document in document_rows.items()
@@ -62,12 +59,23 @@ def upgrade() -> None:
     op.create_table(
         "payment_allocations",
         sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("payment_id", sa.Integer(), sa.ForeignKey("payments.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "payment_id",
+            sa.Integer(),
+            sa.ForeignKey("payments.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("document_id", sa.Integer(), sa.ForeignKey("documents.id"), nullable=False),
         sa.Column("amount", sa.Numeric(14, 2), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.UniqueConstraint("payment_id", "document_id", name="uq_payment_allocations_payment_document"),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+        sa.UniqueConstraint(
+            "payment_id", "document_id", name="uq_payment_allocations_payment_document"
+        ),
         sa.CheckConstraint("amount > 0", name="ck_payment_allocations_amount_positive"),
     )
     op.create_index("ix_payment_allocations_payment_id", "payment_allocations", ["payment_id"])

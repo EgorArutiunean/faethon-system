@@ -10,7 +10,11 @@ from app.schemas.stock import StockBalanceRead, StockMovementRead
 router = APIRouter(prefix="/stock", tags=["stock"])
 
 
-@router.get("/balances", response_model=list[StockBalanceRead], dependencies=[Depends(require_permission("stock.read"))])
+@router.get(
+    "/balances",
+    response_model=list[StockBalanceRead],
+    dependencies=[Depends(require_permission("stock.read"))],
+)
 def list_stock_balances(
     db: Session = Depends(get_db),
     warehouse_id: int | None = None,
@@ -18,7 +22,9 @@ def list_stock_balances(
     skip: int = 0,
     limit: int = Query(default=100, le=500),
 ):
-    stmt = select(StockBalance).options(selectinload(StockBalance.product), selectinload(StockBalance.warehouse))
+    stmt = select(StockBalance).options(
+        selectinload(StockBalance.product), selectinload(StockBalance.warehouse)
+    )
     if warehouse_id is not None:
         stmt = stmt.where(StockBalance.warehouse_id == warehouse_id)
     if product_id is not None:
@@ -26,7 +32,11 @@ def list_stock_balances(
     return list(db.scalars(stmt.offset(skip).limit(limit)).all())
 
 
-@router.get("/movements", response_model=list[StockMovementRead], dependencies=[Depends(require_permission("stock.read"))])
+@router.get(
+    "/movements",
+    response_model=list[StockMovementRead],
+    dependencies=[Depends(require_permission("stock.read"))],
+)
 def list_stock_movements(
     db: Session = Depends(get_db),
     warehouse_id: int | None = None,

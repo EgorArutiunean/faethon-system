@@ -5,9 +5,9 @@ Revises: 0012_warehouse_tasks
 Create Date: 2026-09-02
 """
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "0013_manager_cash_permissions"
 down_revision = "0012_warehouse_tasks"

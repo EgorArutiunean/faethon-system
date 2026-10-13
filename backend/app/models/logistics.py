@@ -1,7 +1,16 @@
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -98,7 +107,9 @@ class WarehouseTask(TimestampMixin, Base):
 class WarehouseTaskLine(TimestampMixin, Base):
     __tablename__ = "warehouse_task_lines"
     __table_args__ = (
-        CheckConstraint("expected_quantity >= 0", name="ck_warehouse_task_lines_expected_nonnegative"),
+        CheckConstraint(
+            "expected_quantity >= 0", name="ck_warehouse_task_lines_expected_nonnegative"
+        ),
         CheckConstraint(
             "actual_quantity IS NULL OR actual_quantity >= 0",
             name="ck_warehouse_task_lines_actual_nonnegative",
@@ -115,7 +126,9 @@ class WarehouseTaskLine(TimestampMixin, Base):
     STATUS_DISCREPANCY = "discrepancy"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    task_id: Mapped[int] = mapped_column(ForeignKey("warehouse_tasks.id", ondelete="CASCADE"), index=True)
+    task_id: Mapped[int] = mapped_column(
+        ForeignKey("warehouse_tasks.id", ondelete="CASCADE"), index=True
+    )
     document_line_id: Mapped[int | None] = mapped_column(
         ForeignKey("document_lines.id", ondelete="SET NULL"),
         index=True,
@@ -140,7 +153,9 @@ class WarehouseTaskEvent(TimestampMixin, Base):
     __tablename__ = "warehouse_task_events"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    task_id: Mapped[int] = mapped_column(ForeignKey("warehouse_tasks.id", ondelete="CASCADE"), index=True)
+    task_id: Mapped[int] = mapped_column(
+        ForeignKey("warehouse_tasks.id", ondelete="CASCADE"), index=True
+    )
     actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
     event_type: Mapped[str] = mapped_column(String(40), index=True)
     from_status: Mapped[str | None] = mapped_column(String(30))

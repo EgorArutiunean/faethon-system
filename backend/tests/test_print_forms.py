@@ -29,7 +29,9 @@ def db() -> Session:
         poolclass=StaticPool,
     )
     Base.metadata.create_all(engine)
-    TestingSession = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+    TestingSession = sessionmaker(
+        bind=engine, autoflush=False, autocommit=False, expire_on_commit=False
+    )
     session = TestingSession()
     seed_auth_defaults(session)
     try:
@@ -51,7 +53,9 @@ def client(db: Session) -> TestClient:
         app.dependency_overrides.clear()
 
 
-def auth_header(client: TestClient, email: str = "admin@example.com", password: str = "admin123") -> dict[str, str]:
+def auth_header(
+    client: TestClient, email: str = "admin@example.com", password: str = "admin123"
+) -> dict[str, str]:
     response = client.post("/api/v1/auth/login", json={"email": email, "password": password})
     assert response.status_code == 200
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
@@ -167,7 +171,10 @@ def test_print_pdf_existing_document_returns_pdf(client: TestClient, db: Session
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("application/pdf")
-    assert response.headers["content-disposition"] == f'attachment; filename="document-{document_id}.pdf"'
+    assert (
+        response.headers["content-disposition"]
+        == f'attachment; filename="document-{document_id}.pdf"'
+    )
     assert response.content.startswith(b"%PDF-")
     assert b"%%EOF" in response.content
     assert len(response.content) > 1000
@@ -188,7 +195,9 @@ def test_print_missing_document_returns_404(client: TestClient) -> None:
 def test_print_contains_document_number_and_total_amount(client: TestClient, db: Session) -> None:
     document_id = make_document(db)
 
-    response = client.get(f"/api/v1/documents/{document_id}/print.html", headers=auth_header(client))
+    response = client.get(
+        f"/api/v1/documents/{document_id}/print.html", headers=auth_header(client)
+    )
 
     assert response.status_code == 200
     assert "OUT-000001" in response.text
@@ -199,7 +208,9 @@ def test_print_contains_document_number_and_total_amount(client: TestClient, db:
 def test_print_form_matches_legacy_outgoing_invoice_layout(client: TestClient, db: Session) -> None:
     document_id = make_document(db)
 
-    response = client.get(f"/api/v1/documents/{document_id}/print.html", headers=auth_header(client))
+    response = client.get(
+        f"/api/v1/documents/{document_id}/print.html", headers=auth_header(client)
+    )
     html = unescape(response.text)
 
     assert response.status_code == 200

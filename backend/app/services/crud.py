@@ -13,10 +13,15 @@ class CRUDService(Generic[ModelT, CreateT, UpdateT]):
     def __init__(self, model: type[ModelT]) -> None:
         self.model = model
 
-    def list(self, db: Session, *, skip: int = 0, limit: int = 100, search: str | None = None) -> list[ModelT]:
+    def list(
+        self, db: Session, *, skip: int = 0, limit: int = 100, search: str | None = None
+    ) -> list[ModelT]:
         stmt = select(self.model).offset(skip).limit(limit)
-        if search and hasattr(self.model, "name"):
-            stmt = select(self.model).where(self.model.name.ilike(f"%{search}%")).offset(skip).limit(limit)
+        name_column = getattr(self.model, "name", None)
+        if search and name_column is not None:
+            stmt = (
+                select(self.model).where(name_column.ilike(f"%{search}%")).offset(skip).limit(limit)
+            )
         return list(db.scalars(stmt).all())
 
     def get(self, db: Session, item_id: int) -> ModelT | None:

@@ -1,9 +1,14 @@
-from sqlalchemy import Boolean, ForeignKey, String, Table, Column
+from datetime import datetime
+from typing import TYPE_CHECKING
+
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Table
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
 from app.models.mixins import TimestampMixin
 
+if TYPE_CHECKING:
+    from app.models.stock import Warehouse
 
 role_permissions = Table(
     "role_permissions",
@@ -31,13 +36,21 @@ class User(TimestampMixin, Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    username: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    username: Mapped[str] = mapped_column(String(80), unique=True)
     full_name: Mapped[str | None] = mapped_column(String(200))
     hashed_password: Mapped[str] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    must_change_password: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
+    failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    token_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
     roles: Mapped[list["Role"]] = relationship(secondary=user_roles, back_populates="users")
-    warehouses: Mapped[list["Warehouse"]] = relationship(secondary=user_warehouses, back_populates="users")
+    warehouses: Mapped[list["Warehouse"]] = relationship(
+        secondary=user_warehouses, back_populates="users"
+    )
 
     @property
     def email(self) -> str:
@@ -67,18 +80,22 @@ class Role(TimestampMixin, Base):
     __tablename__ = "roles"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(80), unique=True)
     description: Mapped[str | None] = mapped_column(String(255))
 
     users: Mapped[list[User]] = relationship(secondary=user_roles, back_populates="roles")
-    permissions: Mapped[list["Permission"]] = relationship(secondary=role_permissions, back_populates="roles")
+    permissions: Mapped[list["Permission"]] = relationship(
+        secondary=role_permissions, back_populates="roles"
+    )
 
 
 class Permission(TimestampMixin, Base):
     __tablename__ = "permissions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    code: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+    code: Mapped[str] = mapped_column(String(120), unique=True)
     description: Mapped[str | None] = mapped_column(String(255))
 
-    roles: Mapped[list[Role]] = relationship(secondary=role_permissions, back_populates="permissions")
+    roles: Mapped[list[Role]] = relationship(
+        secondary=role_permissions, back_populates="permissions"
+    )

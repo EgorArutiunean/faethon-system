@@ -8,7 +8,12 @@ from app.models.partners import Partner
 from app.models.products import Product, ProductGroup
 from app.models.stock import StockBalance, StockMovement, Warehouse
 from app.schemas.partners import PartnerCreate, PartnerUpdate
-from app.schemas.products import ProductCreate, ProductGroupCreate, ProductGroupUpdate, ProductUpdate
+from app.schemas.products import (
+    ProductCreate,
+    ProductGroupCreate,
+    ProductGroupUpdate,
+    ProductUpdate,
+)
 from app.schemas.warehouses import WarehouseCreate, WarehouseUpdate
 from app.services.audit_writer import write_audit
 
@@ -40,13 +45,21 @@ def update_product(db: Session, product: Product, payload: ProductUpdate) -> Pro
 def delete_product(db: Session, product: Product) -> None:
     used = any(
         [
-            db.scalar(select(DocumentLine.id).where(DocumentLine.product_id == product.id).limit(1)),
-            db.scalar(select(StockBalance.id).where(StockBalance.product_id == product.id).limit(1)),
-            db.scalar(select(StockMovement.id).where(StockMovement.product_id == product.id).limit(1)),
+            db.scalar(
+                select(DocumentLine.id).where(DocumentLine.product_id == product.id).limit(1)
+            ),
+            db.scalar(
+                select(StockBalance.id).where(StockBalance.product_id == product.id).limit(1)
+            ),
+            db.scalar(
+                select(StockMovement.id).where(StockMovement.product_id == product.id).limit(1)
+            ),
         ]
     )
     if used:
-        raise HTTPException(status_code=409, detail="Product is used in documents or stock and cannot be deleted")
+        raise HTTPException(
+            status_code=409, detail="Product is used in documents or stock and cannot be deleted"
+        )
     write_audit(db, "product", product.id, "delete")
     db.delete(product)
     db.commit()
@@ -68,13 +81,36 @@ def _ensure_group_name_is_free(db: Session, name: str, *, exclude_id: int | None
         raise HTTPException(status_code=409, detail="Product group with this name already exists")
 
 
-def _ensure_parent_exists(db: Session, parent_id: int | None, *, group_id: int | None = None) -> None:
+def _ensure_parent_exists(
+    db: Session, parent_id: int | None, *, group_id: int | None = None
+) -> None:
     if parent_id is None:
         return
     if group_id is not None and parent_id == group_id:
         raise HTTPException(status_code=409, detail="Product group cannot be its own parent")
-    if db.get(ProductGroup, parent_id) is None:
+
+    parent = db.get(ProductGroup, parent_id)
+    if parent is None:
         raise HTTPException(status_code=404, detail="Parent product group not found")
+
+    visited_ids: set[int] = set()
+    while parent is not None:
+        if group_id is not None and parent.id == group_id:
+            raise HTTPException(
+                status_code=409, detail="Product group hierarchy cannot contain cycles"
+            )
+        if parent.id in visited_ids:
+            raise HTTPException(
+                status_code=409, detail="Product group hierarchy cannot contain cycles"
+            )
+
+        visited_ids.add(parent.id)
+        if parent.parent_id is None:
+            return
+
+        parent = db.get(ProductGroup, parent.parent_id)
+        if parent is None:
+            raise HTTPException(status_code=404, detail="Parent product group not found")
 
 
 def create_product_group(db: Session, payload: ProductGroupCreate) -> ProductGroup:
@@ -92,7 +128,9 @@ def create_product_group(db: Session, payload: ProductGroupCreate) -> ProductGro
     return group
 
 
-def update_product_group(db: Session, group: ProductGroup, payload: ProductGroupUpdate) -> ProductGroup:
+def update_product_group(
+    db: Session, group: ProductGroup, payload: ProductGroupUpdate
+) -> ProductGroup:
     values = payload.model_dump(exclude_unset=True)
     if "name" in values and values["name"] is not None:
         values["name"] = values["name"].strip()
@@ -117,7 +155,10 @@ def delete_product_group(db: Session, group: ProductGroup) -> None:
         ]
     )
     if used:
-        raise HTTPException(status_code=409, detail="Product group is used by products or child groups and cannot be deleted")
+        raise HTTPException(
+            status_code=409,
+            detail="Product group is used by products or child groups and cannot be deleted",
+        )
     write_audit(db, "product_group", group.id, "delete")
     db.delete(group)
     db.commit()
@@ -147,12 +188,18 @@ def delete_warehouse(db: Session, warehouse: Warehouse) -> None:
     used = any(
         [
             db.scalar(select(Document.id).where(Document.warehouse_id == warehouse.id).limit(1)),
-            db.scalar(select(StockBalance.id).where(StockBalance.warehouse_id == warehouse.id).limit(1)),
-            db.scalar(select(StockMovement.id).where(StockMovement.warehouse_id == warehouse.id).limit(1)),
+            db.scalar(
+                select(StockBalance.id).where(StockBalance.warehouse_id == warehouse.id).limit(1)
+            ),
+            db.scalar(
+                select(StockMovement.id).where(StockMovement.warehouse_id == warehouse.id).limit(1)
+            ),
         ]
     )
     if used:
-        raise HTTPException(status_code=409, detail="Warehouse is used in documents or stock and cannot be deleted")
+        raise HTTPException(
+            status_code=409, detail="Warehouse is used in documents or stock and cannot be deleted"
+        )
     write_audit(db, "warehouse", warehouse.id, "delete")
     db.delete(warehouse)
     db.commit()
@@ -186,7 +233,9 @@ def delete_partner(db: Session, partner: Partner) -> None:
         ]
     )
     if used:
-        raise HTTPException(status_code=409, detail="Partner is used in documents or payments and cannot be deleted")
+        raise HTTPException(
+            status_code=409, detail="Partner is used in documents or payments and cannot be deleted"
+        )
     write_audit(db, "partner", partner.id, "delete")
     db.delete(partner)
     db.commit()

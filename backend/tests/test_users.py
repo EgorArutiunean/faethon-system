@@ -19,7 +19,9 @@ def db() -> Session:
         poolclass=StaticPool,
     )
     Base.metadata.create_all(engine)
-    TestingSession = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+    TestingSession = sessionmaker(
+        bind=engine, autoflush=False, autocommit=False, expire_on_commit=False
+    )
     session = TestingSession()
     seed_auth_defaults(session)
     try:
@@ -41,7 +43,9 @@ def client(db: Session) -> TestClient:
         app.dependency_overrides.clear()
 
 
-def auth_header(client: TestClient, email: str = "admin@example.com", password: str = "admin123") -> dict[str, str]:
+def auth_header(
+    client: TestClient, email: str = "admin@example.com", password: str = "admin123"
+) -> dict[str, str]:
     response = client.post("/api/v1/auth/login", json={"email": email, "password": password})
     assert response.status_code == 200
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
@@ -54,7 +58,9 @@ def test_users_requires_auth(client: TestClient) -> None:
 
 
 def test_users_requires_manage_permission(client: TestClient) -> None:
-    response = client.get("/api/v1/users", headers=auth_header(client, "viewer@example.com", "viewer123"))
+    response = client.get(
+        "/api/v1/users", headers=auth_header(client, "viewer@example.com", "viewer123")
+    )
 
     assert response.status_code == 403
 
@@ -66,7 +72,13 @@ def test_admin_can_list_roles_and_users(client: TestClient) -> None:
     users = client.get("/api/v1/users", headers=headers)
 
     assert roles.status_code == 200
-    assert {role["name"] for role in roles.json()} >= {"admin", "manager", "cashier", "logist", "viewer"}
+    assert {role["name"] for role in roles.json()} >= {
+        "admin",
+        "manager",
+        "cashier",
+        "logist",
+        "viewer",
+    }
     assert users.status_code == 200
     assert any(user["email"] == "admin@example.com" for user in users.json())
 
@@ -87,6 +99,7 @@ def test_admin_can_create_and_update_user(client: TestClient) -> None:
     )
     assert created.status_code == 201
     assert created.json()["role_names"] == ["manager"]
+    assert created.json()["must_change_password"] is True
 
     updated = client.patch(
         f"/api/v1/users/{created.json()['id']}",
@@ -97,6 +110,57 @@ def test_admin_can_create_and_update_user(client: TestClient) -> None:
     assert updated.json()["is_active"] is False
     assert updated.json()["role_names"] == ["viewer"]
     assert updated.json()["full_name"] == "Read Only Operator"
+
+
+def test_admin_password_reset_requires_user_to_change_it(client: TestClient) -> None:
+    headers = auth_header(client)
+    created = client.post(
+        "/api/v1/users",
+        headers=headers,
+        json={
+            "email": "reset@example.com",
+            "password": "initial-password",
+            "role_names": ["viewer"],
+        },
+    )
+    assert created.status_code == 201
+
+    changed = client.post(
+        "/api/v1/auth/change-password",
+        headers=auth_header(client, "reset@example.com", "initial-password"),
+        json={"current_password": "initial-password", "new_password": "personal-password"},
+    )
+    assert changed.status_code == 200
+    assert changed.json()["must_change_password"] is False
+
+    for _ in range(5):
+        failed = client.post(
+            "/api/v1/auth/login",
+            json={"email": "reset@example.com", "password": "wrong-password"},
+        )
+        assert failed.status_code == 401
+    assert (
+        client.post(
+            "/api/v1/auth/login",
+            json={"email": "reset@example.com", "password": "personal-password"},
+        ).status_code
+        == 401
+    )
+
+    reset = client.patch(
+        f"/api/v1/users/{created.json()['id']}",
+        headers=headers,
+        json={"password": "second-temporary"},
+    )
+    assert reset.status_code == 200
+    assert reset.json()["must_change_password"] is True
+    assert (
+        client.post(
+            "/api/v1/auth/login",
+            json={"email": "reset@example.com", "password": "second-temporary"},
+        ).status_code
+        == 200
+    )
 
 
 def test_admin_cannot_deactivate_self(client: TestClient, db: Session) -> None:

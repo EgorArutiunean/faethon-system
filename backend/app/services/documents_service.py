@@ -1,6 +1,7 @@
 import hashlib
+from dataclasses import dataclass, field
+from datetime import date
 from decimal import Decimal
-from types import SimpleNamespace
 
 from fastapi import HTTPException
 from sqlalchemy import func, select
@@ -9,12 +10,11 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from app.models.documents import Document, DocumentLine, DocumentNumberSequence, DocumentRevision
 from app.models.accounting import Payment, PaymentAllocation
+from app.models.documents import Document, DocumentLine, DocumentNumberSequence, DocumentRevision
 from app.models.partners import Partner
 from app.models.products import Product
-from app.models.stock import StockBalance, StockMovement
-from app.models.stock import Warehouse
+from app.models.stock import StockBalance, StockMovement, Warehouse
 from app.schemas.documents import (
     DocumentCreate,
     DocumentLineCreate,
@@ -24,7 +24,26 @@ from app.schemas.documents import (
 )
 from app.services.audit_writer import change_details, write_audit
 from app.services.currency_service import BASE_CURRENCY_CODE, get_currency
-from app.services.logistics_service import cancel_active_tasks_for_document_version, create_tasks_for_document
+from app.services.logistics_service import (
+    cancel_active_tasks_for_document_version,
+    create_tasks_for_document,
+)
+
+
+@dataclass
+class _RepostCandidate:
+    document_type: str
+    number: str
+    document_date: date
+    partner_id: int | None
+    warehouse_id: int | None
+    destination_warehouse_id: int | None
+    currency_code: str
+    exchange_rate: Decimal
+    note: str | None
+    lines: list[DocumentLine] = field(default_factory=list)
+    total_amount: Decimal = Decimal("0")
+    foreign_total_amount: Decimal = Decimal("0")
 
 
 class DocumentRulesError(ValueError):
@@ -42,9 +61,15 @@ def _normalize_rate(value: Decimal | None) -> Decimal:
     return rate
 
 
-def _base_price(document: Document, price: Decimal, foreign_price: Decimal | None) -> Decimal:
+def _base_price(
+    document: Document | _RepostCandidate,
+    price: Decimal,
+    foreign_price: Decimal | None,
+) -> Decimal:
     if document.document_type == Document.TYPE_INCOMING:
-        return ((foreign_price if foreign_price is not None else price) * document.exchange_rate).quantize(Decimal("0.01"))
+        return (
+            (foreign_price if foreign_price is not None else price) * document.exchange_rate
+        ).quantize(Decimal("0.01"))
     return price.quantize(Decimal("0.01"))
 
 
@@ -82,7 +107,7 @@ def _generate_document_number(db: Session, document_type: str) -> str:
         initial_value = max_value + 1
     dialect = db.get_bind().dialect.name
     if dialect == "postgresql":
-        statement = (
+        postgresql_statement = (
             postgresql_insert(DocumentNumberSequence)
             .values(document_type=document_type, last_value=initial_value)
             .on_conflict_do_update(
@@ -91,9 +116,9 @@ def _generate_document_number(db: Session, document_type: str) -> str:
             )
             .returning(DocumentNumberSequence.last_value)
         )
-        next_value = db.scalar(statement)
+        next_value = db.scalar(postgresql_statement)
     elif dialect == "sqlite":
-        statement = (
+        sqlite_statement = (
             sqlite_insert(DocumentNumberSequence)
             .values(document_type=document_type, last_value=initial_value)
             .on_conflict_do_update(
@@ -102,7 +127,7 @@ def _generate_document_number(db: Session, document_type: str) -> str:
             )
             .returning(DocumentNumberSequence.last_value)
         )
-        next_value = db.scalar(statement)
+        next_value = db.scalar(sqlite_statement)
     else:
         sequence = db.get(DocumentNumberSequence, document_type, with_for_update=True)
         if sequence is None:
@@ -125,23 +150,31 @@ def _reserve_document_number(db: Session, document_type: str, number: str) -> No
     value = int(suffix)
     dialect = db.get_bind().dialect.name
     if dialect == "postgresql":
-        statement = postgresql_insert(DocumentNumberSequence).values(
-            document_type=document_type,
-            last_value=value,
-        ).on_conflict_do_update(
-            index_elements=[DocumentNumberSequence.document_type],
-            set_={"last_value": func.greatest(DocumentNumberSequence.last_value, value)},
+        postgresql_statement = (
+            postgresql_insert(DocumentNumberSequence)
+            .values(
+                document_type=document_type,
+                last_value=value,
+            )
+            .on_conflict_do_update(
+                index_elements=[DocumentNumberSequence.document_type],
+                set_={"last_value": func.greatest(DocumentNumberSequence.last_value, value)},
+            )
         )
-        db.execute(statement)
+        db.execute(postgresql_statement)
     elif dialect == "sqlite":
-        statement = sqlite_insert(DocumentNumberSequence).values(
-            document_type=document_type,
-            last_value=value,
-        ).on_conflict_do_update(
-            index_elements=[DocumentNumberSequence.document_type],
-            set_={"last_value": func.max(DocumentNumberSequence.last_value, value)},
+        sqlite_statement = (
+            sqlite_insert(DocumentNumberSequence)
+            .values(
+                document_type=document_type,
+                last_value=value,
+            )
+            .on_conflict_do_update(
+                index_elements=[DocumentNumberSequence.document_type],
+                set_={"last_value": func.max(DocumentNumberSequence.last_value, value)},
+            )
         )
-        db.execute(statement)
+        db.execute(sqlite_statement)
     else:
         sequence = db.get(DocumentNumberSequence, document_type, with_for_update=True)
         if sequence is None:
@@ -179,20 +212,26 @@ def _load_document(db: Session, document_id: int, *, for_update: bool = False) -
 
 def _get_balance(db: Session, product_id: int, warehouse_id: int) -> StockBalance:
     balance = db.scalar(
-        select(StockBalance).where(
+        select(StockBalance)
+        .where(
             StockBalance.product_id == product_id,
             StockBalance.warehouse_id == warehouse_id,
-        ).with_for_update()
+        )
+        .with_for_update()
     )
     if balance is None:
-        balance = StockBalance(product_id=product_id, warehouse_id=warehouse_id, quantity=Decimal("0"))
+        balance = StockBalance(
+            product_id=product_id, warehouse_id=warehouse_id, quantity=Decimal("0")
+        )
         db.add(balance)
         db.flush()
     return balance
 
 
 def _stock_lock_key(product_id: int, warehouse_id: int) -> int:
-    digest = hashlib.blake2b(f"stock:{product_id}:{warehouse_id}".encode("ascii"), digest_size=8).digest()
+    digest = hashlib.blake2b(
+        f"stock:{product_id}:{warehouse_id}".encode("ascii"), digest_size=8
+    ).digest()
     return int.from_bytes(digest, byteorder="big", signed=True)
 
 
@@ -205,7 +244,9 @@ def _lock_stock_keys(db: Session, keys: set[tuple[int, int]]) -> None:
 
 def _recalculate_total(document: Document) -> None:
     document.total_amount = sum((line.line_total for line in document.lines), Decimal("0"))
-    document.foreign_total_amount = sum((line.foreign_line_total or line.line_total for line in document.lines), Decimal("0"))
+    document.foreign_total_amount = sum(
+        (line.foreign_line_total or line.line_total for line in document.lines), Decimal("0")
+    )
 
 
 def recalculate_document_total(document: Document) -> None:
@@ -234,9 +275,13 @@ def _document_snapshot(document: Document) -> dict:
                 "quantity": f"{line.quantity:.3f}",
                 "price": f"{line.price:.2f}",
                 "line_total": f"{line.line_total:.2f}",
-                "foreign_price": f"{line.foreign_price:.2f}" if line.foreign_price is not None else None,
+                "foreign_price": f"{line.foreign_price:.2f}"
+                if line.foreign_price is not None
+                else None,
                 "foreign_line_total": (
-                    f"{line.foreign_line_total:.2f}" if line.foreign_line_total is not None else None
+                    f"{line.foreign_line_total:.2f}"
+                    if line.foreign_line_total is not None
+                    else None
                 ),
             }
             for line in sorted(document.lines, key=lambda item: item.id or 0)
@@ -281,7 +326,12 @@ def _ensure_draft(document: Document) -> None:
 
 
 def _valid_document_types() -> set[str]:
-    return {Document.TYPE_INCOMING, Document.TYPE_OUTGOING, Document.TYPE_ADJUSTMENT, Document.TYPE_TRANSFER}
+    return {
+        Document.TYPE_INCOMING,
+        Document.TYPE_OUTGOING,
+        Document.TYPE_ADJUSTMENT,
+        Document.TYPE_TRANSFER,
+    }
 
 
 def _validate_document_partner(db: Session, document_type: str, partner_id: int | None) -> None:
@@ -293,15 +343,25 @@ def _validate_document_partner(db: Session, document_type: str, partner_id: int 
         return
     if partner_id is None:
         if document_type == Document.TYPE_INCOMING:
-            raise HTTPException(status_code=422, detail="Incoming document requires supplier partner")
+            raise HTTPException(
+                status_code=422, detail="Incoming document requires supplier partner"
+            )
         if document_type == Document.TYPE_OUTGOING:
-            raise HTTPException(status_code=422, detail="Outgoing document requires customer partner")
+            raise HTTPException(
+                status_code=422, detail="Outgoing document requires customer partner"
+            )
     partner = db.get(Partner, partner_id)
     if partner is None:
         raise HTTPException(status_code=404, detail="Partner not found")
-    if document_type == Document.TYPE_INCOMING and partner.partner_type not in {Partner.TYPE_SUPPLIER, Partner.TYPE_BOTH}:
+    if document_type == Document.TYPE_INCOMING and partner.partner_type not in {
+        Partner.TYPE_SUPPLIER,
+        Partner.TYPE_BOTH,
+    }:
         raise HTTPException(status_code=409, detail="Incoming document requires supplier partner")
-    if document_type == Document.TYPE_OUTGOING and partner.partner_type not in {Partner.TYPE_CUSTOMER, Partner.TYPE_BOTH}:
+    if document_type == Document.TYPE_OUTGOING and partner.partner_type not in {
+        Partner.TYPE_CUSTOMER,
+        Partner.TYPE_BOTH,
+    }:
         raise HTTPException(status_code=409, detail="Outgoing document requires customer partner")
 
 
@@ -316,25 +376,33 @@ def _validate_document_warehouse_references(
     if destination_warehouse_id is not None and db.get(Warehouse, destination_warehouse_id) is None:
         raise HTTPException(status_code=404, detail="Destination warehouse not found")
     if document_type != Document.TYPE_TRANSFER and destination_warehouse_id is not None:
-        raise HTTPException(status_code=422, detail="Destination warehouse is only valid for transfer documents")
+        raise HTTPException(
+            status_code=422, detail="Destination warehouse is only valid for transfer documents"
+        )
     if warehouse_id is not None and destination_warehouse_id == warehouse_id:
         raise HTTPException(status_code=422, detail="Transfer warehouses must be different")
 
 
-def _validate_document_line(db: Session, document_type: str, product_id: int, quantity: Decimal) -> Product:
+def _validate_document_line(
+    db: Session, document_type: str, product_id: int, quantity: Decimal
+) -> Product:
     product = db.get(Product, product_id)
     if product is None:
         raise HTTPException(status_code=404, detail="Product not found")
     if not product.is_active:
         raise HTTPException(status_code=409, detail="Inactive product cannot be used in a document")
     if document_type != Document.TYPE_ADJUSTMENT and quantity <= 0:
-        raise HTTPException(status_code=422, detail="Document line quantity must be greater than zero")
+        raise HTTPException(
+            status_code=422, detail="Document line quantity must be greater than zero"
+        )
     if quantity < 0:
         raise HTTPException(status_code=422, detail="Document line quantity cannot be negative")
     return product
 
 
-def _normalize_document_currency(db: Session, document_type: str, currency_code: str | None, exchange_rate: Decimal | None) -> tuple[str, Decimal]:
+def _normalize_document_currency(
+    db: Session, document_type: str, currency_code: str | None, exchange_rate: Decimal | None
+) -> tuple[str, Decimal]:
     if document_type != Document.TYPE_INCOMING:
         return BASE_CURRENCY_CODE, Decimal("1")
     code = currency_code or BASE_CURRENCY_CODE
@@ -356,7 +424,9 @@ def create_document(db: Session, payload: DocumentCreate) -> Document:
         payload.destination_warehouse_id,
     )
     values = payload.model_dump(exclude={"status", "total_amount", "foreign_total_amount"})
-    values["currency_code"], values["exchange_rate"] = _normalize_document_currency(db, payload.document_type, payload.currency_code, payload.exchange_rate)
+    values["currency_code"], values["exchange_rate"] = _normalize_document_currency(
+        db, payload.document_type, payload.currency_code, payload.exchange_rate
+    )
     values["total_amount"] = Decimal("0")
     values["foreign_total_amount"] = Decimal("0")
     values["number"] = _normalize_document_number(db, payload.document_type, payload.number)
@@ -378,7 +448,9 @@ def add_document_line(db: Session, document_id: int, payload: DocumentLineCreate
     _ensure_draft(document)
     _validate_document_line(db, document.document_type, payload.product_id, payload.quantity)
     price = _base_price(document, payload.price, payload.foreign_price)
-    foreign_price = payload.foreign_price if document.document_type == Document.TYPE_INCOMING else None
+    foreign_price = (
+        payload.foreign_price if document.document_type == Document.TYPE_INCOMING else None
+    )
     line = DocumentLine(
         document=document,
         product_id=payload.product_id,
@@ -386,7 +458,9 @@ def add_document_line(db: Session, document_id: int, payload: DocumentLineCreate
         price=price,
         line_total=_line_total(payload.quantity, price),
         foreign_price=foreign_price,
-        foreign_line_total=_line_total(payload.quantity, foreign_price) if foreign_price is not None else None,
+        foreign_line_total=_line_total(payload.quantity, foreign_price)
+        if foreign_price is not None
+        else None,
     )
     db.add(line)
     db.flush()
@@ -397,7 +471,9 @@ def add_document_line(db: Session, document_id: int, payload: DocumentLineCreate
     return line
 
 
-def update_document_line(db: Session, document_id: int, line_id: int, payload: DocumentLineUpdate) -> DocumentLine:
+def update_document_line(
+    db: Session, document_id: int, line_id: int, payload: DocumentLineUpdate
+) -> DocumentLine:
     document = _load_document(db, document_id)
     _ensure_draft(document)
     line = db.get(DocumentLine, line_id)
@@ -437,7 +513,9 @@ def update_document_line(db: Session, document_id: int, line_id: int, payload: D
 def update_document_header(db: Session, document_id: int, payload: DocumentUpdate) -> Document:
     document = _load_document(db, document_id)
     _ensure_draft(document)
-    values = payload.model_dump(exclude_unset=True, exclude={"status", "total_amount", "foreign_total_amount"})
+    values = payload.model_dump(
+        exclude_unset=True, exclude={"status", "total_amount", "foreign_total_amount"}
+    )
     if "document_type" in values and values["document_type"] not in _valid_document_types():
         raise HTTPException(status_code=422, detail="Invalid document type")
     next_type = values.get("document_type", document.document_type)
@@ -463,7 +541,9 @@ def update_document_header(db: Session, document_id: int, payload: DocumentUpdat
     for line in document.lines:
         _validate_document_line(db, document.document_type, line.product_id, line.quantity)
         if document.document_type == Document.TYPE_INCOMING:
-            line.foreign_price = line.foreign_price if line.foreign_price is not None else line.price
+            line.foreign_price = (
+                line.foreign_price if line.foreign_price is not None else line.price
+            )
             line.price = _base_price(document, line.price, line.foreign_price)
             line.foreign_line_total = _line_total(line.quantity, line.foreign_price)
         else:
@@ -473,7 +553,9 @@ def update_document_header(db: Session, document_id: int, payload: DocumentUpdat
         line.line_total = _line_total(line.quantity, line.price)
     _recalculate_total(document)
     new_values = {key: getattr(document, key) for key in values}
-    write_audit(db, "document", document.id, "update_header", change_details(old_values, new_values))
+    write_audit(
+        db, "document", document.id, "update_header", change_details(old_values, new_values)
+    )
     try:
         db.commit()
     except IntegrityError as exc:
@@ -506,7 +588,7 @@ def delete_draft_document(db: Session, document_id: int) -> None:
     db.commit()
 
 
-def _validate_document_warehouses(db: Session, document: Document) -> None:
+def _validate_document_warehouses(db: Session, document: Document | _RepostCandidate) -> None:
     if document.warehouse_id is None:
         raise HTTPException(status_code=422, detail="Document warehouse is required")
     _validate_document_warehouse_references(
@@ -517,11 +599,15 @@ def _validate_document_warehouses(db: Session, document: Document) -> None:
     )
     if document.document_type == Document.TYPE_TRANSFER:
         if document.destination_warehouse_id is None:
-            raise HTTPException(status_code=422, detail="Transfer document destination warehouse is required")
+            raise HTTPException(
+                status_code=422, detail="Transfer document destination warehouse is required"
+            )
         if document.destination_warehouse_id == document.warehouse_id:
             raise HTTPException(status_code=422, detail="Transfer warehouses must be different")
     elif document.destination_warehouse_id is not None:
-        raise HTTPException(status_code=422, detail="Destination warehouse is only valid for transfer documents")
+        raise HTTPException(
+            status_code=422, detail="Destination warehouse is only valid for transfer documents"
+        )
 
 
 def _active_document_allocations(db: Session, document_id: int) -> list[PaymentAllocation]:
@@ -538,7 +624,9 @@ def _active_document_allocations(db: Session, document_id: int) -> list[PaymentA
     )
 
 
-def _validate_repost_allocations(db: Session, document: Document, candidate: SimpleNamespace) -> None:
+def _validate_repost_allocations(
+    db: Session, document: Document, candidate: _RepostCandidate
+) -> None:
     allocations = _active_document_allocations(db, document.id)
     if not allocations:
         return
@@ -548,17 +636,39 @@ def _validate_repost_allocations(db: Session, document: Document, candidate: Sim
         Document.TYPE_INCOMING: Payment.TYPE_SUPPLIER_PAYMENT,
     }.get(candidate.document_type)
     if candidate.partner_id != document.partner_id or expected_payment_type is None:
-        raise HTTPException(status_code=409, detail="Reallocate posted payments before changing document partner or type")
+        raise HTTPException(
+            status_code=409,
+            detail="Reallocate posted payments before changing document partner or type",
+        )
     if any(allocation.payment.payment_type != expected_payment_type for allocation in allocations):
-        raise HTTPException(status_code=409, detail="Reallocate posted payments before changing document type")
+        raise HTTPException(
+            status_code=409, detail="Reallocate posted payments before changing document type"
+        )
     if allocated_total > candidate.total_amount:
-        raise HTTPException(status_code=409, detail="Reallocate posted payments before reducing document total")
+        raise HTTPException(
+            status_code=409, detail="Reallocate posted payments before reducing document total"
+        )
 
 
-def _document_stock_keys(document: Document) -> set[tuple[int, int]]:
-    keys = {(line.product_id, document.warehouse_id) for line in document.lines}
+def _required_warehouse_id(warehouse_id: int | None, *, destination: bool = False) -> int:
+    if warehouse_id is None:
+        detail = (
+            "Transfer document destination warehouse is required"
+            if destination
+            else "Document warehouse is required"
+        )
+        raise HTTPException(status_code=422, detail=detail)
+    return warehouse_id
+
+
+def _document_stock_keys(
+    document: Document | _RepostCandidate,
+) -> set[tuple[int, int]]:
+    warehouse_id = _required_warehouse_id(document.warehouse_id)
+    keys = {(line.product_id, warehouse_id) for line in document.lines}
     if document.document_type == Document.TYPE_TRANSFER:
-        keys.update((line.product_id, document.destination_warehouse_id) for line in document.lines)
+        destination_id = _required_warehouse_id(document.destination_warehouse_id, destination=True)
+        keys.update((line.product_id, destination_id) for line in document.lines)
     return keys
 
 
@@ -577,13 +687,19 @@ def _load_balance_quantities(
 
 
 def _plan_document_movements(
-    document: Document,
+    document: Document | _RepostCandidate,
     starting_quantities: dict[tuple[int, int], Decimal],
 ) -> tuple[list[tuple[int, int, Decimal]], dict[tuple[int, int], Decimal]]:
     quantities = dict(starting_quantities)
     movements: list[tuple[int, int, Decimal]] = []
+    warehouse_id = _required_warehouse_id(document.warehouse_id)
+    destination_id = (
+        _required_warehouse_id(document.destination_warehouse_id, destination=True)
+        if document.document_type == Document.TYPE_TRANSFER
+        else None
+    )
     for line in document.lines:
-        source_key = (line.product_id, document.warehouse_id)
+        source_key = (line.product_id, warehouse_id)
         current_quantity = quantities[source_key]
         if document.document_type == Document.TYPE_INCOMING:
             delta = line.quantity
@@ -600,11 +716,13 @@ def _plan_document_movements(
         else:
             raise DocumentRulesError("Unsupported document type")
         quantities[source_key] += delta
-        movements.append((line.product_id, document.warehouse_id, delta))
+        movements.append((line.product_id, warehouse_id, delta))
         if document.document_type == Document.TYPE_TRANSFER:
-            destination_key = (line.product_id, document.destination_warehouse_id)
+            if destination_id is None:
+                raise DocumentRulesError("Transfer document destination warehouse is required")
+            destination_key = (line.product_id, destination_id)
             quantities[destination_key] += line.quantity
-            movements.append((line.product_id, document.destination_warehouse_id, line.quantity))
+            movements.append((line.product_id, destination_id, line.quantity))
     if any(quantity < 0 for quantity in quantities.values()):
         raise DocumentRulesError("Stock operation would make stock negative")
     return movements, quantities
@@ -693,7 +811,7 @@ def post_document(db: Session, document_id: int) -> Document:
     return document
 
 
-def _build_repost_candidate(db: Session, payload: DocumentRepost) -> SimpleNamespace:
+def _build_repost_candidate(db: Session, payload: DocumentRepost) -> _RepostCandidate:
     if payload.document_type not in _valid_document_types():
         raise HTTPException(status_code=422, detail="Invalid document type")
     _validate_document_partner(db, payload.document_type, payload.partner_id)
@@ -709,19 +827,16 @@ def _build_repost_candidate(db: Session, payload: DocumentRepost) -> SimpleNames
         payload.currency_code,
         payload.exchange_rate,
     )
-    candidate = SimpleNamespace(
-        id=None,
+    candidate = _RepostCandidate(
         document_type=payload.document_type,
         number=_normalize_document_number(db, payload.document_type, payload.number),
         document_date=payload.document_date,
-        status=Document.STATUS_POSTED,
         partner_id=payload.partner_id,
         warehouse_id=payload.warehouse_id,
         destination_warehouse_id=payload.destination_warehouse_id,
         currency_code=currency_code,
         exchange_rate=exchange_rate,
         note=payload.note,
-        lines=[],
     )
     _validate_document_warehouses(db, candidate)
     for payload_line in payload.lines:
@@ -766,7 +881,9 @@ def repost_document(db: Session, document_id: int, payload: DocumentRepost) -> D
         raise HTTPException(status_code=409, detail="Only posted documents can be corrected")
     reason = payload.reason.strip()
     if len(reason) < 3:
-        raise HTTPException(status_code=422, detail="Correction reason must contain at least 3 characters")
+        raise HTTPException(
+            status_code=422, detail="Correction reason must contain at least 3 characters"
+        )
 
     try:
         old_posting_version = document.posting_version
@@ -832,7 +949,11 @@ def repost_document(db: Session, document_id: int, payload: DocumentRepost) -> D
             "repost",
             change_details(
                 {"posting_version": document.posting_version - 1, "snapshot": old_snapshot},
-                {"posting_version": document.posting_version, "reason": reason, "snapshot": new_snapshot},
+                {
+                    "posting_version": document.posting_version,
+                    "reason": reason,
+                    "snapshot": new_snapshot,
+                },
             ),
         )
         cancel_active_tasks_for_document_version(
@@ -858,7 +979,9 @@ def cancel_document(db: Session, document_id: int) -> Document:
     if document.status != Document.STATUS_POSTED:
         raise HTTPException(status_code=409, detail="Only posted documents can be cancelled")
     if _active_document_allocations(db, document.id):
-        raise HTTPException(status_code=409, detail="Reallocate posted payments before cancelling document")
+        raise HTTPException(
+            status_code=409, detail="Reallocate posted payments before cancelling document"
+        )
     _validate_document_warehouses(db, document)
 
     movements = _active_posting_movements(db, document)

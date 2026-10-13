@@ -9,7 +9,9 @@ from app.services import audit_service
 router = APIRouter(prefix="/audit", tags=["audit"])
 
 
-@router.get("", response_model=list[AuditLogRead], dependencies=[Depends(require_permission("audit.read"))])
+@router.get(
+    "", response_model=list[AuditLogRead], dependencies=[Depends(require_permission("audit.read"))]
+)
 def list_audit_logs(
     db: Session = Depends(get_db),
     entity_type: str | None = None,

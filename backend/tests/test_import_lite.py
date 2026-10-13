@@ -1,16 +1,22 @@
 from decimal import Decimal
+from io import BytesIO
+from types import SimpleNamespace
+from zipfile import ZIP_DEFLATED, ZipFile
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.api.routes import imports as imports_route
 from app.db.base import *  # noqa: F401,F403
 from app.db.session import Base, get_db
 from app.main import app
 from app.models.partners import Partner
 from app.models.products import Product, ProductGroup
 from app.models.stock import StockBalance, Warehouse
+from app.services import import_service
 from app.services.auth_seed import seed_auth_defaults
 from app.services.payments_service import get_partner_balance
 
@@ -23,7 +29,9 @@ def db() -> Session:
         poolclass=StaticPool,
     )
     Base.metadata.create_all(engine)
-    TestingSession = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+    TestingSession = sessionmaker(
+        bind=engine, autoflush=False, autocommit=False, expire_on_commit=False
+    )
     session = TestingSession()
     seed_auth_defaults(session)
     try:
@@ -45,7 +53,9 @@ def client(db: Session) -> TestClient:
         app.dependency_overrides.clear()
 
 
-def auth_header(client: TestClient, email: str = "admin@example.com", password: str = "admin123") -> dict[str, str]:
+def auth_header(
+    client: TestClient, email: str = "admin@example.com", password: str = "admin123"
+) -> dict[str, str]:
     response = client.post("/api/v1/auth/login", json={"email": email, "password": password})
     assert response.status_code == 200
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
@@ -55,7 +65,23 @@ def upload(client: TestClient, path: str, content: str, filename: str = "data.cs
     return client.post(
         path,
         content=content.encode("utf-8-sig"),
-        headers={**auth_header(client), "Content-Type": "application/octet-stream", "X-Filename": filename},
+        headers={
+            **auth_header(client),
+            "Content-Type": "application/octet-stream",
+            "X-Filename": filename,
+        },
+    )
+
+
+def upload_bytes(client: TestClient, path: str, content: bytes, filename: str):
+    return client.post(
+        path,
+        content=content,
+        headers={
+            **auth_header(client),
+            "Content-Type": "application/octet-stream",
+            "X-Filename": filename,
+        },
     )
 
 
@@ -66,7 +92,10 @@ def test_template_requires_auth(client: TestClient) -> None:
 
 
 def test_template_requires_permission(client: TestClient) -> None:
-    response = client.get("/api/v1/import/templates/products.xlsx", headers=auth_header(client, "viewer@example.com", "viewer123"))
+    response = client.get(
+        "/api/v1/import/templates/products.xlsx",
+        headers=auth_header(client, "viewer@example.com", "viewer123"),
+    )
 
     assert response.status_code == 403
 
@@ -81,7 +110,9 @@ def test_dry_run_detects_missing_fields(client: TestClient) -> None:
 
 
 def test_dry_run_detects_invalid_numbers(client: TestClient) -> None:
-    response = upload(client, "/api/v1/import/products/dry-run", "sku,name,base_price\nSKU-1,Test,abc\n")
+    response = upload(
+        client, "/api/v1/import/products/dry-run", "sku,name,base_price\nSKU-1,Test,abc\n"
+    )
 
     assert response.status_code == 200
     payload = response.json()
@@ -98,7 +129,11 @@ def test_apply_refuses_invalid_file(client: TestClient, db: Session) -> None:
 
 
 def test_products_import_creates_products(client: TestClient, db: Session) -> None:
-    response = upload(client, "/api/v1/import/products/apply", "sku,name,base_price\nSKU-1,Imported Product,12.50\n")
+    response = upload(
+        client,
+        "/api/v1/import/products/apply",
+        "sku,name,base_price\nSKU-1,Imported Product,12.50\n",
+    )
 
     assert response.status_code == 200
     assert response.json()["created"] == 1
@@ -107,7 +142,9 @@ def test_products_import_creates_products(client: TestClient, db: Session) -> No
     assert product.name == "Imported Product"
 
 
-def test_products_import_assigns_category_and_preserves_legacy_name(client: TestClient, db: Session) -> None:
+def test_products_import_assigns_category_and_preserves_legacy_name(
+    client: TestClient, db: Session
+) -> None:
     category_name = "\u041d\u0430\u043f\u0438\u0442\u043a\u0438"
     legacy_name = "Old Imported Product"
     response = upload(
@@ -128,7 +165,11 @@ def test_products_import_assigns_category_and_preserves_legacy_name(client: Test
 
 
 def test_warehouses_import_creates_warehouses(client: TestClient, db: Session) -> None:
-    response = upload(client, "/api/v1/import/warehouses/apply", "name,code,address\nImported Warehouse,WH-1,Address\n")
+    response = upload(
+        client,
+        "/api/v1/import/warehouses/apply",
+        "name,code,address\nImported Warehouse,WH-1,Address\n",
+    )
 
     assert response.status_code == 200
     assert response.json()["created"] == 1
@@ -136,7 +177,12 @@ def test_warehouses_import_creates_warehouses(client: TestClient, db: Session) -
 
 
 def test_opening_stock_updates_balances(client: TestClient, db: Session) -> None:
-    db.add_all([Product(sku="SKU-STOCK", name="Stock Product"), Warehouse(name="Stock Warehouse", code="STOCK")])
+    db.add_all(
+        [
+            Product(sku="SKU-STOCK", name="Stock Product"),
+            Warehouse(name="Stock Warehouse", code="STOCK"),
+        ]
+    )
     db.commit()
 
     response = upload(
@@ -156,7 +202,11 @@ def test_opening_partner_balances_updates_partner_balance(client: TestClient, db
     db.add(partner)
     db.commit()
 
-    response = upload(client, "/api/v1/import/opening-partner-balances/apply", "partner_name,balance\nOpening Partner,15.25\n")
+    response = upload(
+        client,
+        "/api/v1/import/opening-partner-balances/apply",
+        "partner_name,balance\nOpening Partner,15.25\n",
+    )
 
     assert response.status_code == 200
     assert get_partner_balance(db, partner.id).balance == Decimal("15.25")
@@ -166,7 +216,61 @@ def test_viewer_cannot_import(client: TestClient) -> None:
     response = client.post(
         "/api/v1/import/products/dry-run",
         content=b"sku,name\nSKU-1,Nope\n",
-        headers={**auth_header(client, "viewer@example.com", "viewer123"), "Content-Type": "application/octet-stream", "X-Filename": "data.csv"},
+        headers={
+            **auth_header(client, "viewer@example.com", "viewer123"),
+            "Content-Type": "application/octet-stream",
+            "X-Filename": "data.csv",
+        },
     )
 
     assert response.status_code == 403
+
+
+def test_import_rejects_request_body_over_limit(client: TestClient, monkeypatch) -> None:
+    monkeypatch.setattr(imports_route, "get_settings", lambda: SimpleNamespace(import_max_bytes=16))
+
+    response = upload_bytes(client, "/api/v1/import/products/dry-run", b"x" * 17, "data.csv")
+
+    assert response.status_code == 413
+    assert response.json()["detail"] == "Import file is too large"
+
+
+def test_import_rejects_too_many_rows(client: TestClient, monkeypatch) -> None:
+    settings = SimpleNamespace(import_max_rows=2)
+    monkeypatch.setattr(import_service, "get_settings", lambda: settings)
+
+    response = upload(
+        client,
+        "/api/v1/import/products/dry-run",
+        "sku,name\n1,One\n2,Two\n3,Three\n",
+    )
+
+    assert response.status_code == 413
+    assert response.json()["detail"] == "Import contains too many data rows"
+
+
+def test_import_rejects_unsupported_extension(client: TestClient) -> None:
+    response = upload_bytes(client, "/api/v1/import/products/dry-run", b"not-a-sheet", "data.xls")
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Only CSV and XLSX files are supported"
+
+
+def test_import_rejects_unsafe_xlsx_compression_ratio(client: TestClient, monkeypatch) -> None:
+    settings = SimpleNamespace(
+        import_max_rows=20_000,
+        import_xlsx_max_entries=1000,
+        import_xlsx_max_uncompressed_bytes=50 * 1024 * 1024,
+        import_xlsx_max_compression_ratio=2,
+    )
+    monkeypatch.setattr(import_service, "get_settings", lambda: settings)
+    content = BytesIO()
+    with ZipFile(content, "w", ZIP_DEFLATED) as archive:
+        archive.writestr("xl/worksheets/sheet1.xml", b"0" * 10_000)
+
+    response = upload_bytes(
+        client, "/api/v1/import/products/dry-run", content.getvalue(), "data.xlsx"
+    )
+
+    assert response.status_code == 413
+    assert response.json()["detail"] == "XLSX compression ratio is unsafe"

@@ -17,7 +17,9 @@ from app.services import export_service, reports_service
 router = APIRouter(prefix="/reports", tags=["reports"])
 
 
-def _export_response(report_key: str, report, export_format: str, filters: dict[str, object]) -> Response:
+def _export_response(
+    report_key: str, report, export_format: str, filters: dict[str, object]
+) -> Response:
     try:
         exported = export_service.export_report(report_key, report, export_format, filters)
     except ValueError as exc:
@@ -29,14 +31,27 @@ def _export_response(report_key: str, report, export_format: str, filters: dict[
     )
 
 
-@router.get("/stock-balances", response_model=StockBalancesReport, dependencies=[Depends(require_permission("reports.read"))])
+@router.get(
+    "/stock-balances",
+    response_model=StockBalancesReport,
+    dependencies=[Depends(require_permission("reports.read"))],
+)
 def stock_balances(
     warehouse_id: int | None = None,
     product_id: int | None = None,
     search: str | None = None,
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=25, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
-    return reports_service.stock_balances_report(db, warehouse_id=warehouse_id, product_id=product_id, search=search)
+    return reports_service.stock_balances_report(
+        db,
+        warehouse_id=warehouse_id,
+        product_id=product_id,
+        search=search,
+        offset=offset,
+        limit=limit,
+    )
 
 
 @router.get("/stock-balances/export", dependencies=[Depends(require_permission("reports.read"))])
@@ -47,12 +62,22 @@ def export_stock_balances(
     search: str | None = None,
     db: Session = Depends(get_db),
 ):
-    filters = {"warehouse_id": warehouse_id, "product_id": product_id, "search": search}
-    report = reports_service.stock_balances_report(db, **filters)
+    filters: dict[str, object] = {
+        "warehouse_id": warehouse_id,
+        "product_id": product_id,
+        "search": search,
+    }
+    report = reports_service.stock_balances_report(
+        db, warehouse_id=warehouse_id, product_id=product_id, search=search
+    )
     return _export_response("stock-balances", report, format, filters)
 
 
-@router.get("/stock-movements", response_model=StockMovementsReport, dependencies=[Depends(require_permission("reports.read"))])
+@router.get(
+    "/stock-movements",
+    response_model=StockMovementsReport,
+    dependencies=[Depends(require_permission("reports.read"))],
+)
 def stock_movements(
     date_from: date | None = None,
     date_to: date | None = None,
@@ -81,25 +106,38 @@ def export_stock_movements(
     document_id: int | None = None,
     db: Session = Depends(get_db),
 ):
-    filters = {
+    filters: dict[str, object] = {
         "date_from": date_from,
         "date_to": date_to,
         "warehouse_id": warehouse_id,
         "product_id": product_id,
         "document_id": document_id,
     }
-    report = reports_service.stock_movements_report(db, **filters)
+    report = reports_service.stock_movements_report(
+        db,
+        date_from=date_from,
+        date_to=date_to,
+        warehouse_id=warehouse_id,
+        product_id=product_id,
+        document_id=document_id,
+    )
     return _export_response("stock-movements", report, format, filters)
 
 
-@router.get("/partner-debts", response_model=PartnerDebtsReport, dependencies=[Depends(require_permission("reports.read"))])
+@router.get(
+    "/partner-debts",
+    response_model=PartnerDebtsReport,
+    dependencies=[Depends(require_permission("reports.read"))],
+)
 def partner_debts(
     partner_id: int | None = None,
     partner_type: str | None = None,
     only_with_balance: bool = Query(default=False),
     db: Session = Depends(get_db),
 ):
-    return reports_service.partner_debts_report(db, partner_id=partner_id, partner_type=partner_type, only_with_balance=only_with_balance)
+    return reports_service.partner_debts_report(
+        db, partner_id=partner_id, partner_type=partner_type, only_with_balance=only_with_balance
+    )
 
 
 @router.get("/partner-debts/export", dependencies=[Depends(require_permission("reports.read"))])
@@ -110,12 +148,25 @@ def export_partner_debts(
     only_with_balance: bool = Query(default=False),
     db: Session = Depends(get_db),
 ):
-    filters = {"partner_id": partner_id, "partner_type": partner_type, "only_with_balance": only_with_balance}
-    report = reports_service.partner_debts_report(db, **filters)
+    filters: dict[str, object] = {
+        "partner_id": partner_id,
+        "partner_type": partner_type,
+        "only_with_balance": only_with_balance,
+    }
+    report = reports_service.partner_debts_report(
+        db,
+        partner_id=partner_id,
+        partner_type=partner_type,
+        only_with_balance=only_with_balance,
+    )
     return _export_response("partner-debts", report, format, filters)
 
 
-@router.get("/cash-book", response_model=CashBookReport, dependencies=[Depends(require_permission("reports.read"))])
+@router.get(
+    "/cash-book",
+    response_model=CashBookReport,
+    dependencies=[Depends(require_permission("reports.read"))],
+)
 def cash_book(
     date_from: date | None = None,
     date_to: date | None = None,
@@ -141,17 +192,27 @@ def export_cash_book(
     status: str | None = None,
     db: Session = Depends(get_db),
 ):
-    filters = {
+    filters: dict[str, object] = {
         "date_from": date_from,
         "date_to": date_to,
         "operation_type": operation_type,
         "status": status,
     }
-    report = reports_service.cash_book_report(db, **filters)
+    report = reports_service.cash_book_report(
+        db,
+        date_from=date_from,
+        date_to=date_to,
+        operation_type=operation_type,
+        status=status,
+    )
     return _export_response("cash-book", report, format, filters)
 
 
-@router.get("/documents-register", response_model=DocumentsRegisterReport, dependencies=[Depends(require_permission("reports.read"))])
+@router.get(
+    "/documents-register",
+    response_model=DocumentsRegisterReport,
+    dependencies=[Depends(require_permission("reports.read"))],
+)
 def documents_register(
     date_from: date | None = None,
     date_to: date | None = None,
@@ -172,7 +233,9 @@ def documents_register(
     )
 
 
-@router.get("/documents-register/export", dependencies=[Depends(require_permission("reports.read"))])
+@router.get(
+    "/documents-register/export", dependencies=[Depends(require_permission("reports.read"))]
+)
 def export_documents_register(
     format: str = Query(default="xlsx"),
     date_from: date | None = None,
@@ -183,7 +246,7 @@ def export_documents_register(
     warehouse_id: int | None = None,
     db: Session = Depends(get_db),
 ):
-    filters = {
+    filters: dict[str, object] = {
         "date_from": date_from,
         "date_to": date_to,
         "document_type": document_type,
@@ -191,5 +254,13 @@ def export_documents_register(
         "partner_id": partner_id,
         "warehouse_id": warehouse_id,
     }
-    report = reports_service.documents_register_report(db, **filters)
+    report = reports_service.documents_register_report(
+        db,
+        date_from=date_from,
+        date_to=date_to,
+        document_type=document_type,
+        status=status,
+        partner_id=partner_id,
+        warehouse_id=warehouse_id,
+    )
     return _export_response("documents-register", report, format, filters)

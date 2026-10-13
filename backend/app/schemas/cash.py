@@ -5,7 +5,6 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.common import Timestamped
 
-
 CASH_OPERATION_TYPES = {"cash_in", "cash_out", "correction"}
 CASH_OPERATION_STATUSES = {"posted", "cancelled"}
 
@@ -44,3 +43,13 @@ class CashBalanceRead(BaseModel):
 
 class CashBookRow(CashOperationRead):
     balance: Decimal
+
+
+class CashBookPage(BaseModel):
+    items: list[CashBookRow]
+    total: int
+    offset: int
+    limit: int
+    current_balance: Decimal
+    page_opening_balance: Decimal
+    page_closing_balance: Decimal

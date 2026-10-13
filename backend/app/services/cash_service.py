@@ -1,15 +1,20 @@
 from decimal import Decimal
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.accounting import CashOperation, Payment
 from app.models.documents import Document
 from app.models.partners import Partner
-from app.schemas.cash import CashBalanceRead, CashBookRow, CashOperationCreate, CashOperationInternalCreate
+from app.schemas.cash import (
+    CashBalanceRead,
+    CashBookPage,
+    CashBookRow,
+    CashOperationCreate,
+    CashOperationInternalCreate,
+)
 from app.services.audit_writer import change_details, write_audit
-
 
 CASH_LOCK_KEY = 0x43415348
 
@@ -106,7 +111,9 @@ def create_cash_operation(
         direction = "in" if difference > 0 else "out" if difference < 0 else "correction"
     else:
         if payload.amount <= 0:
-            raise HTTPException(status_code=422, detail="Cash operation amount must be greater than zero")
+            raise HTTPException(
+                status_code=422, detail="Cash operation amount must be greater than zero"
+            )
         direction = _direction_for_type(payload.operation_type)
 
     operation = CashOperation(
@@ -158,7 +165,9 @@ def cancel_cash_operation(db: Session, operation_id: int, *, commit: bool = True
         "cash_operation",
         operation.id,
         "cancel",
-        change_details({"status": CashOperation.STATUS_POSTED}, {"status": CashOperation.STATUS_CANCELLED}),
+        change_details(
+            {"status": CashOperation.STATUS_POSTED}, {"status": CashOperation.STATUS_CANCELLED}
+        ),
     )
     if commit:
         db.commit()
@@ -168,8 +177,12 @@ def cancel_cash_operation(db: Session, operation_id: int, *, commit: bool = True
 
 def cancel_payment_cash_operations(db: Session, payment_id: int) -> list[CashOperation]:
     _lock_cash(db)
-    operations = list(db.scalars(select(CashOperation).where(CashOperation.payment_id == payment_id)))
-    posted_ids = {operation.id for operation in operations if operation.status == CashOperation.STATUS_POSTED}
+    operations = list(
+        db.scalars(select(CashOperation).where(CashOperation.payment_id == payment_id))
+    )
+    posted_ids = {
+        operation.id for operation in operations if operation.status == CashOperation.STATUS_POSTED
+    }
     _assert_nonnegative_ledger(db, excluded_operation_ids=posted_ids)
     for operation in operations:
         if operation.status == CashOperation.STATUS_POSTED:
@@ -199,36 +212,112 @@ def list_cash_operations(db: Session, skip: int = 0, limit: int = 100) -> list[C
 
 
 def get_cash_balance(db: Session) -> CashBalanceRead:
-    balance = Decimal("0")
-    for operation in db.scalars(select(CashOperation)):
-        balance += _balance_effect(operation)
-    return CashBalanceRead(balance=balance)
+    return CashBalanceRead(balance=_cash_balance_scalar(db))
+
+
+def _cash_effect_expression():
+    return case(
+        (CashOperation.status == CashOperation.STATUS_CANCELLED, 0),
+        (CashOperation.operation_type == CashOperation.TYPE_CASH_IN, CashOperation.amount),
+        (CashOperation.operation_type == CashOperation.TYPE_CASH_OUT, -CashOperation.amount),
+        (
+            (CashOperation.operation_type == CashOperation.TYPE_CORRECTION)
+            & (CashOperation.direction == "out"),
+            -CashOperation.amount,
+        ),
+        (CashOperation.operation_type == CashOperation.TYPE_CORRECTION, CashOperation.amount),
+        else_=0,
+    )
+
+
+def _cash_balance_scalar(db: Session, *filters) -> Decimal:
+    value = db.scalar(select(func.coalesce(func.sum(_cash_effect_expression()), 0)).where(*filters))
+    return Decimal(value or 0)
+
+
+def _cash_book_row(operation: CashOperation, balance: Decimal) -> CashBookRow:
+    return CashBookRow(
+        id=operation.id,
+        operation_date=operation.operation_date,
+        operation_type=operation.operation_type,
+        direction=operation.direction,
+        status=operation.status,
+        amount=operation.amount,
+        target_balance=operation.target_balance,
+        partner_id=operation.partner_id,
+        document_id=operation.document_id,
+        payment_id=operation.payment_id,
+        created_by_id=operation.created_by_id,
+        note=operation.note,
+        partner_name=operation.partner_name,
+        payment_status=operation.payment_status,
+        created_at=operation.created_at,
+        updated_at=operation.updated_at,
+        balance=balance,
+    )
+
+
+def get_cash_book_page(db: Session, *, offset: int = 0, limit: int = 25) -> CashBookPage:
+    total, current_balance_value = db.execute(
+        select(func.count(CashOperation.id), func.coalesce(func.sum(_cash_effect_expression()), 0))
+    ).one()
+    current_balance = Decimal(current_balance_value or 0)
+    stmt = (
+        select(CashOperation)
+        .options(selectinload(CashOperation.partner), selectinload(CashOperation.payment))
+        .order_by(CashOperation.operation_date.desc(), CashOperation.id.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    operations = list(db.scalars(stmt).all())
+    if not operations:
+        return CashBookPage(
+            items=[],
+            total=total,
+            offset=offset,
+            limit=limit,
+            current_balance=current_balance,
+            page_opening_balance=current_balance,
+            page_closing_balance=current_balance,
+        )
+
+    newest = operations[0]
+    if offset == 0:
+        page_closing_balance = current_balance
+    else:
+        page_closing_balance = _cash_balance_scalar(
+            db,
+            or_(
+                CashOperation.operation_date < newest.operation_date,
+                (CashOperation.operation_date == newest.operation_date)
+                & (CashOperation.id <= newest.id),
+            ),
+        )
+    running_balance = page_closing_balance
+    rows: list[CashBookRow] = []
+    for operation in operations:
+        rows.append(_cash_book_row(operation, running_balance))
+        running_balance -= _balance_effect(operation)
+    return CashBookPage(
+        items=rows,
+        total=total,
+        offset=offset,
+        limit=limit,
+        current_balance=current_balance,
+        page_opening_balance=running_balance,
+        page_closing_balance=page_closing_balance,
+    )
 
 
 def get_cash_book(db: Session) -> list[CashBookRow]:
     balance = Decimal("0")
     rows: list[CashBookRow] = []
-    for operation in list_cash_operations(db, limit=1000):
+    stmt = (
+        select(CashOperation)
+        .options(selectinload(CashOperation.partner), selectinload(CashOperation.payment))
+        .order_by(CashOperation.operation_date, CashOperation.id)
+    )
+    for operation in db.scalars(stmt):
         balance += _balance_effect(operation)
-        rows.append(
-            CashBookRow(
-                id=operation.id,
-                operation_date=operation.operation_date,
-                operation_type=operation.operation_type,
-                direction=operation.direction,
-                status=operation.status,
-                amount=operation.amount,
-                target_balance=operation.target_balance,
-                partner_id=operation.partner_id,
-                document_id=operation.document_id,
-                payment_id=operation.payment_id,
-                created_by_id=operation.created_by_id,
-                note=operation.note,
-                partner_name=operation.partner_name,
-                payment_status=operation.payment_status,
-                created_at=operation.created_at,
-                updated_at=operation.updated_at,
-                balance=balance,
-            )
-        )
+        rows.append(_cash_book_row(operation, balance))
     return rows

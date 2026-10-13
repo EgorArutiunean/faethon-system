@@ -21,7 +21,7 @@
 | Этап | Статус | Владелец | Условие завершения |
 |---|---|---|---|
 | A. Аудит и исходная проверка | Выполнен | Fullstack + QA | Зафиксированы факты и блокеры |
-| 0. Release baseline | В работе | Fullstack + QA + Project | Чистый RC SHA/tag |
+| 0. Release baseline | Выполнен | Fullstack + QA + Project | Чистый RC SHA/tag |
 | 1. Security и runtime | В работе | Fullstack + DevOps | Нет demo-доступа, работают probes/TLS |
 | 2. Legacy migration | Частично / BLOCKED | Fullstack/Data + Project | Повторяемый импорт и сверка |
 | 3. Производительность | Выполнен локально | Fullstack + QA | Рабочий объём проходит SLO; нужен staging rerun |
@@ -32,11 +32,11 @@
 
 ## Текущий фокус
 
-1. `REL-01`, `REL-07..REL-10` — классифицировать текущий diff и собрать чистый RC.
-2. `SEC-13` — завершить TLS/HSTS/CSP edge hardening.
-3. `CICD-11..CICD-19` — реализовать registry, staging promotion и rollback.
-4. `DATA-01..DATA-07` — принять решения по opening data и mapping.
-5. Запустить первый GitHub Actions RC и обновить Tailwind dev chain.
+1. `CICD-14..CICD-15` — подключить staging host/runner, environment secrets и TLS.
+2. `SEC-13` — завершить TLS/HSTS/CSP edge hardening на целевой инфраструктуре.
+3. `DATA-01..DATA-07` — принять решения по opening data и mapping.
+4. `UAT-01..UAT-18` — провести бизнес-приёмку и rehearsal на опубликованных RC digest'ах.
+5. `CICD-17..CICD-18` — настроить protected production environment и promotion без rebuild.
 
 ## A. Аудит и исходная проверка
 
@@ -70,12 +70,15 @@
 - [x] **REL-06:** перенести новые hardcoded RU-строки каталога в i18n.
 - [ ] **REL-07:** согласовать scope релиза и accepted limitations.
 - [x] **REL-08:** получить чистое рабочее дерево.
-- [x] **REL-09:** создать RC commit series и локальный tag `v0.1.0-rc.1`.
+- [x] **REL-09:** создать RC commit series и опубликовать tag
+  [`v0.1.0-rc.1`](https://github.com/EgorArutiunean/faethon-system/releases/tag/v0.1.0-rc.1)
+  на SHA `8dd7ff0c8135853dc56ca99e7e06a15fa06ea3e6`.
 - [x] **REL-10:** подготовить `CHANGELOG.md` для RC.
 
 Критерий завершения:
 
-- [ ] Один воспроизводимый SHA прошёл обязательные CI checks.
+- [x] Один воспроизводимый SHA прошёл обязательные CI checks:
+  [main push CI #13](https://github.com/EgorArutiunean/faethon-system/actions/runs/38375823933).
 - [x] Deploy из незакоммиченного рабочего дерева запрещён workflow-проверками.
 
 ## 1. Security и runtime hardening — P0/P1
@@ -389,10 +392,10 @@
 
 Все пункты ниже должны быть отмечены перед production GO:
 
-- [ ] Чистый RC SHA/tag.
-- [ ] Все обязательные CI checks green.
-- [x] Real E2E и exact production smoke green на текущем working tree;
-  перед GO повторить на чистом RC SHA и сохранить CI artifacts.
+- [x] Чистый RC SHA/tag: `v0.1.0-rc.1` / `8dd7ff0c8135853dc56ca99e7e06a15fa06ea3e6`.
+- [x] Все обязательные CI checks green на RC SHA: [CI #13](https://github.com/EgorArutiunean/faethon-system/actions/runs/38375823933).
+- [x] Real E2E и exact production smoke green на чистом RC SHA; registry
+  manifest сохранён в [release run #1](https://github.com/EgorArutiunean/faethon-system/actions/runs/38378201594).
 - [ ] Открытых P0 нет.
 - [ ] P1 закрыты либо оформлено письменное risk acceptance.
 - [ ] Legacy import и reconciliation подписаны.
@@ -443,4 +446,5 @@
 | 2026-10-13 | DR-07 implementation + DR-09: backup получил project-label discovery без CD env/secrets, 14-day scoped retention, success/failure metrics, hourly systemd unit/timer и failed/stale/missing alerts | Shell retention/failure tests `2 passed`; полный backend regression `208 passed, 4 skipped`, coverage `83.1%`; PowerShell/shell syntax green; `promtool` подтвердил 7 rules; runtime backup 129908 bytes + checksum + success metric; smoke artifacts удалены; production timer install pending |
 | 2026-10-13 | DR-08 implementation: добавлена Restic offsite replication с client-side encryption, повторной SHA-256 validation, least-privilege runbook и отдельными success/failure/freshness metrics | Targeted `4 passed`; полный backend regression `211 passed, 4 skipped`; Ruff/shell syntax green; `promtool` подтвердил 10 rules; real repository/object lock/offsite restore остаются release gate |
 | 2026-10-13 | Локальная RC qualification: backend CI gate, migration integrity, frontend build, mock и production-like E2E, workflow/Compose validation, secret/misconfiguration/dependency/image scans | Backend `211 passed, 4 skipped`, branch coverage `83.05%`; PostgreSQL `4 passed`; Playwright `5 + 8 passed`; Trivy HIGH/CRITICAL `0`; immutable local image manifest создаётся после фиксации commits |
-| 2026-10-13 | Clean digest smoke обнаружил отсутствие ORM registry import в standalone admin bootstrap; добавлен импорт `app.db.base` и fresh-process regression test | Production security `7 passed`; полный backend gate `211 passed, 4 skipped`, branch coverage `83.05%`; повторный digest smoke pending |
+| 2026-10-13 | Clean digest smoke обнаружил отсутствие ORM registry import в standalone admin bootstrap; добавлен импорт `app.db.base` и fresh-process regression test | Production security `7 passed`; полный backend gate `211 passed, 4 skipped`, branch coverage `83.05%`; повторный exact-digest smoke прошёл login/password-change/dashboard/readiness |
+| 2026-10-13 | Опубликован RC `v0.1.0-rc.1` на SHA `8dd7ff0c8135853dc56ca99e7e06a15fa06ea3e6`; два push-CI завершились успешно; release workflow собрал GHCR images и artifact manifest | Backend `sha256:cd7e6c99b913c1e37e2f5fb06b05c5e819f049b272bc59c5a139ff6fe4a55df2`; frontend `sha256:25cf239c6660f17a28ec4011aab44a12d66ec5de79259ae4ced3b8aefb21d795`; staging job queued до подключения runner `buy-modern-staging` |

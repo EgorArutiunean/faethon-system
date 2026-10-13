@@ -2,6 +2,9 @@
 
 Date: 2026-06-18
 
+> Historical plan. Superseded for release decisions by
+> `docs/deployment-work-plan.md` (updated 2026-10-11).
+
 Goal: prepare Buy Modern for the fastest safe company transition from the old BuySell program.
 
 ## Done
@@ -18,7 +21,9 @@ Goal: prepare Buy Modern for the fastest safe company transition from the old Bu
 10. Outgoing invoice HTML print form follows the observed old-program layout.
 11. Invoice PDF export with readable Russian text is implemented.
 12. Import Lite supports reference data and opening balances.
-13. Old price-list sample from `E:\primer.xlsx` was inspected: product code, name, unit, quantity, and price data are available; category-like data is embedded in the product name.
+13. The current price-list export was inspected: it contains 382 unique products,
+    units, quantities, accounting prices and retail prices. The detailed audit
+    and 15 000-row migration design are in `docs/catalog-import-plan.md`.
 14. Buy Modern product import standard now includes explicit `category` and `legacy_name` fields.
 15. A controlled data-preparation tool converts the known old price-list XLSX shape into Buy Modern `products.xlsx` and `opening-stock.xlsx` templates.
 16. Incoming documents support foreign purchase currency, fixed exchange rate, base RUB PMR conversion, and sale-price review hints.
@@ -27,7 +32,8 @@ Goal: prepare Buy Modern for the fastest safe company transition from the old Bu
 
 ## Before Release
 
-1. Prepare old price-list category mapping and run the data-preparation tool against the real export.
+1. Confirm the source price semantics, warehouse mapping, snapshot date and
+   category rules, then implement `docs/catalog-import-plan.md`.
 2. Prepare and reconcile production opening data: products, categories, warehouses, partners, stock, debts, and cash.
 3. Confirm remaining print forms and whether invoice PDF needs visual tuning against the old form.
 4. Confirm production user list, roles, and whether non-admin users need audit access.
@@ -47,13 +53,15 @@ Goal: prepare Buy Modern for the fastest safe company transition from the old Bu
 6. Frontend production build passed after currency work.
 7. Browser smoke for `/products` confirmed Russian category UI with no console errors.
 8. Live API accepted UTF-8 Russian category and product names.
-9. Local stack is running at `http://127.0.0.1:5173` and `http://127.0.0.1:8000`.
+9. Historical local smoke succeeded at `http://127.0.0.1:5173` and
+   `http://127.0.0.1:8000`; this does not describe the current runtime state.
 
 ## Current Priority
 
-1. Restore access to the real old price-list file; `E:\primer.xlsx` is not currently available in this workspace.
-2. Define or manually prepare the category map for old product names.
-3. Run the data-preparation tool against the real old price-list export and inspect generated standard templates.
-4. Run Import Lite dry-run for generated `products.xlsx` and `opening-stock.xlsx`.
-5. Run operator smoke for incoming goods in MDL/USD with sale-price review hint.
-6. Run full acceptance smoke after import improvements.
+1. Confirm the five source-data decisions listed in `docs/catalog-import-plan.md`.
+2. Correct the current converter so `Цена Розн.` becomes the sale price and
+   `Цена ост.` becomes the auditable opening cost.
+3. Add unit mapping, import batches, staging, dry-run and bulk upsert.
+4. Move the catalog UI to server-side search and pagination.
+5. Rehearse the 382-row import in a clean database and reconcile control totals.
+6. Load-test and rehearse the same process with at least 15 000 products.

@@ -1,8 +1,17 @@
 # Legacy Data Readiness
 
-Date: 2026-06-16
+Date: 2026-09-02
 
-Production launch is gated on verified legacy data. Direct automated access to `BUY.GDB` is not available yet, so the immediate migration path is a controlled manual minimum with explicit reconciliation.
+Production launch is gated on verified legacy data. Low-level read-only preview
+of `BUY.GDB` is available and has confirmed the key directory tables, but a
+repeatable structured export is not available yet. The immediate migration path
+therefore remains a controlled minimum with explicit reconciliation.
+
+Scope clarification received on 2026-09-05: `BUY.GDB` is used as the source of
+directories/reference data only. Historical documents, payments, cash entries,
+and accounting postings are not expected to be migrated from this database.
+Operational opening values must therefore come from separate signed cutoff
+reports or spreadsheets.
 
 ## Rules
 
@@ -22,14 +31,18 @@ Production launch is gated on verified legacy data. Direct automated access to `
 | Stock balances | Yes | Opening stock import | Quantity totals per warehouse match legacy report |
 | Partner debts | Yes | Opening partner balance import | Customer and supplier debt totals match legacy report |
 | Cash balance | Yes | Manual cash opening operation | Cash total matches legacy cash report |
-| Documents | Yes | Manual or staged spreadsheet import | Control documents can be traced to legacy source |
-| Payments | Yes | Manual or staged spreadsheet import | Payment totals by partner and period match legacy source |
+| Historical documents | No | Start new operational history after cutoff | Cutoff protocol states that history remains in the legacy archive |
+| Historical payments | No | Start new operational history after cutoff | Opening partner balances and cash reconcile without importing payment history |
 
 ## Manual Minimum Workflow
 
 1. Freeze a legacy cutoff date and record it in this document.
-2. Export or manually prepare CSV/XLSX files for products, warehouses, partners, opening stock, opening partner balances, cash opening balance, documents, and payments.
-   For the known old price-list export, use `migration/data_preparation/prepare_legacy_price_list.py` to produce standard `products.xlsx` and `opening-stock.xlsx` files before upload.
+2. Export directories from `BUY.GDB`: products, product groups, units, warehouses,
+   partners and any referenced currencies/price classifiers. Separately prepare
+   signed cutoff files for opening stock, partner balances and cash balance.
+   The current product/stock export and its required import changes are described
+   in `docs/catalog-import-plan.md`. Do not run the existing converter against
+   production data until its price mapping is corrected.
 3. Run Import Lite dry-runs for supported templates and fix validation errors before applying data.
 4. Enter unsupported items manually through the UI or add a scoped importer before launch.
 5. Compare report totals in the new app against legacy control totals.
@@ -49,13 +62,19 @@ Fill these before production launch.
 | Customer debt total |  |  |  | Pending |
 | Supplier debt total |  |  |  | Pending |
 | Cash balance |  |  |  | Pending |
-| Document count |  |  |  | Pending |
-| Payment total |  |  |  | Pending |
+| Historical document count | Not migrated | Not migrated | Cutoff protocol | Pending confirmation |
+| Historical payment total | Not migrated | Not migrated | Cutoff protocol | Pending confirmation |
 
 ## Open Blockers
 
-- Original InterBase server/client runtime is still missing.
-- `BUY.GDB` metadata and row samples have not been exported.
-- The previously inspected old price-list file `E:\primer.xlsx` is not currently available in this workspace.
+- InterBase 2020 is installed locally, but its server cannot start until the
+  Developer Edition registration requirement is resolved.
+- FirstAID preview confirmed relation names and representative rows, but no
+  versioned DDL/CSV export, complete metadata set or repeatable row extract has
+  been produced.
+- The current local price-list export has been inspected: 382 product rows and
+  control totals are recorded in `docs/catalog-import-plan.md`.
+- The currency represented by `у.е.`, the exact meaning of `Цена ост.`, warehouse
+  code `4444`, categories, and the snapshot date still require confirmation.
 - Exact legacy posting and cancellation rules remain unconfirmed.
 - Production server, domain/IP, HTTPS, secrets, and backup destination are not yet available.

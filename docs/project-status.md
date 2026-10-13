@@ -49,7 +49,9 @@ Implemented:
 - CSV/XLSX Import Lite for products, partners, warehouses, opening stock, and opening partner balances with dry-run validation;
 - product import standard includes explicit category assignment and raw old-program name preservation through `legacy_name`;
 - controlled data-preparation tool for converting the known old price-list export into Buy Modern standard product and opening-stock import templates;
-- old price-list sample from `E:\primer.xlsx` inspected: `BuyData` has 353 product rows with product code, name, unit, quantity, and price fields; this data must be prepared into Buy Modern standard templates before import;
+- current price-list export inspected: `BuyData` has 382 unique product rows,
+  16 309 units of stock, units of measure, accounting and retail prices; the
+  safe 15 000-row import design is recorded in `docs/catalog-import-plan.md`;
 - business logic/CRUD audit for core entities;
 - partner split into `customer`, `supplier`, and `both` with document/payment validation and UI filters;
 - read-only logistics role with assigned warehouses, server-side document scope,
@@ -82,6 +84,10 @@ This fallback is only for local development. PostgreSQL remains the intended dat
 See `docs/development-setup.md` for the PostgreSQL/Docker workflow.
 
 ## Verification
+
+Current release evidence is tracked in `docs/deployment-work-plan.md`. The
+entries below are historical snapshots and must not be used alone for a
+production GO decision.
 
 Repeated audit on 2026-09-01:
 
@@ -138,4 +144,15 @@ Deployment smoke details: `docs/deployment-smoke.md`.
 
 Legacy discovery is still unresolved. Any final accounting behavior must be confirmed from observed old-program behavior, operator knowledge, exports, screenshots, or manual control scenarios before implementation.
 
-The required production data set includes products, warehouses, partners, stock balances, debts, cash, documents, and payments. Because direct `BUY.GDB` access is still blocked by InterBase/ODS compatibility, the first migration path is a controlled manual minimum documented in `docs/legacy-data-readiness.md`.
+`BUY.GDB` is confirmed to be a source of directories/reference data for this
+migration, not a source of historical documents, payments, cash entries or
+postings. FirstAID can preview its pages and samples, but a reproducible,
+structured read-only export is still blocked by InterBase runtime registration.
+Opening stock, partner debts and cash must therefore come from separately
+signed cutoff reports or spreadsheets. The controlled path is documented in
+`docs/legacy-data-readiness.md`.
+
+The current Excel product export is available locally but intentionally ignored
+by Git because it may contain commercial data. It has not been applied to the
+database: the existing converter first needs corrected retail-price mapping,
+unit support, import batches, and auditable opening costs.

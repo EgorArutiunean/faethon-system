@@ -64,3 +64,35 @@ Avoid turning the interface into a generic CRM platform:
 - keep dense tables and forms;
 - avoid sales pipeline terminology;
 - avoid CRM-only concepts unless they directly support BuySell workflows.
+## FirstAID discovery update (2026-09-05)
+
+Low-level preview identifies the file as InterBase 7.1 / ODS 11.1, dialect 1,
+page size 4096, with 68 relations and zero bad pages. The following relation
+names were observed; mappings remain provisional until DDL and samples are
+captured:
+
+| Legacy relation | Provisional meaning | Migration relevance |
+| --- | --- | --- |
+| `CURRENSY` | Historical currency rates (`DATECUR_`, `PREISW_`, `PREISB_`, currency reference) | Optional/reference |
+| `SWAEHR` | Currency classifier | Yes if referenced by product prices |
+| `KONTR` | Counterparties | Yes, subject to PII minimisation |
+| `LICO` | Natural persons with passport/birth data | Do not export wholesale |
+| `OSTATOK` | Stock balances | Separate cutoff input; inspect linkage |
+| `SEDIZM` | Units of measure classifier; 14 values observed | Yes |
+| `SGRP` | Product-group dictionary; 25 codes observed | Yes, with quarantine for blank code text |
+| `STOVAR` | Product directory (`GRP_`, `VID_`, `KOD_`, `TEXT_` observed) | Yes |
+| `SPODR` | Divisions/warehouses classifier | Inspect next |
+| `SDOK` | Document type classifier | No history migration; useful for understanding |
+| `NAKLAD`, `LISTDOK`, `SODDOK` | Document header/register/content candidates | No history migration |
+| `OPLATA`, `LISTPLAT`, `KASBOOK`, `PROVODKA`, `SALDO`, `OBOROT` | Financial/ledger candidates | No history migration |
+
+Confirmed samples:
+
+- `SEDIZM`: 14 units of measure (`шт.`, `кг.`, `гр.`, `литр`, `пач.`,
+  `упак.`, `бут.`, `кор.`, `бан.`, `кв.м.`, `метр`, `компл.`, `лист`,
+  `м/п`). Preserve legacy ID and original text.
+- `SGRP`: product-group dictionary with 25 observed legacy codes. It mixes
+  generic categories (beverages, groceries, juice, confectionery, household
+  chemicals, vegetables/fruit) and brand-like group values (`Франзелуца`,
+  `BUCURIA`, `GELIBERT`, etc.). Code `710000` has blank visible text and must be
+  quarantined for review rather than imported as a normal category.

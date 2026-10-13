@@ -1,6 +1,7 @@
 # Legacy File Inventory
 
-Initial inventory from `C:\Users\Egor\Buy`.
+Initial inventory from the local legacy-source directory (absolute workstation
+path intentionally omitted).
 
 | File | Size | Last modified | Notes |
 | --- | ---: | --- | --- |
@@ -11,7 +12,7 @@ Initial inventory from `C:\Users\Egor\Buy`.
 | `gfix.exe` | 36864 | 2001-03-06 01:01 | InterBase Server utility, version WI-V6.0.1.6. |
 | `FUNSTART.BAT` | 368 | 2008-02-07 09:28 | Maintenance script. Do not run against the original database. |
 | `syskey` | 7 | 2016-12-09 21:45 | Contains `5952261`; likely application key or identifier. |
-| `Путь.txt` | 21 | 2016-12-11 11:56 | Contains `SERGEY:D:\Buy\BUY.GDB`. |
+| `Путь.txt` | 21 | 2016-12-11 11:56 | Contains a legacy server name and absolute database path; values intentionally redacted from this public-facing inventory. |
 | `Del139.MB` | 4096 | 2026-05-01 12:38 | Small legacy temporary/service file. |
 | `Del366.MB` | 4096 | 2026-05-01 12:42 | Small legacy temporary/service file. |
 | `Del367.MB` | 4096 | 2026-05-01 12:44 | Small legacy temporary/service file. |

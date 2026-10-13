@@ -97,7 +97,7 @@ release/operations-контур:
 | Причина skip | четыре PostgreSQL-only concurrency/accounting теста выполняются отдельным job |
 
 Последний полный backend regression после staging delivery hardening
-(2026-10-13): `210 passed, 4 skipped`; последний coverage-прогон `83.1%`; Ruff и mypy
+(2026-10-13): `211 passed, 4 skipped`; branch coverage `83.05%`; Ruff и mypy
 прошли. Шесть Prometheus rules проверены официальным `promtool`; image-only
 clean-stack smoke дошёл до migration `0018` и nginx readiness `200`.
 | Frontend TypeScript | passed |

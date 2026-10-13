@@ -23,7 +23,7 @@
 
 ### Verification
 
-- Backend: `210 passed, 4 skipped`, branch coverage `83.05%`.
+- Backend: `211 passed, 4 skipped`, branch coverage `83.05%`.
 - PostgreSQL migration/accounting integrity: `4 passed`.
 - Playwright mock UI: `5 passed`.
 - Playwright production-like nginx/FastAPI/PostgreSQL: `8 passed`.

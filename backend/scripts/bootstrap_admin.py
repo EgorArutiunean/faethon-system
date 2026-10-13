@@ -7,6 +7,7 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 from sqlalchemy import select
 
 from app.core.security import hash_password
+from app.db import base as db_base  # noqa: F401
 from app.db.session import SessionLocal
 from app.models.identity import User
 from app.services.auth_seed import seed_permissions_and_roles

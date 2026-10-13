@@ -1,3 +1,6 @@
+import subprocess
+import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -12,6 +15,27 @@ from app.db.session import Base
 from app.models.identity import User
 from app.services import auth_seed
 from scripts import bootstrap_admin, seed_demo
+
+
+def test_admin_bootstrap_registers_all_orm_models_in_a_fresh_process() -> None:
+    backend_dir = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "from scripts import bootstrap_admin; "
+                "from sqlalchemy.orm import configure_mappers; "
+                "configure_mappers()"
+            ),
+        ],
+        cwd=backend_dir,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
 
 
 def test_production_rejects_placeholder_secret() -> None:

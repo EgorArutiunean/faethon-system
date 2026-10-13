@@ -1,0 +1,503 @@
+name: Publish release candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release candidate version (vX.Y.Z-rc.N)"
+        required: true
+        type: string
+      source_sha:
+        description: "Full 40-character commit SHA from main"
+        required: true
+        type: string
+      promote_to_production:
+        description: "Request production approval after staging passes"
+        required: true
+        default: false
+        type: boolean
+      uat_reference:
+        description: "Approved UAT record URL or ID (required for production)"
+        required: false
+        type: string
+      backup_id:
+        description: "Fresh validated pre-deploy backup ID (required for production)"
+        required: false
+        type: string
+      rollback_backend_image:
+        description: "Previous backend image@sha256 reference (required for production)"
+        required: false
+        type: string
+      rollback_frontend_image:
+        description: "Previous frontend image@sha256 reference (required for production)"
+        required: false
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  packages: write
+
+concurrency:
+  group: release-publish-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Build and publish immutable images
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      version: ${{ steps.identity.outputs.version }}
+      source_sha: ${{ steps.identity.outputs.source_sha }}
+      backend_image: ${{ steps.images.outputs.backend_image }}
+      frontend_image: ${{ steps.images.outputs.frontend_image }}
+      backend_digest: ${{ steps.digests.outputs.backend }}
+      frontend_digest: ${{ steps.digests.outputs.frontend }}
+      migration_revision: ${{ steps.migration.outputs.revision }}
+    env:
+      VERSION: ${{ inputs.version }}
+      SOURCE_SHA: ${{ inputs.source_sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+
+      - name: Validate release identity
+        id: identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]] || {
+            echo "version must match vX.Y.Z-rc.N" >&2
+            exit 1
+          }
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "source_sha must be a full lowercase commit SHA" >&2
+            exit 1
+          }
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          git fetch origin main --no-tags
+          git merge-base --is-ancestor "$SOURCE_SHA" origin/main || {
+            echo "source_sha must belong to main" >&2
+            exit 1
+          }
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Require successful CI for source SHA
+        id: ci
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ci_run_url="$(
+            gh api -X GET \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$SOURCE_SHA&status=completed&per_page=100" \
+              --jq '[.workflow_runs[] | select(.conclusion == "success" and .event == "push" and .head_branch == "main")] | sort_by(.run_number) | last | .html_url // empty'
+          )"
+          test -n "$ci_run_url" || {
+            echo "No successful main push CI run exists for $SOURCE_SHA" >&2
+            exit 1
+          }
+          echo "run_url=$ci_run_url" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve image names
+        id: images
+        shell: bash
+        run: |
+          set -euo pipefail
+          repository="${GITHUB_REPOSITORY,,}"
+          backend_image="ghcr.io/${repository}-backend"
+          frontend_image="ghcr.io/${repository}-frontend"
+          echo "BACKEND_IMAGE=$backend_image" >> "$GITHUB_ENV"
+          echo "FRONTEND_IMAGE=$frontend_image" >> "$GITHUB_ENV"
+          echo "backend_image=$backend_image" >> "$GITHUB_OUTPUT"
+          echo "frontend_image=$frontend_image" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        shell: bash
+        run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build images once
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build --pull --file backend/Dockerfile.prod \
+            --label "org.opencontainers.image.revision=$SOURCE_SHA" \
+            --label "org.opencontainers.image.version=$VERSION" \
+            --tag "$BACKEND_IMAGE:$VERSION" backend
+          docker tag "$BACKEND_IMAGE:$VERSION" "$BACKEND_IMAGE:sha-$SOURCE_SHA"
+
+          docker build --pull --file frontend/Dockerfile.prod \
+            --label "org.opencontainers.image.revision=$SOURCE_SHA" \
+            --label "org.opencontainers.image.version=$VERSION" \
+            --tag "$FRONTEND_IMAGE:$VERSION" frontend
+          docker tag "$FRONTEND_IMAGE:$VERSION" "$FRONTEND_IMAGE:sha-$SOURCE_SHA"
+
+      - name: Record migration revision
+        id: migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          revision="$(docker run --rm "$BACKEND_IMAGE:$VERSION" alembic heads | awk 'NR == 1 {print $1}')"
+          test -n "$revision"
+          echo "revision=$revision" >> "$GITHUB_OUTPUT"
+
+      - name: Push immutable tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker push "$BACKEND_IMAGE:$VERSION"
+          docker push "$BACKEND_IMAGE:sha-$SOURCE_SHA"
+          docker push "$FRONTEND_IMAGE:$VERSION"
+          docker push "$FRONTEND_IMAGE:sha-$SOURCE_SHA"
+
+      - name: Resolve registry digests
+        id: digests
+        shell: bash
+        run: |
+          set -euo pipefail
+          backend_digest="$(docker buildx imagetools inspect "$BACKEND_IMAGE:$VERSION" --format '{{json .Manifest}}' | jq -er '.digest')"
+          frontend_digest="$(docker buildx imagetools inspect "$FRONTEND_IMAGE:$VERSION" --format '{{json .Manifest}}' | jq -er '.digest')"
+          [[ "$backend_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "$frontend_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          echo "backend=$backend_digest" >> "$GITHUB_OUTPUT"
+          echo "frontend=$frontend_digest" >> "$GITHUB_OUTPUT"
+
+      - name: Create release manifest
+        shell: bash
+        env:
+          BACKEND_DIGEST: ${{ steps.digests.outputs.backend }}
+          FRONTEND_DIGEST: ${{ steps.digests.outputs.frontend }}
+          MIGRATION_REVISION: ${{ steps.migration.outputs.revision }}
+          CI_RUN_URL: ${{ steps.ci.outputs.run_url }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-evidence
+          jq -n \
+            --arg version "$VERSION" \
+            --arg git_sha "$SOURCE_SHA" \
+            --arg backend "$BACKEND_IMAGE@$BACKEND_DIGEST" \
+            --arg frontend "$FRONTEND_IMAGE@$FRONTEND_DIGEST" \
+            --arg migration_revision "$MIGRATION_REVISION" \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg actor "$GITHUB_ACTOR" \
+            --arg ci_run_url "$CI_RUN_URL" \
+            --arg run_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --arg built_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{
+              version: $version,
+              git_sha: $git_sha,
+              images: {backend: $backend, frontend: $frontend},
+              migration_revision: $migration_revision,
+              repository: $repository,
+              actor: $actor,
+              ci_run_url: $ci_run_url,
+              run_url: $run_url,
+              built_at: $built_at
+            }' > "release-evidence/release-manifest-$VERSION.json"
+          jq -e . "release-evidence/release-manifest-$VERSION.json"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-manifest-${{ inputs.version }}
+          path: release-evidence/*.json
+          if-no-files-found: error
+          retention-days: 90
+
+  staging:
+    name: Deploy immutable RC to staging
+    needs: publish
+    runs-on: [self-hosted, linux, buy-modern-staging]
+    timeout-minutes: 30
+    environment:
+      name: staging
+      url: ${{ vars.STAGING_BASE_URL }}
+    permissions:
+      contents: read
+      packages: read
+    concurrency:
+      group: buy-modern-staging
+      cancel-in-progress: false
+    env:
+      RELEASE_VERSION: ${{ needs.publish.outputs.version }}
+      EXPECTED_MIGRATION_REVISION: ${{ needs.publish.outputs.migration_revision }}
+      BACKEND_IMAGE: ${{ needs.publish.outputs.backend_image }}@${{ needs.publish.outputs.backend_digest }}
+      FRONTEND_IMAGE: ${{ needs.publish.outputs.frontend_image }}@${{ needs.publish.outputs.frontend_digest }}
+      COMPOSE_PROJECT_NAME: buy-modern-staging
+      COMPOSE_FILE: docker-compose.release.yml
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.publish.outputs.source_sha }}
+
+      - name: Validate immutable deployment inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          image_pattern='^ghcr\.io/[a-z0-9._/-]+@sha256:[0-9a-f]{64}$'
+          [[ "$BACKEND_IMAGE" =~ $image_pattern ]]
+          [[ "$FRONTEND_IMAGE" =~ $image_pattern ]]
+          [[ "$EXPECTED_MIGRATION_REVISION" =~ ^[0-9]{4}_[a-z0-9_]+$ ]]
+
+      - name: Prepare staging environment
+        shell: bash
+        env:
+          STAGING_ENV_FILE: ${{ secrets.STAGING_ENV_FILE }}
+        run: |
+          set -euo pipefail
+          test -n "$STAGING_ENV_FILE"
+          umask 077
+          printf '%s\n' "$STAGING_ENV_FILE" > .env.staging
+          mkdir -p release-evidence
+
+      - name: Log in to GHCR
+        shell: bash
+        run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Pull exact release digests
+        shell: bash
+        run: docker compose --env-file .env.staging pull postgres migrate backend frontend
+
+      - name: Deploy and wait for readiness
+        shell: bash
+        run: docker compose --env-file .env.staging up -d --wait --wait-timeout 180
+
+      - name: Verify deployed schema revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_revision="$(
+            docker compose --env-file .env.staging run --rm --no-deps migrate alembic current \
+              | awk '/\(head\)/ {print $1}'
+          )"
+          test "$actual_revision" = "$EXPECTED_MIGRATION_REVISION"
+          printf '%s\n' "$actual_revision" > release-evidence/staging-schema-revision.txt
+
+      - name: Run external staging smoke
+        shell: bash
+        env:
+          SMOKE_BASE_URL: ${{ vars.STAGING_BASE_URL }}
+          SMOKE_EMAIL: ${{ secrets.STAGING_SMOKE_EMAIL }}
+          SMOKE_PASSWORD: ${{ secrets.STAGING_SMOKE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -e SMOKE_BASE_URL \
+            -e SMOKE_EMAIL \
+            -e SMOKE_PASSWORD \
+            "$BACKEND_IMAGE" \
+            python scripts/release_smoke.py \
+            > release-evidence/staging-smoke.json
+          jq -e '.status == "passed"' release-evidence/staging-smoke.json
+
+      - name: Create staging-passed manifest
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ needs.publish.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg status "staging-passed" \
+            --arg version "$RELEASE_VERSION" \
+            --arg git_sha "$SOURCE_SHA" \
+            --arg backend "$BACKEND_IMAGE" \
+            --arg frontend "$FRONTEND_IMAGE" \
+            --arg migration_revision "$EXPECTED_MIGRATION_REVISION" \
+            --arg run_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --arg deployed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --slurpfile smoke release-evidence/staging-smoke.json \
+            '{
+              status: $status,
+              version: $version,
+              git_sha: $git_sha,
+              images: {backend: $backend, frontend: $frontend},
+              migration_revision: $migration_revision,
+              smoke: $smoke[0],
+              run_url: $run_url,
+              deployed_at: $deployed_at
+            }' > "release-evidence/staging-manifest-$RELEASE_VERSION.json"
+          jq -e '.status == "staging-passed"' "release-evidence/staging-manifest-$RELEASE_VERSION.json"
+
+      - name: Capture failure logs
+        if: failure()
+        shell: bash
+        run: |
+          mkdir -p release-evidence
+          docker compose --env-file .env.staging logs --no-color backend migrate frontend \
+            > release-evidence/staging-failure.log 2>&1 || true
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: staging-evidence-${{ needs.publish.outputs.version }}
+          path: release-evidence/
+          if-no-files-found: warn
+          retention-days: 365
+
+      - name: Remove deployment credentials
+        if: always()
+        shell: bash
+        run: |
+          docker logout ghcr.io >/dev/null 2>&1 || true
+          rm -f .env.staging
+
+  production:
+    name: Promote staging-tested digests to production
+    if: ${{ inputs.promote_to_production }}
+    needs: [publish, staging]
+    runs-on: [self-hosted, linux, buy-modern-production]
+    timeout-minutes: 30
+    environment:
+      name: production
+      url: ${{ vars.PRODUCTION_BASE_URL }}
+    permissions:
+      contents: read
+      packages: read
+    concurrency:
+      group: buy-modern-production
+      cancel-in-progress: false
+    env:
+      RELEASE_VERSION: ${{ needs.publish.outputs.version }}
+      EXPECTED_MIGRATION_REVISION: ${{ needs.publish.outputs.migration_revision }}
+      BACKEND_IMAGE: ${{ needs.publish.outputs.backend_image }}@${{ needs.publish.outputs.backend_digest }}
+      FRONTEND_IMAGE: ${{ needs.publish.outputs.frontend_image }}@${{ needs.publish.outputs.frontend_digest }}
+      ROLLBACK_BACKEND_IMAGE: ${{ inputs.rollback_backend_image }}
+      ROLLBACK_FRONTEND_IMAGE: ${{ inputs.rollback_frontend_image }}
+      UAT_REFERENCE: ${{ inputs.uat_reference }}
+      BACKUP_ID: ${{ inputs.backup_id }}
+      COMPOSE_PROJECT_NAME: buy-modern-production
+      COMPOSE_FILE: docker-compose.release.yml
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.publish.outputs.source_sha }}
+
+      - name: Validate production gates and immutable images
+        shell: bash
+        run: |
+          set -euo pipefail
+          image_pattern='^ghcr\.io/[a-z0-9._/-]+@sha256:[0-9a-f]{64}$'
+          [[ "$BACKEND_IMAGE" =~ $image_pattern ]]
+          [[ "$FRONTEND_IMAGE" =~ $image_pattern ]]
+          [[ "$ROLLBACK_BACKEND_IMAGE" =~ $image_pattern ]]
+          [[ "$ROLLBACK_FRONTEND_IMAGE" =~ $image_pattern ]]
+          [[ "$EXPECTED_MIGRATION_REVISION" =~ ^[0-9]{4}_[a-z0-9_]+$ ]]
+          test -n "$UAT_REFERENCE"
+          test -n "$BACKUP_ID"
+          test "$BACKEND_IMAGE" != "$ROLLBACK_BACKEND_IMAGE"
+          test "$FRONTEND_IMAGE" != "$ROLLBACK_FRONTEND_IMAGE"
+
+      - name: Prepare production environment
+        shell: bash
+        env:
+          PRODUCTION_ENV_FILE: ${{ secrets.PRODUCTION_ENV_FILE }}
+        run: |
+          set -euo pipefail
+          test -n "$PRODUCTION_ENV_FILE"
+          umask 077
+          printf '%s\n' "$PRODUCTION_ENV_FILE" > .env.production.runtime
+          mkdir -p release-evidence
+
+      - name: Log in to GHCR
+        shell: bash
+        run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Pull exact staging-tested digests
+        shell: bash
+        run: docker compose --env-file .env.production.runtime pull postgres migrate backend frontend
+
+      - name: Deploy and wait for readiness
+        shell: bash
+        run: docker compose --env-file .env.production.runtime up -d --wait --wait-timeout 180
+
+      - name: Verify production schema revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_revision="$(
+            docker compose --env-file .env.production.runtime run --rm --no-deps migrate alembic current \
+              | awk '/\(head\)/ {print $1}'
+          )"
+          test "$actual_revision" = "$EXPECTED_MIGRATION_REVISION"
+          printf '%s\n' "$actual_revision" > release-evidence/production-schema-revision.txt
+
+      - name: Run external production smoke
+        shell: bash
+        env:
+          SMOKE_BASE_URL: ${{ vars.PRODUCTION_BASE_URL }}
+          SMOKE_EMAIL: ${{ secrets.PRODUCTION_SMOKE_EMAIL }}
+          SMOKE_PASSWORD: ${{ secrets.PRODUCTION_SMOKE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -e SMOKE_BASE_URL \
+            -e SMOKE_EMAIL \
+            -e SMOKE_PASSWORD \
+            "$BACKEND_IMAGE" \
+            python scripts/release_smoke.py \
+            > release-evidence/production-smoke.json
+          jq -e '.status == "passed"' release-evidence/production-smoke.json
+
+      - name: Create production deployment manifest
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ needs.publish.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg status "production-deployed" \
+            --arg version "$RELEASE_VERSION" \
+            --arg git_sha "$SOURCE_SHA" \
+            --arg backend "$BACKEND_IMAGE" \
+            --arg frontend "$FRONTEND_IMAGE" \
+            --arg migration_revision "$EXPECTED_MIGRATION_REVISION" \
+            --arg rollback_backend "$ROLLBACK_BACKEND_IMAGE" \
+            --arg rollback_frontend "$ROLLBACK_FRONTEND_IMAGE" \
+            --arg uat_reference "$UAT_REFERENCE" \
+            --arg backup_id "$BACKUP_ID" \
+            --arg actor "$GITHUB_ACTOR" \
+            --arg run_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --arg deployed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --slurpfile smoke release-evidence/production-smoke.json \
+            '{
+              status: $status,
+              version: $version,
+              git_sha: $git_sha,
+              images: {backend: $backend, frontend: $frontend},
+              migration_revision: $migration_revision,
+              rollback_images: {backend: $rollback_backend, frontend: $rollback_frontend},
+              uat_reference: $uat_reference,
+              backup_id: $backup_id,
+              smoke: $smoke[0],
+              actor: $actor,
+              run_url: $run_url,
+              deployed_at: $deployed_at
+            }' > "release-evidence/production-manifest-$RELEASE_VERSION.json"
+          jq -e '.status == "production-deployed"' "release-evidence/production-manifest-$RELEASE_VERSION.json"
+
+      - name: Capture failure logs
+        if: failure()
+        shell: bash
+        run: |
+          mkdir -p release-evidence
+          docker compose --env-file .env.production.runtime logs --no-color backend migrate frontend \
+            > release-evidence/production-failure.log 2>&1 || true
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: production-evidence-${{ needs.publish.outputs.version }}
+          path: release-evidence/
+          if-no-files-found: warn
+          retention-days: 365
+
+      - name: Remove deployment credentials
+        if: always()
+        shell: bash
+        run: |
+          docker logout ghcr.io >/dev/null 2>&1 || true
+          rm -f .env.production.runtime

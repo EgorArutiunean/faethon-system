@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16
+    image: postgres:16@sha256:71e27bf60b70bded003791b5573f8b808365613f341df20ffcf0c1ed7bc13ddf
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-buy_modern}
       POSTGRES_USER: ${POSTGRES_USER:-buy}
@@ -20,9 +20,17 @@ services:
     build:
       context: ./backend
     environment:
+      APP_ENV: ${APP_ENV:-development}
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://buy:buy@postgres:5432/buy_modern}
       AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:-change-me-dev-only}
-      ACCESS_TOKEN_MINUTES: ${ACCESS_TOKEN_MINUTES:-480}
+      ACCESS_TOKEN_MINUTES: ${ACCESS_TOKEN_MINUTES:-60}
+      LOGIN_MAX_ATTEMPTS: ${LOGIN_MAX_ATTEMPTS:-5}
+      LOGIN_LOCK_MINUTES: ${LOGIN_LOCK_MINUTES:-15}
+      IMPORT_MAX_BYTES: ${IMPORT_MAX_BYTES:-10485760}
+      IMPORT_MAX_ROWS: ${IMPORT_MAX_ROWS:-20000}
+      IMPORT_XLSX_MAX_UNCOMPRESSED_BYTES: ${IMPORT_XLSX_MAX_UNCOMPRESSED_BYTES:-52428800}
+      IMPORT_XLSX_MAX_ENTRIES: ${IMPORT_XLSX_MAX_ENTRIES:-1000}
+      IMPORT_XLSX_MAX_COMPRESSION_RATIO: ${IMPORT_XLSX_MAX_COMPRESSION_RATIO:-100}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
     ports:
       - "8000:8000"
@@ -39,6 +47,7 @@ services:
     environment:
       VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
       VITE_API_PROXY_TARGET: ${VITE_API_PROXY_TARGET:-http://backend:8000}
+      VITE_DEMO_MODE: ${VITE_DEMO_MODE:-true}
     ports:
       - "5173:5173"
     volumes:

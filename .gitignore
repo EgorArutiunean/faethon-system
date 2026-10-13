@@ -17,6 +17,9 @@ frontend/blob-report/
 
 backend/.pytest_cache/
 backend/pytest-cache-files-*/
+backend/.coverage
+backend/coverage.xml
+backend/pytest-*.xml
 
 *.pyc
 *.pyo
@@ -24,7 +27,9 @@ backend/pytest-cache-files-*/
 
 # Legacy working copies and downloaded tool archives are local operational artifacts.
 migration/legacy_work/
+migration/legacy_exports/
 migration/prepared_imports/
+migration/source_data/
 tools/firebird/download/
 tools/firebird/*.dll
 tools/firebird/*.conf
@@ -36,3 +41,14 @@ tools/firebird/*.txt
 tools/firebird/intl/
 tools/firebird/lock/
 tools/python_packages/
+
+# Business exports are local migration inputs and may contain commercial data.
+/*.xls
+/*.xlsx
+
+# Database backup artifacts must remain local and may contain production data.
+backups/
+*.dump
+
+# Locally generated release manifests and SBOM/security evidence.
+release-artifacts/

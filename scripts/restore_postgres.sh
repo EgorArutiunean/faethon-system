@@ -7,6 +7,7 @@ if [ "$#" -ne 1 ]; then
 fi
 
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yml}"
+ENV_FILE="${ENV_FILE:-.env.production}"
 BACKUP_FILE="$1"
 
 if [ ! -f "$BACKUP_FILE" ]; then
@@ -14,7 +15,19 @@ if [ ! -f "$BACKUP_FILE" ]; then
   exit 1
 fi
 
-cat "$BACKUP_FILE" | docker compose -f "$COMPOSE_FILE" exec -T postgres \
-  sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists --no-owner'
+if [ ! -f "$ENV_FILE" ]; then
+  echo "Environment file not found: $ENV_FILE" >&2
+  exit 1
+fi
+
+if [ -f "${BACKUP_FILE}.sha256" ]; then
+  sha256sum --check "${BACKUP_FILE}.sha256"
+fi
+
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T postgres \
+  pg_restore --list < "$BACKUP_FILE" > /dev/null
+
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T postgres \
+  sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists --no-owner' < "$BACKUP_FILE"
 
 echo "Restore completed from $BACKUP_FILE"

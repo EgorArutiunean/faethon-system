@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Buy Modern PostgreSQL backup hourly
+
+[Timer]
+OnCalendar=*-*-* *:05:00
+Persistent=true
+AccuracySec=1min
+Unit=buy-modern-backup.service
+
+[Install]
+WantedBy=timers.target

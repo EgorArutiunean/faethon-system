@@ -1,0 +1,4 @@
+self-hosted-runner:
+  labels:
+    - buy-modern-staging
+    - buy-modern-production

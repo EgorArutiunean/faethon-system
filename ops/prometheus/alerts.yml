@@ -1,0 +1,111 @@
+groups:
+  - name: buy-modern-api
+    rules:
+      - alert: BuyModernBackendDown
+        expr: up{job="buy-modern-backend"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Buy Modern backend is unavailable
+          description: Prometheus could not scrape the backend for two minutes.
+
+      - alert: BuyModernHighServerErrorRate
+        expr: |
+          (
+            sum(rate(buy_modern_http_requests_total{status=~"5.."}[5m]))
+            /
+            clamp_min(sum(rate(buy_modern_http_requests_total[5m])), 0.001)
+          ) > 0.02
+          and sum(rate(buy_modern_http_requests_total[5m])) > 0.1
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: Buy Modern API 5xx rate is above 2%
+          description: The five-minute 5xx ratio stayed above 2% for ten minutes.
+
+      - alert: BuyModernHighApiLatency
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(buy_modern_http_request_duration_seconds_bucket[5m]))
+          ) > 1.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Buy Modern API p95 latency is above 1.5 seconds
+          description: API p95 latency stayed above the release threshold for ten minutes.
+
+      - alert: BuyModernDatabasePoolSaturation
+        expr: |
+          buy_modern_db_pool_connections{state="checked_out"}
+          /
+          clamp_min(
+            buy_modern_db_pool_connections{state="size"}
+            + buy_modern_db_pool_connections{state="overflow"},
+            1
+          ) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Buy Modern database pool is above 90% utilization
+          description: Connection-pool saturation can cause API timeouts.
+
+  - name: buy-modern-backup
+    rules:
+      - alert: BuyModernBackupFailed
+        expr: buy_modern_backup_last_attempt_success == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Latest Buy Modern backup attempt failed
+          description: Inspect the scheduled job and backup metric before retrying.
+
+      - alert: BuyModernBackupStale
+        expr: time() - buy_modern_backup_last_success_timestamp_seconds > 4500
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Buy Modern backup is older than 75 minutes
+          description: Check the backup job, storage capacity, and offsite replication.
+
+      - alert: BuyModernBackupMetricMissing
+        expr: absent(buy_modern_backup_last_success_timestamp_seconds)
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: Buy Modern backup freshness metric is missing
+          description: The backup job or node-exporter textfile collector may be unavailable.
+
+      - alert: BuyModernOffsiteBackupFailed
+        expr: buy_modern_offsite_backup_last_attempt_success == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Latest Buy Modern encrypted offsite backup failed
+          description: The local backup may still be valid; inspect Restic credentials, repository and network access.
+
+      - alert: BuyModernOffsiteBackupStale
+        expr: time() - buy_modern_offsite_backup_last_success_timestamp_seconds > 4500
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Buy Modern offsite backup is older than 75 minutes
+          description: Check the Restic job and confirm that the latest validated dump reached offsite storage.
+
+      - alert: BuyModernOffsiteBackupMetricMissing
+        expr: absent(buy_modern_offsite_backup_last_success_timestamp_seconds)
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: Buy Modern offsite backup metric is missing
+          description: Offsite backup may be disabled or the node-exporter textfile collector may be unavailable.

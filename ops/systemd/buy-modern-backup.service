@@ -1,0 +1,24 @@
+[Unit]
+Description=Buy Modern validated PostgreSQL backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=buy-modern
+Group=buy-modern
+SupplementaryGroups=docker
+WorkingDirectory=/opt/buy-modern/current
+EnvironmentFile=/etc/buy-modern/backup.env
+ExecStart=/opt/buy-modern/current/scripts/backup_postgres.sh
+ExecStart=/bin/sh /opt/buy-modern/current/scripts/offsite_backup.sh
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/backups/buy-modern /var/lib/node_exporter/textfile_collector
+ReadOnlyPaths=/etc/buy-modern/restic-password
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

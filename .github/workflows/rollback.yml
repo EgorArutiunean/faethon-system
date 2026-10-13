@@ -1,0 +1,174 @@
+name: Roll back production application
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_version:
+        description: "Previously approved release version"
+        required: true
+        type: string
+      target_backend_image:
+        description: "Previous backend image@sha256 reference"
+        required: true
+        type: string
+      target_frontend_image:
+        description: "Previous frontend image@sha256 reference"
+        required: true
+        type: string
+      failed_release_reference:
+        description: "Failed deployment manifest/run URL"
+        required: true
+        type: string
+      incident_reference:
+        description: "Incident/change ticket authorizing rollback"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: buy-modern-production
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    name: Roll back application images without DB downgrade
+    runs-on: [self-hosted, linux, buy-modern-production]
+    timeout-minutes: 30
+    environment:
+      name: production
+      url: ${{ vars.PRODUCTION_BASE_URL }}
+    env:
+      RELEASE_VERSION: ${{ inputs.target_version }}
+      BACKEND_IMAGE: ${{ inputs.target_backend_image }}
+      FRONTEND_IMAGE: ${{ inputs.target_frontend_image }}
+      FAILED_RELEASE_REFERENCE: ${{ inputs.failed_release_reference }}
+      INCIDENT_REFERENCE: ${{ inputs.incident_reference }}
+      COMPOSE_PROJECT_NAME: buy-modern-production
+      COMPOSE_FILE: docker-compose.release.yml
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Validate rollback authorization and immutable images
+        shell: bash
+        run: |
+          set -euo pipefail
+          image_pattern='^ghcr\.io/[a-z0-9._/-]+@sha256:[0-9a-f]{64}$'
+          [[ "$BACKEND_IMAGE" =~ $image_pattern ]]
+          [[ "$FRONTEND_IMAGE" =~ $image_pattern ]]
+          test -n "$RELEASE_VERSION"
+          test -n "$FAILED_RELEASE_REFERENCE"
+          test -n "$INCIDENT_REFERENCE"
+
+      - name: Prepare production environment
+        shell: bash
+        env:
+          PRODUCTION_ENV_FILE: ${{ secrets.PRODUCTION_ENV_FILE }}
+        run: |
+          set -euo pipefail
+          test -n "$PRODUCTION_ENV_FILE"
+          umask 077
+          printf '%s\n' "$PRODUCTION_ENV_FILE" > .env.production.runtime
+          mkdir -p rollback-evidence
+
+      - name: Log in to GHCR
+        shell: bash
+        run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Pull exact rollback images
+        shell: bash
+        run: docker compose --env-file .env.production.runtime pull backend frontend
+
+      - name: Require schema-compatible application rollback
+        shell: bash
+        run: |
+          set -euo pipefail
+          target_head="$(docker run --rm "$BACKEND_IMAGE" alembic heads | awk 'NR == 1 {print $1}')"
+          database_revision="$(
+            docker compose --env-file .env.production.runtime run --rm --no-deps backend alembic current \
+              | awk '/\(head\)/ {print $1}'
+          )"
+          test -n "$target_head"
+          test "$database_revision" = "$target_head" || {
+            echo "Application rollback blocked: database revision is not compatible with target image" >&2
+            exit 1
+          }
+          printf '%s\n' "$target_head" > rollback-evidence/schema-revision.txt
+
+      - name: Switch application images without migration
+        shell: bash
+        run: >-
+          docker compose --env-file .env.production.runtime
+          up -d --no-deps --wait --wait-timeout 180 backend frontend
+
+      - name: Run external production smoke
+        shell: bash
+        env:
+          SMOKE_BASE_URL: ${{ vars.PRODUCTION_BASE_URL }}
+          SMOKE_EMAIL: ${{ secrets.PRODUCTION_SMOKE_EMAIL }}
+          SMOKE_PASSWORD: ${{ secrets.PRODUCTION_SMOKE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -e SMOKE_BASE_URL \
+            -e SMOKE_EMAIL \
+            -e SMOKE_PASSWORD \
+            "$BACKEND_IMAGE" \
+            python scripts/release_smoke.py \
+            > rollback-evidence/production-smoke.json
+          jq -e '.status == "passed"' rollback-evidence/production-smoke.json
+
+      - name: Create rollback record
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg status "application-rollback-complete" \
+            --arg target_version "$RELEASE_VERSION" \
+            --arg backend "$BACKEND_IMAGE" \
+            --arg frontend "$FRONTEND_IMAGE" \
+            --arg failed_release_reference "$FAILED_RELEASE_REFERENCE" \
+            --arg incident_reference "$INCIDENT_REFERENCE" \
+            --arg actor "$GITHUB_ACTOR" \
+            --arg run_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --arg rolled_back_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --slurpfile smoke rollback-evidence/production-smoke.json \
+            '{
+              status: $status,
+              target_version: $target_version,
+              images: {backend: $backend, frontend: $frontend},
+              failed_release_reference: $failed_release_reference,
+              incident_reference: $incident_reference,
+              database_downgrade: false,
+              smoke: $smoke[0],
+              actor: $actor,
+              run_url: $run_url,
+              rolled_back_at: $rolled_back_at
+            }' > "rollback-evidence/rollback-$RELEASE_VERSION.json"
+          jq -e '.status == "application-rollback-complete"' \
+            "rollback-evidence/rollback-$RELEASE_VERSION.json"
+
+      - name: Capture failure logs
+        if: failure()
+        shell: bash
+        run: |
+          mkdir -p rollback-evidence
+          docker compose --env-file .env.production.runtime logs --no-color backend frontend \
+            > rollback-evidence/rollback-failure.log 2>&1 || true
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: rollback-evidence-${{ inputs.target_version }}
+          path: rollback-evidence/
+          if-no-files-found: warn
+          retention-days: 365
+
+      - name: Remove deployment credentials
+        if: always()
+        shell: bash
+        run: |
+          docker logout ghcr.io >/dev/null 2>&1 || true
+          rm -f .env.production.runtime

@@ -1,4 +1,4 @@
-name: Roll back production application
+name: Legacy self-hosted production rollback (not Coolify)
 
 on:
   workflow_dispatch:

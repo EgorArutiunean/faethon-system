@@ -28,6 +28,12 @@ buy-modern/
 
 ## Start With Docker
 
+For staging/production on an existing Coolify server, follow
+[the Coolify deployment guide](docs/coolify-deployment.md). Use
+`docker-compose.coolify.yml` and `.env.coolify.example` with published image
+digests. The development instructions below create demo accounts and are not
+the Coolify deployment procedure.
+
 ```powershell
 Copy-Item .env.example .env
 make db

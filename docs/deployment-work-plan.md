@@ -1,6 +1,6 @@
 # Buy Modern: живой план подготовки к деплою
 
-Последнее обновление: 2026-10-13
+Последнее обновление: 2026-10-14
 Связанный аудит: [deployment-readiness-2026-10-10.md](deployment-readiness-2026-10-10.md)
 Текущее решение: **GO для demo/UAT; NO-GO для production**.
 
@@ -32,11 +32,31 @@
 
 ## Текущий фокус
 
-1. `CICD-14..CICD-15` — подключить staging host/runner, environment secrets и TLS.
+1. `CICD-14..CICD-15` — развернуть staging в существующем Coolify:
+   [пошаговая инструкция](coolify-deployment.md); отдельный GitHub runner не нужен.
 2. `SEC-13` — завершить TLS/HSTS/CSP edge hardening на целевой инфраструктуре.
 3. `DATA-01..DATA-07` — принять решения по opening data и mapping.
 4. `UAT-01..UAT-18` — провести бизнес-приёмку и rehearsal на опубликованных RC digest'ах.
-5. `CICD-17..CICD-18` — настроить protected production environment и promotion без rebuild.
+5. `CICD-17..CICD-18` — ограничить production-доступ в Coolify, фиксировать GO
+   и продвигать проверенные digest'ы без rebuild.
+
+## Coolify delivery (2026-10-14)
+
+- [x] Добавлены image-only Compose без host ports, env-шаблон и инструкция.
+- [x] Publish workflow по умолчанию не запускает legacy self-hosted deploy jobs.
+- [x] Локальные actionlint/Compose validation и изолированный smoke пройдены:
+  миграции, bootstrap/смена пароля, HTTP smoke, сохранность volume и блокировка
+  старта при ошибке миграции. См. раздел 14 [инструкции](coolify-deployment.md).
+- [ ] Конфигурация проверена на установленной версии Coolify и целевом сервере.
+- [ ] Staging resource, отдельный volume, секреты, домен и TLS настроены.
+- [ ] Образы по digest, миграция, bootstrap и внешний smoke проверены на staging.
+- [ ] Backup/restore и UAT выполнены; принято production GO/NO-GO.
+- [ ] Автоматизация Coolify API: обновление digest'ов, deploy, ожидание, smoke.
+
+Первый запуск выполняется вручную через Coolify. Старые пункты и записи про
+self-hosted runner ниже описывают прежнюю реализацию, а не требование новой схемы.
+Опубликованный RC1 остаётся на прежнем SHA; новый Compose доставляется отдельным
+commit конфигурации. Remote deploy в рамках подготовки файлов не выполнен.
 
 ## A. Аудит и исходная проверка
 

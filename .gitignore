@@ -1,5 +1,8 @@
 .env
 .env.production
+.env.coolify
+.env.staging
+.env.production.runtime
 *.log
 __pycache__/
 .pytest_cache/

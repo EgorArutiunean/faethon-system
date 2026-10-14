@@ -1,5 +1,18 @@
 # Техническое задание на CI/CD Buy Modern
 
+## Актуальный способ доставки: Coolify (2026-10-14)
+
+Развёртывание выполняется на существующем Coolify по инструкции
+[coolify-deployment.md](coolify-deployment.md). `release.yml` по умолчанию
+использует `delivery=coolify-manual`: публикует GHCR images и manifest, после
+чего оператор переносит точную пару digest'ов в Coolify, выполняет Deploy и
+фиксирует smoke/UAT. Автоматический вызов Coolify API пока не реализован.
+Описанные ниже self-hosted runners — альтернативный legacy-путь, доступный
+только при `delivery=legacy-self-hosted`. Его approvals и rollback не защищают
+ручные операции в Coolify; production GO и права доступа обеспечиваются отдельно.
+
+## Исходная спецификация legacy delivery
+
 Версия: 1.0
 Дата: 2026-10-13
 Статус: implementation draft; staging workflow подготовлен, инфраструктурная

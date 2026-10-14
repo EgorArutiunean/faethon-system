@@ -3,6 +3,14 @@ name: Publish release candidate
 on:
   workflow_dispatch:
     inputs:
+      delivery:
+        description: "Coolify: publish images, then deploy manifest digests in the panel"
+        required: true
+        type: choice
+        default: coolify-manual
+        options:
+          - coolify-manual
+          - legacy-self-hosted
       version:
         description: "Release candidate version (vX.Y.Z-rc.N)"
         required: true
@@ -12,7 +20,7 @@ on:
         required: true
         type: string
       promote_to_production:
-        description: "Request production approval after staging passes"
+        description: "Legacy self-hosted only: request production approval after staging"
         required: true
         default: false
         type: boolean
@@ -58,6 +66,8 @@ jobs:
     env:
       VERSION: ${{ inputs.version }}
       SOURCE_SHA: ${{ inputs.source_sha }}
+      DELIVERY: ${{ inputs.delivery }}
+      PROMOTE_TO_PRODUCTION: ${{ inputs.promote_to_production }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -69,6 +79,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [[ "$DELIVERY" != "legacy-self-hosted" && "$PROMOTE_TO_PRODUCTION" == "true" ]]; then
+            echo "Coolify production promotion is manual; follow docs/coolify-deployment.md" >&2
+            exit 1
+          fi
           [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]] || {
             echo "version must match vX.Y.Z-rc.N" >&2
             exit 1
@@ -209,6 +223,7 @@ jobs:
           retention-days: 90
 
   staging:
+    if: ${{ inputs.delivery == 'legacy-self-hosted' }}
     name: Deploy immutable RC to staging
     needs: publish
     runs-on: [self-hosted, linux, buy-modern-staging]
@@ -347,7 +362,7 @@ jobs:
 
   production:
     name: Promote staging-tested digests to production
-    if: ${{ inputs.promote_to_production }}
+    if: ${{ inputs.delivery == 'legacy-self-hosted' && inputs.promote_to_production }}
     needs: [publish, staging]
     runs-on: [self-hosted, linux, buy-modern-production]
     timeout-minutes: 30

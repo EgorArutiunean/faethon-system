@@ -151,6 +151,46 @@ jobs:
             --tag "$FRONTEND_IMAGE:$VERSION" frontend
           docker tag "$FRONTEND_IMAGE:$VERSION" "$FRONTEND_IMAGE:sha-$SOURCE_SHA"
 
+      - name: Scan exact release backend image
+        id: release-backend-scan
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          image-ref: ${{ env.BACKEND_IMAGE }}:${{ inputs.version }}
+          format: json
+          output: trivy-release-backend.json
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+
+      - name: Scan exact release frontend image
+        id: release-frontend-scan
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          image-ref: ${{ env.FRONTEND_IMAGE }}:${{ inputs.version }}
+          format: json
+          output: trivy-release-frontend.json
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: release-security-reports-${{ inputs.version }}
+          path: trivy-release-*.json
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Require clean exact release image scans before push
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ steps.release-backend-scan.outcome }}" = "success"
+          test "${{ steps.release-frontend-scan.outcome }}" = "success"
+
       - name: Record migration revision
         id: migration
         shell: bash

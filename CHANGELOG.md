@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.0-rc.2 — 2026-10-14
+
+Security refresh для первого Coolify staging. Не является production GO.
+
+- Обновлены runtime `curl` и `libcurl4t64` до `8.14.1-2+deb13u7`:
+  исправления CVE-2026-8286 и CVE-2026-8927 из Debian security.
+- Publish workflow проверяет именно публикуемую пару образов Trivy до push,
+  блокирует найденные исправляемые HIGH/CRITICAL и сохраняет JSON-отчёты.
+- Включены managed Coolify Compose, инструкция и изолированный smoke-тест.
+- Схема БД без изменений: `0018_reconcile_model_schema`.
+- RC1 больше не рекомендуется для нового развёртывания после security finding
+  в [CI от 2026-10-14](https://github.com/EgorArutiunean/faethon-system/actions/runs/38620751213).
+
+Результаты CI и публикации фиксируются отдельно в release evidence.
+
 ## 0.1.0-rc.1 — 2026-10-13
 
 Первый формально квалифицированный release candidate Buy Modern. Статус:

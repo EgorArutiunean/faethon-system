@@ -1,6 +1,6 @@
 # Buy Modern: живой план подготовки к деплою
 
-Последнее обновление: 2026-10-14
+Последнее обновление: 2026-10-15
 Связанный аудит: [deployment-readiness-2026-10-10.md](deployment-readiness-2026-10-10.md)
 Текущее решение: **GO для demo/UAT; NO-GO для production**.
 
@@ -32,7 +32,7 @@
 
 ## Текущий фокус
 
-1. `CICD-14..CICD-15` — развернуть staging в существующем Coolify:
+1. `CICD-14..CICD-15` — завершить сверку digest'ов и приёмку запущенного staging:
    [пошаговая инструкция](coolify-deployment.md); отдельный GitHub runner не нужен.
 2. `SEC-13` — завершить TLS/HSTS/CSP edge hardening на целевой инфраструктуре.
 3. `DATA-01..DATA-07` — принять решения по opening data и mapping.
@@ -44,6 +44,11 @@
 
 - [x] Добавлены image-only Compose без host ports, env-шаблон и инструкция.
 - [x] Publish workflow по умолчанию не запускает legacy self-hosted deploy jobs.
+- [x] RC2 опубликован после security refresh curl/libcurl; полный CI и
+  сканирование именно публикуемых образов прошли. [Evidence](release-rc2-security.md).
+- [x] Внешние HTTPS live/ready probes ответили 200, database=ok,
+  schema_revision=`0018_reconcile_model_schema` (2026-10-15).
+- [x] Оператор подтвердил создание администратора и успешный вход (2026-10-15).
 - [x] Локальные actionlint/Compose validation и изолированный smoke пройдены:
   миграции, bootstrap/смена пароля, HTTP smoke, сохранность volume и блокировка
   старта при ошибке миграции. См. раздел 14 [инструкции](coolify-deployment.md).
@@ -55,8 +60,10 @@
 
 Первый запуск выполняется вручную через Coolify. Старые пункты и записи про
 self-hosted runner ниже описывают прежнюю реализацию, а не требование новой схемы.
-Опубликованный RC1 остаётся на прежнем SHA; новый Compose доставляется отдельным
-commit конфигурации. Remote deploy в рамках подготовки файлов не выполнен.
+RC1 сохранён для истории, новый рекомендуемый baseline — RC2 на SHA
+`3f150991e334540643c2b6c5be562bba6087fbed`. Деплой в Coolify выполнен оператором;
+агент не запускал remote deploy. Фактические digest'ы запущенных контейнеров,
+полный авторизованный smoke и backup/restore ещё требуют подтверждения.
 
 ## A. Аудит и исходная проверка
 

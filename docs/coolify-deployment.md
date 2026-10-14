@@ -1,6 +1,6 @@
 # Buy Modern: деплой через Coolify
 
-Актуально на 2026-10-14. Цель первого запуска — staging/UAT. Production GO
+Актуально на 2026-10-15. Цель первого запуска — staging/UAT. Production GO
 требует бизнес-приёмки, решения по начальным данным и проверенного восстановления.
 Инструкция подходит для существующего Coolify и подключённого Linux-сервера
 Hetzner/Contabo. Устанавливать ещё один Coolify на deployment-сервер не требуется.
@@ -8,7 +8,7 @@ Hetzner/Contabo. Устанавливать ещё один Coolify на deploym
 ## 1. Что подготовлено в репозитории
 
 - `docker-compose.coolify.yml`: PostgreSQL → миграция → backend → frontend.
-- `.env.coolify.example`: имена переменных и опубликованная пара образов RC1.
+- `.env.coolify.example`: имена переменных и опубликованная пара образов RC2.
 - `scripts/check_coolify_compose.py`: проверка конфигурации в CI.
 - `scripts/smoke_coolify_compose.py`: изолированная проверка запуска и отказа
   миграции с временной БД; не заменяет проверку на реальном Coolify.
@@ -36,7 +36,7 @@ docker system df
 docker stats --no-stream
 ```
 
-RC1 собран для Linux AMD64: ожидается `x86_64`. Для ARM потребуется новая
+RC2 собран для Linux AMD64: ожидается `x86_64`. Для ARM потребуется новая
 сборка образов. Практический начальный резерв для одного staging: около 4 GB
 доступной RAM и 30 GB диска; это запас для тестового запуска, а не измеренное
 потребление или гарантия производительности. Учитывайте другие проекты и пики.
@@ -105,7 +105,7 @@ unset GHCR_TOKEN
 
 | Поле | Значение для staging |
 |---|---|
-| `RELEASE_VERSION` | `v0.1.0-rc.1` для первой пробы |
+| `RELEASE_VERSION` | `v0.1.0-rc.2` |
 | `BACKEND_IMAGE` | Полная ссылка `images.backend` из manifest |
 | `FRONTEND_IMAGE` | Полная ссылка `images.frontend` из того же manifest |
 | `POSTGRES_DB` | `buy_staging` |
@@ -131,8 +131,11 @@ Hex удобен тем, что не требует URL-encoding в DATABASE_URL
 Изменение POSTGRES_PASSWORD после первого старта не меняет пароль существующей
 роли PostgreSQL; ротацию выполнять отдельно, не удаляя volume.
 
-Пара RC1 уже опубликована, ссылки находятся в `.env.coolify.example` и
-[manifest artifact релизного запуска](https://github.com/EgorArutiunean/faethon-system/actions/runs/38378201594).
+Пара RC2 опубликована, ссылки находятся в `.env.coolify.example` и
+[manifest artifact релизного запуска](https://github.com/EgorArutiunean/faethon-system/actions/runs/38626493169).
+RC1 не используйте для новых развёртываний: в его frontend обнаружены
+исправляемые HIGH-уязвимости curl/libcurl. RC2 обновляет эти пакеты до
+`8.14.1-2+deb13u7`. Подробности: [release evidence RC2](release-rc2-security.md).
 Не используйте `latest` и не смешивайте backend/frontend разных manifest.
 
 ## 6. Домен и TLS
@@ -176,7 +179,7 @@ curl --fail https://stage.ВАШ-ДОМЕН/health/live
 curl --fail https://stage.ВАШ-ДОМЕН/health/ready
 ```
 
-Для RC1 readiness должен вернуть `status=ready` и
+Для RC2 readiness должен вернуть `status=ready` и
 `schema_revision=0018_reconcile_model_schema`. Откройте `/login`.
 В Coolify Terminal сервиса backend дополнительно выполните `alembic current`.
 
@@ -256,7 +259,7 @@ BACKUP_COMPOSE_PROJECT=ФАКТИЧЕСКИЙ_PROJECT BACKUP_DIR=/var/backups/bu
 ## 11. Обновление RC и production
 
 1. Изменения приложения проходят CI на `main`.
-2. Запустите `Publish release candidate` с **новой** version (например RC2),
+2. Запустите `Publish release candidate` с **новой** version (после RC2 — RC3),
    полным source SHA и `delivery=coolify-manual`; `promote_to_production=false`.
 3. Скачайте новый release manifest после успешного publish. Не перезапускайте
    публикацию под уже использованной версией: version tags реестра технически
@@ -353,6 +356,15 @@ python scripts/smoke_coolify_compose.py --backend-image 'BACKEND_IMAGE@sha256:..
 - [ ] Admin создан; временный пароль заменён; внешний smoke прошёл.
 - [ ] Backup, offsite и восстановление в изолированную БД проверены.
 - [ ] UAT выполнен; решение о production GO/NO-GO записано.
+
+### RC2 и первый staging (2026-10-15)
+
+RC2 прошёл полный CI и проверку публикуемых образов до push. Оператор сообщил
+об успешном деплое, замене ссылок образов, создании администратора и входе.
+Независимая внешняя HTTPS-проверка вернула 200 для `/health/live` и
+`/health/ready`, database=ok, revision `0018_reconcile_model_schema`.
+Проверка health не подтверждает image digest и не заменяет авторизованный smoke,
+UAT или backup/restore. См. [release evidence RC2](release-rc2-security.md).
 
 ## Источники
 

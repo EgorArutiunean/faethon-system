@@ -10,6 +10,7 @@ Production использует отдельный почасовой профи
 - [x] Service/timer/env установлены; ручной systemd job завершился успешно.
 - [x] Daily timer и точный 7-day retention подготовлены в репозитории.
 - [x] Daily/7 применено на VPS; timer включён (подтверждено оператором 15 октября).
+- [ ] Применён перенос с первоначальных 04:05 на согласованные 11:05 Europe/Chisinau.
 - [ ] Подтверждён первый фактический автоматический запуск.
 - [ ] Внешняя зашифрованная копия получена на ПК и восстановлена.
 
@@ -24,7 +25,8 @@ Production использует отдельный почасовой профи
 | Скрипт | /opt/buy-modern/current/scripts/backup_postgres.sh |
 | Env | /etc/buy-modern/staging-backup.env |
 | Копии | /var/backups/buy-staging, root-only 0700 |
-| Расписание | 04:05 Europe/Chisinau ежедневно |
+| Согласованное расписание | 11:05 Europe/Chisinau ежедневно |
+| Последнее подтверждённое на VPS | 04:05 Europe/Chisinau; перенос пока не подтверждён |
 | Retention | 7 × 24 часа, по времени изменения файла |
 
 Timezone указан прямо в OnCalendar. Persistent=true компенсирует пропущенный
@@ -57,6 +59,10 @@ Result=success, ExecMainStatus=0. Тогда retention был 0, старые к
 ещё не подтверждён. Прежняя конфигурация сохранена helper в
 `/tmp/buy-staging-daily.0rmuMq`; это временный rollback-каталог, не резервная копия БД.
 
+Позже 15 октября пользователь перенёс согласованное время на 11:05. Исходный
+timer обновлён; применение на VPS ещё требует вывода оператора. Исторический
+NEXT выше относится к первоначальным 04:05 и не подтверждает новый час.
+
 ## Обновление установленного staging до daily/7
 
 На VPS от root сначала задать STAGING_TOOLING_REF полным SHA из handoff.
@@ -74,7 +80,7 @@ set -eu
 : "${STAGING_TOOLING_REF:?Укажите полный SHA tooling commit из handoff}"
 STAGING_POLICY_INSTALLER="$(mktemp /tmp/buy-staging-policy.XXXXXX)"
 curl --fail --show-error --silent --location "https://raw.githubusercontent.com/EgorArutiunean/faethon-system/$STAGING_TOOLING_REF/scripts/configure_staging_backups.sh" --output "$STAGING_POLICY_INSTALLER"
-printf '%s  %s\n' 'b128aba884648c119260f4df671fca0124d4cad4362a53d5a2e8853823462422' "$STAGING_POLICY_INSTALLER" | sha256sum -c -
+printf '%s  %s\n' 'e4cdbded993e23678eb54f572ca93de55f0899de811f4b776b8777300fc7f009' "$STAGING_POLICY_INSTALLER" | sha256sum -c -
 STAGING_TOOLING_REF="$STAGING_TOOLING_REF" sh "$STAGING_POLICY_INSTALLER"
 )
 ~~~
@@ -82,12 +88,35 @@ STAGING_TOOLING_REF="$STAGING_TOOLING_REF" sh "$STAGING_POLICY_INSTALLER"
 Проверка календаря:
 
 ~~~bash
-systemd-analyze calendar '*-*-* 04:05:00 Europe/Chisinau'
+systemd-analyze calendar '*-*-* 11:05:00 Europe/Chisinau'
 systemctl cat buy-modern-staging-backup.timer
 ~~~
 
-NEXT может отображаться в UTC: 01:05 при UTC+3 и 02:05 при UTC+2.
+NEXT может отображаться в UTC: 08:05 при UTC+3 и 09:05 при UTC+2.
 Для подтверждения автоработы нужен новый timestamp и валидная пара dump/checksum.
+
+Если daily/7 уже установлен, для смены только времени с 04:05 на 11:05
+достаточно следующего блока. Он требует точного SHA ранее установленного
+timer, сохраняет его в отдельный временный файл и меняет только час.
+Приложение, БД, backup script и retention не затрагиваются; новый timer
+совпадает с исходником репозитория. При другом содержимом timer блок
+остановится до изменений: сначала нужно проверить фактическую конфигурацию.
+
+~~~bash
+(
+set -eu
+STAGING_TIMER=/etc/systemd/system/buy-modern-staging-backup.timer
+test -f "$STAGING_TIMER" && test ! -L "$STAGING_TIMER"
+printf '%s  %s\n' 'ec70a3a93a48b0a9e3979e51ff5d72db458f8d02f9684537fff601154b671587' "$STAGING_TIMER" | sha256sum -c -
+STAGING_TIMER_BEFORE="$(mktemp /tmp/buy-staging-timer-before.XXXXXX)"
+cp -p "$STAGING_TIMER" "$STAGING_TIMER_BEFORE"
+sed -i 's/04:05:00/11:05:00/' "$STAGING_TIMER"
+systemctl daemon-reload
+systemctl restart buy-modern-staging-backup.timer
+systemctl list-timers buy-modern-staging-backup.timer --all --no-pager
+printf 'Previous timer saved in: %s\n' "$STAGING_TIMER_BEFORE"
+)
+~~~
 
 ~~~bash
 systemctl show buy-modern-staging-backup.service -p Result -p ExecMainStatus

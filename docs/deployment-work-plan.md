@@ -57,14 +57,17 @@
   root, `/var/backups/buy-staging`, retention=0; новый dump
   `buy_modern_20261015-112125.dump`, checksum и freshness metric созданы,
   `Result=success`, `ExecMainStatus=0`. [Инструкция и evidence](staging-backup-timer.md).
-- [x] Согласовать staging-политику: ежедневно в 04:05 Europe/Chisinau,
+- [x] Согласовать staging-политику: ежедневно в 11:05 Europe/Chisinau,
   локальное хранение 7 дней; дополнительный backup перед миграциями/массовым импортом.
 - [x] Подготовить daily timer, env=7 и helper обновления установленного staging;
   исправить UTC cutoff Linux retention. Backup-скрипты: `33 passed`, Ruff и
   shell syntax — PASS; calendar/units проверены на systemd 257 в изолированном Linux.
 - [x] Применить daily/7 на сервере и включить staging timer: оператор подтвердил
   SHA-256 helper/script/timer, созданную enable-ссылку и `BACKUP_RETENTION_DAYS=7`.
-  Ближайший запуск — 16 октября в 04:05 Europe/Chisinau (01:05 UTC).
+  Первоначальный NEXT — 16 октября в 04:05 Europe/Chisinau (01:05 UTC).
+- [ ] Применить согласованный перенос на 11:05 Europe/Chisinau на VPS;
+  исходный timer и runbook обновлены. До вывода оператора сервер по-прежнему
+  считается настроенным на первоначальные 04:05. Retention остаётся 7 дней.
 - [ ] Подтвердить первый фактический автоматический backup: в переданном выводе
   таймера `LAST=-`, автоматических запусков ещё не было.
 - [x] Выбрать место внешней копии staging: ПК,

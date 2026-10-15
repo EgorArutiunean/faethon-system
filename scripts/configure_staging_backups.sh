@@ -27,7 +27,7 @@ curl --fail --show-error --silent --location "$STAGING_POLICY_SOURCE/ops/systemd
   cd "$STAGING_POLICY_DIR"
   printf '%s\n' \
     '859878ee44d3413bb181379c1bbfd8ebe9767b64a29f6c68e63569ba3ba16238  backup_postgres.sh' \
-    'ec70a3a93a48b0a9e3979e51ff5d72db458f8d02f9684537fff601154b671587  buy-modern-staging-backup.timer' | sha256sum -c -
+    '9c38b5c5c7ed2de664aa517ec16f7252610242d1adb55ea86fa6c362e1febea0  buy-modern-staging-backup.timer' | sha256sum -c -
 )
 sh -n "$STAGING_POLICY_DIR/backup_postgres.sh"
 systemd-analyze verify "$STAGING_POLICY_DIR/buy-modern-staging-backup.timer"

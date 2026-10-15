@@ -52,7 +52,9 @@ Coolify, рабочие БД и business logic не изменялись. Изм
 - Реальные backup, offsite encryption/restore, retention, расписание и доставка
   alert/recovery на сервере не проверялись; S3/Restic credentials не запрашивались.
 - systemd runtime не проверен на Windows; template требует server acceptance.
-- Новый Linux CI job `backup-restore` добавлен, но ещё не запускался на GitHub.
+- Новый Linux CI job `backup-restore` и весь push-CI успешно прошли на commit
+  [`048327f`](https://github.com/EgorArutiunean/faethon-system/commit/048327f7bea61088cf1255d9034719eeac8567d2):
+  [CI #19](https://github.com/EgorArutiunean/faethon-system/actions/runs/38720082325).
 - Не проверялись application login/dashboard на этих синтетических БД, UAT,
   реальные RPO/RTO и фактические image digest'ы Coolify.
 

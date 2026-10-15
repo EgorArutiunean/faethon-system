@@ -67,7 +67,9 @@ Offsite destination и канал уведомлений требуют выбо
 - [x] Полная backend-регрессия: `234 passed, 4 skipped`; targeted backup/restore:
   `27 passed`; Ruff, actionlint и проверки синтаксиса пройдены.
 - [x] Подготовлены CI job, исправления systemd template и инструкция.
-- [ ] Новый CI job прошёл на GitHub после публикации этих изменений.
+- [x] Новый `backup-restore` job и весь push-CI прошли на commit
+  [`048327f`](https://github.com/EgorArutiunean/faethon-system/commit/048327f7bea61088cf1255d9034719eeac8567d2):
+  [CI #19](https://github.com/EgorArutiunean/faethon-system/actions/runs/38720082325).
 - [ ] Новый systemd unit проверен в runtime и установлен на целевом сервере.
 
 Подробности и ограничения: [evidence локальных проверок](backup-safety-2026-10-15.md).

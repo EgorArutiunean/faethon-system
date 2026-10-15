@@ -62,14 +62,22 @@
 - [x] Подготовить daily timer, env=7 и helper обновления установленного staging;
   исправить UTC cutoff Linux retention. Backup-скрипты: `33 passed`, Ruff и
   shell syntax — PASS; calendar/units проверены на systemd 257 в изолированном Linux.
-- [ ] Применить daily/7 на сервере, включить staging timer и подтвердить первый
-  фактический автоматический backup. Установленные hourly/retention=0 пока не
-  считаются обновлёнными без вывода оператора.
+- [x] Применить daily/7 на сервере и включить staging timer: оператор подтвердил
+  SHA-256 helper/script/timer, созданную enable-ссылку и `BACKUP_RETENTION_DAYS=7`.
+  Ближайший запуск — 16 октября в 04:05 Europe/Chisinau (01:05 UTC).
+- [ ] Подтвердить первый фактический автоматический backup: в переданном выводе
+  таймера `LAST=-`, автоматических запусков ещё не было.
 - [x] Выбрать место внешней копии staging: ПК,
   `C:\Users\Egor\Projects\BuyModern-backups`; отдельная папка создана.
+- [x] Подготовить ограниченную SSH-выдачу `list/get` и Windows-клиент encrypted
+  pull; Linux regression `81 passed`, Windows `20 tests ... OK`, включая настоящий
+  Restic round-trip и проверку повторного запуска. Авторизация и рабочие данные
+  в эти тесты не входили. [Реализация и evidence](pc-backup.md).
 - [ ] Настроить зашифрованную копию на ПК и проверить её восстановление.
-  SSH preflight с ПК завершился `Permission denied (publickey,password)`;
-  требуется отдельный доступ для чтения backups. [План](pc-backup.md).
+  Non-interactive SSH preflight завершился `Permission denied (publickey,password)`;
+  отдельный ключ ПК подготовлен, но ещё не добавлен в read-only авторизацию VPS.
+  Portable Restic 0.19.1 установлен в выбранной папке; архив и manifest сверены
+  с официальными SHA-256. [План](pc-backup.md).
 - [ ] Выбрать канал уведомлений; проверить доставку тестового alert и recovery,
   контроль доступности, свободного диска/RAM и давности последнего backup.
 
@@ -79,8 +87,9 @@
 не выдаётся. Этот порядок — план работ, а не автоматически запланированный запуск.
 
 Доступ к host пока через терминал оператора. Секреты не передавать в чат.
-Offsite destination и канал уведомлений требуют выбора оператора; локальная
-копия на том же VPS не считается выполненным offsite backup.
+Offsite destination выбран (ПК), но авторизация и первый encrypted pull ещё
+не завершены. Канал уведомлений требует выбора оператора; локальная копия
+на том же VPS не считается выполненным offsite backup.
 
 ### Выполнено без терминала сервера (15 октября)
 
@@ -106,8 +115,8 @@ Offsite destination и канал уведомлений требуют выбо
 
 Подробности и ограничения: [evidence локальных проверок](backup-safety-2026-10-15.md).
 Первый backup, изолированный restore и ручной запуск через systemd реального
-staging подтверждены оператором; enable/автоматический запуск timer, offsite,
-alert delivery и оценка RPO/RTO остаются открытыми.
+staging подтверждены оператором; daily timer включён. Первый автоматический
+запуск, offsite, alert delivery и оценка RPO/RTO остаются открытыми.
 
 ### Release gates
 

@@ -9,7 +9,7 @@ Production использует отдельный почасовой профи
 - [x] Первый серверный backup и изолированное восстановление проверены.
 - [x] Service/timer/env установлены; ручной systemd job завершился успешно.
 - [x] Daily timer и точный 7-day retention подготовлены в репозитории.
-- [ ] Daily/7 применено на VPS; timer включён.
+- [x] Daily/7 применено на VPS; timer включён (подтверждено оператором 15 октября).
 - [ ] Подтверждён первый фактический автоматический запуск.
 - [ ] Внешняя зашифрованная копия получена на ПК и восстановлена.
 
@@ -49,6 +49,13 @@ Result=success, ExecMainStatus=0. Тогда retention был 0, старые к
 
 Первоначальная установка использовала commit c0405934d583baeb749ef53941fddd6cae6de684.
 Этот факт не подтверждает включение daily timer или внешнюю репликацию.
+
+После обновления через tooling commit `87ab924f0d80a0141e44230a69b8ecf6a2ff7155`
+оператор подтвердил checksum helper/script/timer, enable-ссылку в
+`timers.target.wants`, `BACKUP_RETENTION_DAYS=7` и NEXT 16 октября, 01:05 UTC
+(04:05 Europe/Chisinau). LAST пока отсутствует: первый автоматический job
+ещё не подтверждён. Прежняя конфигурация сохранена helper в
+`/tmp/buy-staging-daily.0rmuMq`; это временный rollback-каталог, не резервная копия БД.
 
 ## Обновление установленного staging до daily/7
 
@@ -107,6 +114,7 @@ systemctl disable --now buy-modern-staging-backup.timer
   staging и production одним node_exporter collector: имена .prom не разделяют серии.
 - Создание .prom не подтверждает scrape или доставку alerts.
 - Пользователь выбрал C:\Users\Egor\Projects\BuyModern-backups.
-  Папка создана, но внешняя копия ещё не получена: SSH-авторизации ПК на VPS нет.
+  Папка создана, но внешняя копия ещё не получена: non-interactive SSH-вход с ПК
+  не прошёл; отдельный ключ подготовлен и ожидает ограниченной авторизации на VPS.
   [Следующие шаги для ПК](pc-backup.md).
 - Выключенный ПК не получает обновления; локальный daily job VPS работает независимо.

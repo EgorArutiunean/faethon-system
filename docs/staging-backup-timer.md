@@ -34,8 +34,8 @@ Production unit `buy-modern-backup.service` устанавливается от�
 
 ## Установка
 
-В терминале **сервера**, от root. Используйте SHA tooling commit, предоставленный
-в handoff после публикации. Все файлы загружаются из одного закреплённого commit.
+В терминале **сервера**, от root. Tooling commit:
+`c0405934d583baeb749ef53941fddd6cae6de684`. Все файлы загружаются из этого commit.
 Предварительно проверьте отсутствие существующего staging job:
 
 ```bash
@@ -63,6 +63,42 @@ sha256sum /opt/buy-modern/current/scripts/backup_postgres.sh
 `/etc/buy-modern` (`0755`), `/var/backups/buy-staging` (`0700`) и
 `/var/lib/node_exporter/textfile_collector` (`0755`). Существующие владельцы
 metrics directory и backup files не меняются.
+
+Следующий блок выполняет загрузку, проверку SHA-256 и установку. Он отказывается
+перезаписывать существующие staging unit/env файлы и проверяет исходный backup
+script до установки. Запускать целиком; при ошибке остановиться и изучить вывод.
+
+```bash
+(
+set -eu
+command -v curl docker flock sha256sum systemctl systemd-analyze
+test ! -e /etc/systemd/system/buy-modern-staging-backup.service
+test ! -e /etc/systemd/system/buy-modern-staging-backup.timer
+test ! -e /etc/buy-modern/staging-backup.env
+printf '%s\n' '7be7ccfbb2a0200a3fb1f28ec48840eaf114016303b80df46cac56605a9791d6  /opt/buy-modern/current/scripts/backup_postgres.sh' | sha256sum -c -
+test "$(docker ps -q --filter label=com.docker.compose.project=l4w4kssko4ogk00sg8co480s --filter label=com.docker.compose.service=postgres | wc -l)" -eq 1
+STAGING_OPS_DIR="$(mktemp -d /tmp/buy-staging-systemd.XXXXXX)"
+STAGING_OPS_SOURCE=https://raw.githubusercontent.com/EgorArutiunean/faethon-system/c0405934d583baeb749ef53941fddd6cae6de684/ops/systemd
+for STAGING_OPS_FILE in buy-modern-staging-backup.service buy-modern-staging-backup.timer staging-backup.env.example; do
+  curl --fail --show-error --silent --location "$STAGING_OPS_SOURCE/$STAGING_OPS_FILE" --output "$STAGING_OPS_DIR/$STAGING_OPS_FILE"
+done
+(
+  cd "$STAGING_OPS_DIR"
+  printf '%s\n' \
+    '7d5ee246aa990aad5691212d38a6d8512ecf3499a3ed6d905b36875b2e9cd7a9  buy-modern-staging-backup.service' \
+    '1a9869d799341e4ea84ebe545eee49333a8394560f55e8c593ffc1b8580fda6e  buy-modern-staging-backup.timer' \
+    '0729ddabbc9fd733cb9f69ee907ee0779f229b0ab494d5f79dd923ae0b42b3f2  staging-backup.env.example' | sha256sum -c -
+)
+sed 's/^BACKUP_COMPOSE_PROJECT=CHANGE_ME$/BACKUP_COMPOSE_PROJECT=l4w4kssko4ogk00sg8co480s/' "$STAGING_OPS_DIR/staging-backup.env.example" > "$STAGING_OPS_DIR/staging-backup.env"
+install -d -m 0755 /etc/buy-modern /var/lib/node_exporter/textfile_collector
+install -d -m 0700 /var/backups/buy-staging
+install -o root -g root -m 0644 "$STAGING_OPS_DIR/buy-modern-staging-backup.service" /etc/systemd/system/buy-modern-staging-backup.service
+install -o root -g root -m 0644 "$STAGING_OPS_DIR/buy-modern-staging-backup.timer" /etc/systemd/system/buy-modern-staging-backup.timer
+install -o root -g root -m 0600 "$STAGING_OPS_DIR/staging-backup.env" /etc/buy-modern/staging-backup.env
+systemd-analyze verify /etc/systemd/system/buy-modern-staging-backup.service /etc/systemd/system/buy-modern-staging-backup.timer
+systemctl daemon-reload
+)
+```
 
 Перед включением расписания:
 

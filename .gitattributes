@@ -1,2 +1,6 @@
 # Linux operational scripts must remain executable by sh after a Windows checkout.
 *.sh text eol=lf
+# Keep operational files and their published SHA-256 stable across checkouts.
+*.service text eol=lf
+*.timer text eol=lf
+ops/systemd/*.env.example text eol=lf

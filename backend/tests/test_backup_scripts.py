@@ -134,12 +134,74 @@ def test_invalid_dump_is_not_published(tmp_path: Path, overrides: dict[str, str]
 def test_retention_can_be_disabled(tmp_path: Path) -> None:
     backup_dir = tmp_path / "backups"
     backup_dir.mkdir()
-    stale = backup_dir / "buy_modern_20200101-000000.dump"
-    stale.write_bytes(b"keep me")
-    os.utime(stale, (1, 1))
+    stale_pair = (
+        backup_dir / "buy_modern_20200101-000000.dump",
+        backup_dir / "buy_modern_20200101-000000.dump.sha256",
+    )
+    for path in stale_pair:
+        path.write_bytes(b"keep me")
+        os.utime(path, (1, 1))
     result = _run_backup(tmp_path, BACKUP_RETENTION_DAYS="0")
     assert result.returncode == 0, result.stderr
-    assert stale.read_bytes() == b"keep me"
+    assert all(path.read_bytes() == b"keep me" for path in stale_pair)
+
+
+def test_seven_day_retention_uses_elapsed_hours_without_rounding_up(tmp_path: Path) -> None:
+    backup_dir = tmp_path / "backups"
+    backup_dir.mkdir()
+    now = time.time()
+    recent_pair = (
+        backup_dir / "buy_modern_20200101-000000.dump",
+        backup_dir / "buy_modern_20200101-000000.dump.sha256",
+    )
+    expired_pair = (
+        backup_dir / "buy_modern_20200102-000000.dump",
+        backup_dir / "buy_modern_20200102-000000.dump.sha256",
+    )
+    for paths, age_hours in ((recent_pair, 6 * 24 + 23), (expired_pair, 7 * 24 + 1)):
+        for path in paths:
+            path.write_bytes(b"fixture")
+            modified = now - age_hours * 60 * 60
+            os.utime(path, (modified, modified))
+    nested = backup_dir / "archive" / expired_pair[0].name
+    nested.parent.mkdir()
+    nested.write_bytes(b"nested copy")
+    os.utime(nested, (1, 1))
+
+    result = _run_backup(tmp_path, BACKUP_RETENTION_DAYS="7")
+
+    assert result.returncode == 0, result.stderr
+    assert all(path.exists() for path in recent_pair)
+    assert all(not path.exists() for path in expired_pair)
+    assert nested.read_bytes() == b"nested copy"
+
+
+@pytest.mark.parametrize("overrides", [{"FAKE_EMPTY_DUMP": "1"}, {"FAKE_LIST_EXIT": "1"}])
+def test_failed_backup_does_not_apply_retention(tmp_path: Path, overrides: dict[str, str]) -> None:
+    backup_dir = tmp_path / "backups"
+    backup_dir.mkdir()
+    stale_pair = (
+        backup_dir / "buy_modern_20200101-000000.dump",
+        backup_dir / "buy_modern_20200101-000000.dump.sha256",
+    )
+    for path in stale_pair:
+        path.write_bytes(b"last usable backup")
+        os.utime(path, (1, 1))
+
+    result = _run_backup(tmp_path, BACKUP_RETENTION_DAYS="7", **overrides)
+
+    assert result.returncode != 0
+    assert all(path.read_bytes() == b"last usable backup" for path in stale_pair)
+    assert set(backup_dir.glob("*.dump*")) == set(stale_pair)
+
+
+@pytest.mark.parametrize("days", ["-1", "invalid", "7.5"])
+def test_invalid_retention_is_rejected_before_backup(tmp_path: Path, days: str) -> None:
+    result = _run_backup(tmp_path, BACKUP_RETENTION_DAYS=days)
+
+    assert result.returncode != 0
+    assert "must be a non-negative integer" in result.stderr
+    assert not (tmp_path / "backups").exists()
 
 
 def test_existing_timestamp_cannot_be_overwritten(tmp_path: Path) -> None:

@@ -133,10 +133,13 @@ mv "$TEMP_FILE" "$BACKUP_FILE"
 )
 
 if [ "$BACKUP_RETENTION_DAYS" -gt 0 ]; then
+  # UTC makes each retention day exactly 24 hours, including across DST changes.
+  # GNU find's -mtime +N rounds down the age and would retain an extra day.
+  RETENTION_CUTOFF="$(date -u --date="$BACKUP_RETENTION_DAYS days ago" +%s)"
   find "$BACKUP_DIR_ABS" -maxdepth 1 -type f \
     \( -name 'buy_modern_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9].dump' \
     -o -name 'buy_modern_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9].dump.sha256' \) \
-    -mtime "+$BACKUP_RETENTION_DAYS" -delete
+    ! -newermt "@$RETENTION_CUTOFF" -delete
 fi
 write_backup_metrics 1
 trap - EXIT

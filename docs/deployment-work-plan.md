@@ -53,10 +53,23 @@
   volume; revision, counts и суммы совпали с источником на момент сверки.
 - [x] Остановить одноразовый restore-контейнер, созданный с `--rm` и `tmpfs`;
   `docker stop` завершился успешно, Docker автоматически удаляет контейнер.
-- [ ] Установить и проверить расписание backup; записать путь и владельца job.
-  Подготовлен отдельный local-only staging timer; [инструкция установки](staging-backup-timer.md).
-- [ ] Выбрать внешнее хранилище и настроить зашифрованную offsite-копию;
-  проверить получение и восстановление этой копии.
+- [x] Установить staging service/timer/env и проверить ручной запуск systemd:
+  root, `/var/backups/buy-staging`, retention=0; новый dump
+  `buy_modern_20261015-112125.dump`, checksum и freshness metric созданы,
+  `Result=success`, `ExecMainStatus=0`. [Инструкция и evidence](staging-backup-timer.md).
+- [x] Согласовать staging-политику: ежедневно в 04:05 Europe/Chisinau,
+  локальное хранение 7 дней; дополнительный backup перед миграциями/массовым импортом.
+- [x] Подготовить daily timer, env=7 и helper обновления установленного staging;
+  исправить UTC cutoff Linux retention. Backup-скрипты: `33 passed`, Ruff и
+  shell syntax — PASS; calendar/units проверены на systemd 257 в изолированном Linux.
+- [ ] Применить daily/7 на сервере, включить staging timer и подтвердить первый
+  фактический автоматический backup. Установленные hourly/retention=0 пока не
+  считаются обновлёнными без вывода оператора.
+- [x] Выбрать место внешней копии staging: ПК,
+  `C:\Users\Egor\Projects\BuyModern-backups`; отдельная папка создана.
+- [ ] Настроить зашифрованную копию на ПК и проверить её восстановление.
+  SSH preflight с ПК завершился `Permission denied (publickey,password)`;
+  требуется отдельный доступ для чтения backups. [План](pc-backup.md).
 - [ ] Выбрать канал уведомлений; проверить доставку тестового alert и recovery,
   контроль доступности, свободного диска/RAM и давности последнего backup.
 
@@ -86,12 +99,15 @@ Offsite destination и канал уведомлений требуют выбо
   [`048327f`](https://github.com/EgorArutiunean/faethon-system/commit/048327f7bea61088cf1255d9034719eeac8567d2):
   [CI #19](https://github.com/EgorArutiunean/faethon-system/actions/runs/38720082325).
 - [x] Подготовлены отдельные staging service/timer/env: текущий root-only backup
-  directory, правильный Compose project в инструкции, retention=0 и local-only job.
-- [ ] Новый staging systemd unit проверен в runtime и установлен на целевом сервере.
+  directory и local-only job. После согласования профиль изменён на daily/7;
+  исходный ручной запуск выполнен с retention=0.
+- [x] Новый staging systemd unit установлен на целевом Ubuntu host; оператор
+  подтвердил успешный ручной запуск с созданием dump/checksum/metrics.
 
 Подробности и ограничения: [evidence локальных проверок](backup-safety-2026-10-15.md).
-Первый backup и изолированный restore реального staging подтверждены оператором;
-offsite, расписание, alert delivery и оценка RPO/RTO остаются открытыми.
+Первый backup, изолированный restore и ручной запуск через systemd реального
+staging подтверждены оператором; enable/автоматический запуск timer, offsite,
+alert delivery и оценка RPO/RTO остаются открытыми.
 
 ### Release gates
 
@@ -405,7 +421,9 @@ drill выполнены; полный авторизованный smoke, offsi
   `restore-drill-2026-10-12.md`.
 - [ ] **DR-12 / P0:** измерить и утвердить RPO/RTO.
 
-Стартовая цель: `RPO <= 1 час`, `RTO <= 2 часа`.
+Стартовая production-цель: `RPO <= 1 час`, `RTO <= 2 часа`.
+Для текущего staging согласован ежедневный backup с хранением 7 дней;
+внешняя копия на ПК обновляется только при его доступности и успешном переносе.
 
 ### Observability
 

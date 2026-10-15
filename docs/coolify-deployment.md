@@ -361,10 +361,24 @@ python scripts/smoke_coolify_compose.py --backend-image 'BACKEND_IMAGE@sha256:..
 
 RC2 прошёл полный CI и проверку публикуемых образов до push. Оператор сообщил
 об успешном деплое, замене ссылок образов, создании администратора и входе.
-Независимая внешняя HTTPS-проверка вернула 200 для `/health/live` и
-`/health/ready`, database=ok, revision `0018_reconcile_model_schema`.
-Проверка health не подтверждает image digest и не заменяет авторизованный smoke,
-UAT или backup/restore. См. [release evidence RC2](release-rc2-security.md).
+После проверенного backup и изолированного restore drill оператор выполнил
+`Redeploy`: deployment `2026-10-15 11:00:05–11:00:56 UTC` завершился `Success`.
+На Compose project `l4w4kssko4ogk00sg8co480s` контейнеры frontend, backend и
+PostgreSQL находятся в `healthy`. `docker inspect` подтвердил exact RC2 image
+references из [release evidence RC2](release-rc2-security.md), включая
+`frontend@sha256:a031a649a9987dd8cd8b7417faf6c893e2228390d43707a565616bd68b3722b6`
+и `backend@sha256:b88a592827ec5cb55270ac7a54336eb939418289ab34703db5f346cd2de49622`.
+После повторного деплоя внешняя HTTPS-проверка 2026-10-15 в 11:07 UTC вернула
+200 для `/health/live`, `/health/ready` и `/login`, database=ok,
+revision `0018_reconcile_model_schema`. Проверка TLS-сертификата не отключалась.
+HTTP `/login` перенаправляется на HTTPS (307); HTTPS-ответ содержит HSTS,
+CSP, X-Content-Type-Options, X-Frame-Options и прочие настроенные security headers.
+Оператор отдельно подтвердил `ready/database=ok/revision=0018` через браузер.
+После обновления оператор также подтвердил вход прежним администратором и работу
+панели управления; автоматический `release_smoke.py` после Redeploy ещё не запускался.
+Остаются полный авторизованный smoke, UAT и offsite-копия; healthy-контейнеры и
+image identity не заменяют этих проверок.
+Для следующего шага подготовлен [отдельный staging backup timer](staging-backup-timer.md).
 
 ## Источники
 

@@ -51,10 +51,20 @@ FRONTEND_IMAGE=ghcr.io/egorarutiunean/faethon-system-frontend@sha256:a031a649a99
   и успешном входе. Агент не выполнял remote deploy и не получал пароли.
 - Независимо проверены HTTPS GET `/health/live` и `/health/ready`: оба 200,
   status=alive/ready, database=ok, schema_revision=`0018_reconcile_model_schema`.
-  Проверка выполнялась без отключения проверки TLS-сертификата.
-- Фактические digest'ы запущенных контейнеров пока не сверены независимо.
-- Полный авторизованный smoke на staging, UAT, backup/offsite/restore и
-  production GO остаются отдельными этапами. Публичная доступность и первый
-  вход не являются production-приёмкой.
+  Проверка повторена после Redeploy 2026-10-15 в 11:07 UTC без отключения
+  TLS certificate validation. HTTPS `/login` — 200; HTTP `/login` — 307 на HTTPS;
+  в HTTPS-ответе присутствуют HSTS и CSP. Оператор также проверил readiness
+  через браузер.
+- Оператор передал вывод `docker inspect` после успешного `Redeploy`
+  2026-10-15: frontend и backend запущены по точным digest'ам этого manifest,
+  оба и PostgreSQL — `healthy`. Агент не имел прямого доступа к серверу.
+- После обновления оператор повторно подтвердил вход прежним администратором
+  и работу панели управления. Это ручная проверка; автоматизированный
+  `release_smoke.py` после Redeploy не запускался.
+- Первый серверный backup с проверкой SHA-256 и restore drill в изолированный
+  контейнер завершились; revision, counts и суммы совпали с источником.
+- Полный авторизованный smoke на staging, UAT, offsite backup и production GO
+  остаются отдельными этапами. Публичная доступность и первый вход не являются
+  production-приёмкой.
 
 Адрес staging и секреты намеренно не включены в публичный release record.

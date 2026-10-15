@@ -28,6 +28,10 @@ env-файл и не получает пароль БД. Доступ к Docker 
 
 ## Установка на Linux host
 
+Для текущего Coolify staging с уже созданным root-only backup directory
+используйте [отдельную инструкцию и units](staging-backup-timer.md). Следующие
+шаги описывают целевую production-установку с offsite и отдельным пользователем.
+
 1. Создать пользователя `buy-modern`, каталоги `/var/backups/buy-modern`,
    `/var/lib/node_exporter/textfile_collector`, `/etc/buy-modern`; выдать только
    необходимые owner/group permissions. Добавление в group `docker` фактически

@@ -38,7 +38,15 @@
 
 - [x] Сверить фактические backend/frontend image digest'ы и определить точный
   Compose project PostgreSQL: на staging обнаружена пара RC1, а не RC2.
-- [ ] После проверенного backup обновить staging до пары RC2 и повторить smoke/UAT.
+- [x] После проверенного backup обновить staging до пары RC2: Coolify deployment
+  `2026-10-15 11:00:05–11:00:56 UTC` завершился `Success`, три контейнера
+  `healthy`; `docker inspect` подтвердил оба RC2 digest'а из release manifest.
+- [x] Повторить внешние HTTPS probes после Redeploy RC2: live/ready и `/login`
+  отвечают 200; database=ok, revision `0018`; HTTP перенаправляется на HTTPS
+  (307), HSTS/CSP присутствуют. Проверено 2026-10-15 в 11:07 UTC.
+- [ ] Выполнить полный авторизованный smoke на развёрнутом RC2; UAT — 16 октября.
+- [x] Оператор повторно вошёл прежним администратором после Redeploy RC2 и
+  подтвердил работу панели управления (2026-10-15); проверка ручная.
 - [x] Выполнить первый серверный backup staging, проверить SHA-256 и читаемость dump:
   `buy_modern_20261015-104128.dump`, checksum `OK`, retention отключён.
 - [x] Провести restore drill в отдельном контейнере без сети, портов и общего
@@ -46,6 +54,7 @@
 - [x] Остановить одноразовый restore-контейнер, созданный с `--rm` и `tmpfs`;
   `docker stop` завершился успешно, Docker автоматически удаляет контейнер.
 - [ ] Установить и проверить расписание backup; записать путь и владельца job.
+  Подготовлен отдельный local-only staging timer; [инструкция установки](staging-backup-timer.md).
 - [ ] Выбрать внешнее хранилище и настроить зашифрованную offsite-копию;
   проверить получение и восстановление этой копии.
 - [ ] Выбрать канал уведомлений; проверить доставку тестового alert и recovery,
@@ -76,7 +85,9 @@ Offsite destination и канал уведомлений требуют выбо
 - [x] Новый `backup-restore` job и весь push-CI прошли на commit
   [`048327f`](https://github.com/EgorArutiunean/faethon-system/commit/048327f7bea61088cf1255d9034719eeac8567d2):
   [CI #19](https://github.com/EgorArutiunean/faethon-system/actions/runs/38720082325).
-- [ ] Новый systemd unit проверен в runtime и установлен на целевом сервере.
+- [x] Подготовлены отдельные staging service/timer/env: текущий root-only backup
+  directory, правильный Compose project в инструкции, retention=0 и local-only job.
+- [ ] Новый staging systemd unit проверен в runtime и установлен на целевом сервере.
 
 Подробности и ограничения: [evidence локальных проверок](backup-safety-2026-10-15.md).
 Первый backup и изолированный restore реального staging подтверждены оператором;
@@ -86,7 +97,8 @@ offsite, расписание, alert delivery и оценка RPO/RTO остаю
 
 1. `CICD-14..CICD-15` — завершить сверку digest'ов и приёмку запущенного staging:
    [пошаговая инструкция](coolify-deployment.md); отдельный GitHub runner не нужен.
-2. `SEC-13` — завершить TLS/HSTS/CSP edge hardening на целевой инфраструктуре.
+2. `SEC-13` — повторить TLS/HSTS/CSP edge-проверки перед production;
+   внешний staging HTTPS/redirect/headers подтверждены 15 октября.
 3. `DATA-01..DATA-07` — принять решения по opening data и mapping.
 4. `UAT-01..UAT-18` — провести бизнес-приёмку и rehearsal на опубликованных RC digest'ах.
 5. `CICD-17..CICD-18` — ограничить production-доступ в Coolify, фиксировать GO
@@ -114,8 +126,9 @@ offsite, расписание, alert delivery и оценка RPO/RTO остаю
 self-hosted runner ниже описывают прежнюю реализацию, а не требование новой схемы.
 RC1 сохранён для истории, новый рекомендуемый baseline — RC2 на SHA
 `3f150991e334540643c2b6c5be562bba6087fbed`. Деплой в Coolify выполнен оператором;
-агент не запускал remote deploy. Фактические digest'ы запущенных контейнеров,
-полный авторизованный smoke и backup/restore ещё требуют подтверждения.
+агент не запускал remote deploy. Фактические digest'ы RC2 и три healthy-контейнера
+подтверждены оператором 2026-10-15. Первый серверный backup и изолированный restore
+drill выполнены; полный авторизованный smoke, offsite-копия и UAT ещё не завершены.
 
 ## A. Аудит и исходная проверка
 
@@ -177,7 +190,10 @@ RC1 сохранён для истории, новый рекомендуемы�
 - [x] **SEC-10 / P1:** добавить persistent account lockout: 5 неудачных попыток / 15 минут по умолчанию, row lock и generic auth response.
 - [x] **SEC-11 / P1:** access-only JWT без refresh для первого релиза; production TTL <= 60 минут; logout/password change/admin reset отзывают старые токены через persistent `token_version`.
 - [x] **SEC-12 / P1:** backend limits: 10 MiB body, 20 000 строк, allowlist CSV/XLSX, ZIP entries/unpacked-size/compression/encryption checks.
-- [ ] **SEC-13 / P1:** настроить HTTPS, HSTS и CSP. HSTS/CSP/security headers реализованы в production nginx; TLS certificate, HTTP->HTTPS redirect и public-URL smoke ожидают target infrastructure.
+- [ ] **SEC-13 / P1:** настроить HTTPS, HSTS и CSP. Внешний staging после RC2:
+  HTTPS certificate validation, HTTP->HTTPS 307, HSTS/CSP/security headers,
+  live/ready и `/login` проверены 2026-10-15 в 11:07 UTC. На production-пути
+  проверку повторить перед GO; авторизованный staging smoke ещё не завершён.
 - [x] **SEC-14 / P1:** ограничить CORS явными production HTTPS-origin.
 
 Критерий завершения:

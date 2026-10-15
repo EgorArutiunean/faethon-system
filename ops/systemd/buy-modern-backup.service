@@ -10,14 +10,17 @@ Group=buy-modern
 SupplementaryGroups=docker
 WorkingDirectory=/opt/buy-modern/current
 EnvironmentFile=/etc/buy-modern/backup.env
-ExecStart=/opt/buy-modern/current/scripts/backup_postgres.sh
+ExecStart=/bin/sh /opt/buy-modern/current/scripts/backup_postgres.sh
 ExecStart=/bin/sh /opt/buy-modern/current/scripts/offsite_backup.sh
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
 ProtectSystem=strict
 ReadWritePaths=/var/backups/buy-modern /var/lib/node_exporter/textfile_collector
-ReadOnlyPaths=/etc/buy-modern/restic-password
+ReadOnlyPaths=-/etc/buy-modern/restic-password
+CacheDirectory=buy-modern-restic
+CacheDirectoryMode=0700
+Environment=RESTIC_CACHE_DIR=/var/cache/buy-modern-restic
 UMask=0077
 
 [Install]

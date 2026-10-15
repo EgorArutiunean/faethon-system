@@ -12,7 +12,7 @@ write_offsite_metrics() {
   attempt_success="$1"
   [ -n "$OFFSITE_METRICS_FILE" ] || return 0
   metrics_dir="$(dirname "$OFFSITE_METRICS_FILE")"
-  mkdir -p "$metrics_dir"
+  mkdir -p -m 0755 "$metrics_dir"
   METRICS_TEMP_FILE="${OFFSITE_METRICS_FILE}.partial"
   now="$(date +%s)"
   last_success=""
@@ -34,6 +34,7 @@ write_offsite_metrics() {
     echo '# TYPE buy_modern_offsite_backup_last_attempt_timestamp_seconds gauge'
     echo "buy_modern_offsite_backup_last_attempt_timestamp_seconds $now"
   } > "$METRICS_TEMP_FILE"
+  chmod 0644 "$METRICS_TEMP_FILE"
   mv "$METRICS_TEMP_FILE" "$OFFSITE_METRICS_FILE"
   METRICS_TEMP_FILE=""
 }
@@ -89,7 +90,7 @@ fi
 BACKUP_DIR_ABS="$(cd "$BACKUP_DIR" && pwd -P)"
 
 latest_dump="$(
-  find "$BACKUP_DIR_ABS" -maxdepth 1 -type f -name 'buy_modern_????????-??????.dump' -print \
+  find "$BACKUP_DIR_ABS" -maxdepth 1 -type f -name 'buy_modern_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9].dump' -print \
     | sort \
     | tail -n 1
 )"
@@ -103,10 +104,14 @@ if [ ! -f "$checksum_file" ]; then
   echo "Checksum file is missing: $checksum_file" >&2
   exit 1
 fi
-(
-  cd "$BACKUP_DIR_ABS"
-  sha256sum -c "$(basename "$checksum_file")" > /dev/null
-)
+# Verify this dump, not an arbitrary path named inside the sidecar.
+expected="$(sed 's/\r$//' "$checksum_file")"
+actual="$(sha256sum < "$latest_dump")"
+actual="${actual%% *}"
+if [ "$expected" != "$actual  $(basename "$latest_dump")" ]; then
+  echo 'Backup checksum mismatch or invalid sidecar filename/format' >&2
+  exit 1
+fi
 
 export RESTIC_REPOSITORY RESTIC_PASSWORD_FILE
 restic backup \

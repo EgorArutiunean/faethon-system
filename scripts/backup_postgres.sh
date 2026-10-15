@@ -1,5 +1,6 @@
 #!/usr/bin/env sh
 set -eu
+umask 077
 
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yml}"
 ENV_FILE="${ENV_FILE:-.env.production}"
@@ -23,7 +24,16 @@ if [ "$BACKUP_DIR_ABS" = "/" ]; then
   exit 1
 fi
 
+# Kernel lock is released even after a crash; concurrent jobs cannot share a dump.
+command -v flock > /dev/null || { echo 'flock is required' >&2; exit 1; }
+exec 9> "$BACKUP_DIR_ABS/.backup.lock"
+flock -n 9 || { echo 'Another backup is already running' >&2; exit 1; }
+
 BACKUP_FILE="${BACKUP_DIR_ABS}/buy_modern_${TIMESTAMP}.dump"
+if [ -e "$BACKUP_FILE" ] || [ -e "$BACKUP_FILE.sha256" ]; then
+  echo 'Backup timestamp already exists; refusing to overwrite' >&2
+  exit 1
+fi
 TEMP_FILE="${BACKUP_FILE}.partial"
 METRICS_TEMP_FILE=""
 
@@ -31,7 +41,7 @@ write_backup_metrics() {
   attempt_success="$1"
   [ -n "$BACKUP_METRICS_FILE" ] || return 0
   metrics_dir="$(dirname "$BACKUP_METRICS_FILE")"
-  mkdir -p "$metrics_dir"
+  mkdir -p -m 0755 "$metrics_dir"
   METRICS_TEMP_FILE="${BACKUP_METRICS_FILE}.partial"
   now="$(date +%s)"
   last_success=""
@@ -53,6 +63,8 @@ write_backup_metrics() {
     echo '# TYPE buy_modern_backup_last_attempt_timestamp_seconds gauge'
     echo "buy_modern_backup_last_attempt_timestamp_seconds $now"
   } > "$METRICS_TEMP_FILE"
+  # Metrics contain no secrets; node_exporter may run as a different user.
+  chmod 0644 "$METRICS_TEMP_FILE"
   mv "$METRICS_TEMP_FILE" "$BACKUP_METRICS_FILE"
   METRICS_TEMP_FILE=""
 }
@@ -119,13 +131,14 @@ mv "$TEMP_FILE" "$BACKUP_FILE"
   cd "$BACKUP_DIR_ABS"
   sha256sum "$(basename "$BACKUP_FILE")" > "$(basename "$BACKUP_FILE").sha256"
 )
-write_backup_metrics 1
 
 if [ "$BACKUP_RETENTION_DAYS" -gt 0 ]; then
   find "$BACKUP_DIR_ABS" -maxdepth 1 -type f \
-    \( -name 'buy_modern_*.dump' -o -name 'buy_modern_*.dump.sha256' \) \
+    \( -name 'buy_modern_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9].dump' \
+    -o -name 'buy_modern_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9].dump.sha256' \) \
     -mtime "+$BACKUP_RETENTION_DAYS" -delete
 fi
+write_backup_metrics 1
 trap - EXIT
 
 echo "Backup written to $BACKUP_FILE"

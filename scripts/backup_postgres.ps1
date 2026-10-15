@@ -81,6 +81,7 @@ function Write-BackupMetrics {
 
 $temporaryPath = $null
 $backupFile = $null
+$backupLock = $null
 $script:PostgresContainer = $null
 try {
     if ($ComposeProject) {
@@ -110,9 +111,14 @@ try {
         throw "Refusing to use the filesystem root as BackupDir"
     }
 
+    $backupLock = [IO.File]::Open((Join-Path $resolvedBackupDir '.backup.lock'),
+        [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
     $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
     $backupFile = Join-Path $BackupDir "buy_modern_$timestamp.dump"
     $backupPath = Join-Path $resolvedBackupDir "buy_modern_$timestamp.dump"
+    if ((Test-Path -LiteralPath $backupPath) -or (Test-Path -LiteralPath "$backupPath.sha256")) {
+        throw 'Backup timestamp already exists; refusing to overwrite'
+    }
     $temporaryPath = "$backupPath.partial"
 
     if ($script:PostgresContainer) {
@@ -141,7 +147,6 @@ try {
     Move-Item -LiteralPath $temporaryPath -Destination $backupPath
     $checksum = (Get-FileHash -LiteralPath $backupPath -Algorithm SHA256).Hash.ToLowerInvariant()
     "$checksum  $(Split-Path -Leaf $backupPath)" | Set-Content -LiteralPath "$backupPath.sha256" -Encoding ascii
-    Write-BackupMetrics -AttemptSucceeded $true
 
     if ($RetentionDays -gt 0) {
         $cutoff = [DateTime]::UtcNow.AddDays(-$RetentionDays)
@@ -152,6 +157,7 @@ try {
             } |
             Remove-Item -Force
     }
+    Write-BackupMetrics -AttemptSucceeded $true
 }
 catch {
     try {
@@ -166,6 +172,7 @@ finally {
     if ($temporaryPath -and (Test-Path -LiteralPath $temporaryPath)) {
         Remove-Item -LiteralPath $temporaryPath -Force
     }
+    if ($backupLock) { $backupLock.Dispose() }
 }
 
 Write-Host "Backup written to $backupFile"

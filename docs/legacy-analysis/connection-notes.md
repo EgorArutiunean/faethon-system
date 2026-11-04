@@ -27,6 +27,7 @@ Use this file to record attempts to connect to a copy of `BUY.GDB`.
 | 2026-09-05 | IBSurgeon FirstAID 8.0.505 | Low-level preview tool | n/a | Installed; preview awaiting interactive launch | Official installer downloaded from `ib-aid.com`; SHA-256 `BBB101FCCB43F134C8190B20DE698EFEDD335C347FEBBE27E0E835D62598AE58`; Authenticode signature valid, signer `TOO IBSURGEON SOFTWARE`, GlobalSign. Disposable writable input `BUY_PREVIEW_20260905.GDB` created with a hash identical to the golden copy. The current Codex host exposes no native-app windows, and FirstAID has no documented CLI preview mode, so selecting `Open corrupted database` could not be automated safely. No repair/export action was run. |
 | 2026-09-05 | IBSurgeon FirstAID 8.0.505 Preview | Low-level page reader | detected database charset `251` | Success | InterBase 7.1 / ODS 11.1, dialect 1, page size 4096, normal backup state, 127791 total pages, 0 bad pages, 68 relations, 106501 relation data pages and 1 readable generator. The current UI screenshot shows the disposable `BUY_PREVIEW_20260905.GDB`. An earlier FirstAID log recorded opening the original file; its SHA-256 was rechecked afterward and remains unchanged. No DirectFix/repair was used. |
 | 2026-09-05 | InterBase 2020 local recovery installation | InterBase server/client | n/a | Blocked before database attach | Installed in a dedicated local recovery directory, but the server reports that the product is not registered. No database connection or export was attempted. Continue only through official Developer Edition registration/licensing. |
+| 2026-11-02 | `tools/interbase` page reader in Compose service `legacy` | Read-only page decode, no Firebird client | WIN1251 | Success | `make legacy` serves `http://127.0.0.1:8765` from read-only `migration/legacy_work/BUY_COPY.GDB`. User tables and Cyrillic rows are readable. The original file was not modified. This is not a SQL server. |
 
 ## Historical Python/Firebird Discovery Run
 
@@ -102,6 +103,8 @@ read-only preview did identify the following relevant relations:
 
 ## Portable Client Plan
 
+Historical only. These clients failed. Use `make legacy` instead of another Firebird DLL.
+
 Use a portable native client instead of installing Firebird system-wide.
 
 Expected location:
@@ -149,6 +152,7 @@ Additional attempt:
 
 Current conclusion:
 
+- As of 2026-11-02, use `make legacy` and the root `README.md`. That service is the working read-only connection.
 - `inspect_firebird.py` did not connect successfully.
 - No structured metadata, row-count manifest or versioned sample export was produced.
 - FirstAID separately confirmed 68 relations and readable representative rows
@@ -156,21 +160,20 @@ Current conclusion:
 - `WIN1251` and `NONE` both fail before any SQL query, so charset is not the current blocker.
 - Current portable client is detected and loaded: Firebird `WI-V2.1.7.18553`.
 - Uploaded legacy utilities identify the expected engine family as InterBase 6.0.1.6 from Inprise.
-- Firebird remains incompatible with this InterBase file. InterBase 2020 is now
-  installed locally, but the server is blocked by product registration; this is
-  the current blocker to a structured read-only export.
-- The remaining gap is a repeatable engine-level export with DDL, full counts,
-  typed fields and an auditable allowlist—not proof that the tables exist.
+- Firebird remains incompatible with this InterBase file. A licensed InterBase
+  server is no longer required for read-only browsing. The page reader in
+  `tools/interbase` is the current connection.
+- The remaining gap is a repeatable export with DDL, full counts, typed fields,
+  and an auditable allowlist for the later PostgreSQL migration.
 
 ## Troubleshooting Options
 
 The Firebird compatibility path has been exhausted for this InterBase database.
-Next steps:
+Current access is `make legacy`, described in the root `README.md` and `AGENTS.md`.
 
-1. Complete official InterBase 2020 Developer Edition registration in an
-   isolated recovery environment.
-2. Register only a disposable copy; never attach or repair the original/golden copy.
-3. Export an allowlisted schema/count manifest and only the required directory fields.
-4. Validate Cyrillic text, key uniqueness and counts before transformation.
-5. If registration cannot be obtained, request a structured export from an
-   authorised operator with a compatible licensed InterBase environment.
+Still open for the later migration:
+
+1. Export an allowlisted schema, counts, and only the required directory fields.
+2. Validate Cyrillic text, key uniqueness, and counts before transformation.
+3. Do not register or repair the original file. A licensed InterBase server is
+   only needed if a real SQL connection becomes necessary.

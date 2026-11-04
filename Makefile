@@ -1,4 +1,4 @@
-.PHONY: dev backend frontend db migrate seed test smoke
+.PHONY: dev backend frontend db migrate seed test smoke legacy
 
 dev:
 	docker compose up --build
@@ -11,6 +11,9 @@ frontend:
 
 db:
 	docker compose up -d postgres
+
+legacy:
+	docker compose --profile legacy up -d --build legacy
 
 migrate:
 	docker compose run --rm backend alembic upgrade head

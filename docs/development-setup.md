@@ -2,7 +2,7 @@
 
 The target development environment uses PostgreSQL through Docker Compose.
 
-Legacy discovery remains separate under `migration/legacy_discovery` and is not part of this setup.
+The legacy InterBase file is optional and is not started by `make dev`. See the root `README.md` section "Legacy database" and `AGENTS.md`. Run it with `make legacy` after copying `BUY.GDB` to `migration/legacy_work/BUY_COPY.GDB`.
 
 ## Prerequisites
 

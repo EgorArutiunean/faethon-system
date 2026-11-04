@@ -2,6 +2,8 @@
 
 This folder stores findings from the first discovery phase for the old BuySell system.
 
+Read-only access to a copy of `BUY.GDB` is the `legacy` Compose service. Install and run steps are in the root `README.md` and `AGENTS.md`. Firebird clients cannot open this InterBase 7.1 file.
+
 The current phase is limited to:
 
 - inventory of legacy files;

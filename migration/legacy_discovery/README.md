@@ -4,24 +4,22 @@ These scripts are for the first phase only: read-only discovery of the old `BUY.
 
 Do not use these scripts against the original production database. Make a file copy first and point `LEGACY_DB_PATH` to that copy. Do not run `FUNSTART.BAT`; it can repair, backup, rename, and restore the database.
 
-## Client Versions To Try
+## Use the Docker reader
 
-This database appears to be from the InterBase 6 / early Firebird era. If a modern client cannot open it, try clients in this order:
+This file is InterBase 7.1 (ODS 11.1). Firebird cannot open it. Do not try another Firebird client.
+
+Copy `miscelanious/BUY.GDB` to `migration/legacy_work/BUY_COPY.GDB`, mark that copy read-only, and run `make legacy`. The browser is `http://127.0.0.1:8765`. Details are in the root `README.md` and `AGENTS.md`.
+
+## Historical client attempts
+
+These clients were tried and failed. Do not repeat them:
 
 1. Firebird 2.5 client tools/libraries.
 2. Firebird 2.1 or 2.0 client tools/libraries.
 3. Firebird 1.5 client tools/libraries.
 4. Original InterBase 6.x client libraries.
 
-The Python packages still need a native client library such as `fbclient.dll`, `gds32.dll`, or the matching Firebird/InterBase client. Prefer a portable client in:
-
-```text
-buy-modern/tools/firebird/fbclient.dll
-```
-
-Start with Firebird 2.5.x Win64. If the old database cannot be opened because of ODS/client compatibility, try Firebird 2.1, Firebird 2.0, Firebird 1.5, or the original InterBase 6 client.
-
-Do not download DLLs from generic DLL download sites. Use official Firebird release packages or a trusted InterBase installation/source.
+The setup below is the failed Firebird-client experiment. Leave it unused. Do not download client DLLs for this file.
 
 ## Setup
 

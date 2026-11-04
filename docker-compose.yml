@@ -41,6 +41,23 @@ services:
       postgres:
         condition: service_healthy
 
+  legacy:
+    profiles: ["legacy"]
+    build:
+      context: ./tools/interbase
+    image: buy-legacy-gdb
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8765:8765"
+    volumes:
+      - ./migration/legacy_work/BUY_COPY.GDB:/data/BUY.GDB:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/api/tables')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
   frontend:
     build:
       context: ./frontend

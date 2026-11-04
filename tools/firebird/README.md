@@ -1,14 +1,6 @@
 # Portable Firebird Client
 
-Place a trusted Firebird/InterBase native client library here.
+Do not use these clients for `BUY.GDB`. The file is InterBase 7.1, and Firebird rejects it. Use `make legacy`, documented in the root `README.md` and `AGENTS.md`.
 
-Preferred first attempt:
-
-```text
-buy-modern/tools/firebird/fbclient.dll
-```
-
-Start with Firebird 2.5.x Win64. If the old `BUY_COPY.GDB` cannot be opened because of ODS or compatibility issues, try Firebird 2.1, 2.0, 1.5, or the original InterBase 6 client.
-
-Do not download DLLs from generic DLL download sites. Use official Firebird release packages or a trusted InterBase installation/source.
+Historical Firebird 2.1 and 2.5 clients were placed in this folder and could not open the file. Do not download more client DLLs.
 

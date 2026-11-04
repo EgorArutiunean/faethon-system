@@ -20,6 +20,7 @@ buy-modern/
   backend/                 FastAPI app, SQLAlchemy models, Alembic, tests
   frontend/                React + TypeScript + Vite working UI
   migration/               Legacy discovery and future ETL workspace
+  tools/interbase/         Read-only browser for the InterBase BUY.GDB copy
   docs/                    Legacy notes and project documentation
   docker-compose.yml
   .env.example
@@ -48,6 +49,28 @@ Services:
 - Backend OpenAPI: `http://localhost:8000/docs`
 - Healthcheck: `http://localhost:8000/health`
 - PostgreSQL: `localhost:5432`
+
+## Legacy database
+
+`miscelanious/BUY.GDB` is an InterBase 7.1 file (ODS 11.1). Firebird cannot open it, and the bundled `gbak.exe` / `gfix.exe` are older than the file. Do not run `FUNSTART.BAT`.
+
+The `legacy` Compose service reads a read-only copy and serves a small browser plus a JSON API. It is not part of `make dev`. Docker is the only install step.
+
+```bash
+mkdir -p migration/legacy_work
+cp miscelanious/BUY.GDB migration/legacy_work/BUY_COPY.GDB
+chmod a-w migration/legacy_work/BUY_COPY.GDB
+make legacy
+```
+
+`migration/legacy_work/` is gitignored. The service mounts `BUY_COPY.GDB` read-only and restarts with Docker.
+
+- Browser: `http://127.0.0.1:8765`
+- From another container: `http://legacy:8765`
+- Tables: `GET /api/tables`
+- Rows: `GET /api/rows?table=SGRP&limit=50&offset=0&q=`
+
+Text is Windows-1251. `LICO` contains personal data. This is a page reader, not a SQL server. Stop it with `docker compose --profile legacy stop legacy`.
 
 Run migrations:
 
@@ -95,6 +118,7 @@ make dev       # docker compose up --build
 make backend   # local uvicorn
 make frontend  # local vite
 make db        # postgres only, detached
+make legacy    # read-only InterBase browser at http://127.0.0.1:8765
 make migrate   # docker compose run backend alembic upgrade head
 make seed      # docker compose run backend seed_demo.py
 make test      # backend tests

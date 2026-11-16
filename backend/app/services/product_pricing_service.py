@@ -98,7 +98,18 @@ def attach_product_pricing(db: Session, products: list[Product]) -> list[Product
             latest["document_number"] if latest else None,
         )
         setattr(product, "latest_purchase_date", latest["document_date"] if latest else None)
-        for name, value in _pricing_values(product.base_price, purchase_cost).items():
+        current_cost = purchase_cost
+        current_date = latest["document_date"] if latest else None
+        current_source = "purchase" if latest else None
+        if product.opening_unit_cost is not None and product.opening_cost_date is not None:
+            if current_date is None or current_date < product.opening_cost_date:
+                current_cost = product.opening_unit_cost
+                current_date = product.opening_cost_date
+                current_source = "opening"
+        setattr(product, "current_cost", current_cost)
+        setattr(product, "current_cost_date", current_date)
+        setattr(product, "current_cost_source", current_source)
+        for name, value in _pricing_values(product.base_price, current_cost).items():
             setattr(product, name, value)
     return products
 

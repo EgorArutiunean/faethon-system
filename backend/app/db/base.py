@@ -10,11 +10,13 @@ from app.models.accounting import (
 from app.models.documents import Document, DocumentLine, DocumentNumberSequence, DocumentRevision
 from app.models.identity import Permission, Role, User
 from app.models.logistics import WarehouseTask, WarehouseTaskEvent, WarehouseTaskLine
+from app.models.opening_stock import InventoryOpening
 from app.models.partners import Partner
 from app.models.products import Product, ProductGroup, Unit
 from app.models.stock import StockBalance, StockMovement, Warehouse
 
 __all__ = [
+    "InventoryOpening",
     "AuditLog",
     "CashOperation",
     "Currency",

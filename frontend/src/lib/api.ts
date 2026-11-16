@@ -7,6 +7,10 @@ export type Product = {
   group_id?: number | null;
   group_name?: string | null;
   base_price?: string | null;
+  unit_name?: string | null;
+  current_cost?: string | null;
+  current_cost_source?: string | null;
+  current_cost_date?: string | null;
   latest_purchase_cost?: string | null;
   latest_purchase_document_id?: number | null;
   latest_purchase_document_number?: string | null;
@@ -713,4 +717,14 @@ export const api = {
       headers: { "Content-Type": "application/octet-stream", "X-Filename": file.name }
     })),
   audit: (params = "") => request<AuditLog[]>(`/audit${params}`)
+};
+
+export type HistoryHeader = { document_key: string; type: string; date: string; number: string; warehouse_code: string; partner_code: string; partner_name: string; currency_code: string; amount: string; discount_amount: string; source_status: string; line_count: number; source: Record<string, string> };
+export type HistoryLine = { line_number: string; product_code: string; product_name: string; unit_name: string; quantity: string; price: string; amount: string; source: Record<string, string> };
+export type HistoryItem = { id: number; header: HistoryHeader };
+export type HistoryPage = { items: HistoryItem[]; total: number; offset: number; limit: number };
+export type HistoryDetail = HistoryItem & { lines: HistoryLine[]; read_only: boolean };
+export const historyApi = {
+  list: (params: URLSearchParams) => request<HistoryPage>(`/document-history?${params.toString()}`),
+  detail: (id: string) => request<HistoryDetail>(`/document-history/${encodeURIComponent(id)}`)
 };

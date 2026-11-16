@@ -236,6 +236,7 @@ export function Documents() {
 
   return (
     <PageScaffold title={t("documents")}>
+      <Link to="/document-history">История накладных из старой базы</Link>
       <div className="panel form-grid" style={{ marginBottom: 10 }}>
         <div className="field">
           <label>{t("type")}</label>

@@ -34,7 +34,7 @@ def list_products(
 ):
     stmt = (
         select(Product)
-        .options(selectinload(Product.group))
+        .options(selectinload(Product.group), selectinload(Product.unit))
         .order_by(Product.name, Product.id)
         .offset(skip)
         .limit(limit)
@@ -70,7 +70,7 @@ def page_products(
     order = desc(sort_column) if sort_order == "desc" else asc(sort_column)
     stmt = (
         select(Product)
-        .options(selectinload(Product.group))
+        .options(selectinload(Product.group), selectinload(Product.unit))
         .where(*filters)
         .order_by(order, Product.id)
         .offset(offset)
@@ -90,7 +90,11 @@ def product_options(
     search: str | None = Query(default=None, max_length=200),
     limit: int = Query(default=50, ge=1, le=100),
 ):
-    stmt = select(Product).options(selectinload(Product.group)).where(Product.is_active.is_(True))
+    stmt = (
+        select(Product)
+        .options(selectinload(Product.group), selectinload(Product.unit))
+        .where(Product.is_active.is_(True))
+    )
     normalized_search = search.strip() if search else ""
     if normalized_search:
         pattern = f"%{normalized_search}%"

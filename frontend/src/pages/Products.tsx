@@ -356,12 +356,15 @@ export function Products() {
               { key: "name", header: t("name") },
               { key: "group_name", header: t("productCategory"), render: (row) => row.group_name ?? "-" },
               { key: "base_price", header: t("basePrice"), render: (row) => formatMoney(row.base_price) },
-              { key: "latest_purchase_cost", header: t("latestPurchaseCost"), render: (row) => row.latest_purchase_cost ? formatMoney(row.latest_purchase_cost) : "-" },
+              { key: "unit_name", header: "Ед. изм.", render: (row) => row.unit_name ?? "-" },
+              { key: "current_cost", header: "Себестоимость", render: (row) => row.current_cost != null ? (
+                <span title={row.current_cost_source === "opening" ? `Начальные остатки на ${row.current_cost_date ?? ""}` : "Последнее поступление"}>{formatMoney(row.current_cost)}</span>
+              ) : "-" },
               { key: "markup_percent", header: t("markup"), render: (row) => row.markup_percent !== null && row.markup_percent !== undefined ? `${row.markup_percent}%` : "-" },
               {
                 key: "price_review_required",
                 header: t("priceControl"),
-                render: (row) => row.latest_purchase_cost ? (
+                render: (row) => row.current_cost != null ? (
                   <span className={row.price_review_required ? "price-control review-required" : "price-control price-ok"}>
                     {t(row.price_review_required ? "priceReviewRequired" : "priceMeetsMarkup")}
                     {row.price_review_required && row.minimum_sale_price ? `: ${formatMoney(row.minimum_sale_price)}` : ""}

@@ -7,6 +7,7 @@ from app.api.routes import (
     cash,
     currencies,
     dashboard,
+    document_history,
     documents,
     health,
     imports,
@@ -91,3 +92,5 @@ app.include_router(reports.router, prefix=settings.api_prefix)
 app.include_router(imports.router, prefix=settings.api_prefix)
 app.include_router(audit.router, prefix=settings.api_prefix)
 app.include_router(users.router, prefix=settings.api_prefix)
+
+app.include_router(document_history.router, prefix=settings.api_prefix)

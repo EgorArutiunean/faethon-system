@@ -52,6 +52,10 @@ class ProductUpdate(BaseModel):
 class ProductRead(ProductBase, Timestamped):
     id: int
     group_name: str | None = None
+    unit_name: str | None = None
+    current_cost: Decimal | None = None
+    current_cost_source: str | None = None
+    current_cost_date: date | None = None
     latest_purchase_cost: Decimal | None = None
     latest_purchase_document_id: int | None = None
     latest_purchase_document_number: str | None = None

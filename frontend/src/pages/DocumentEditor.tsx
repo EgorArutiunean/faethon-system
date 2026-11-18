@@ -53,9 +53,9 @@ export function DocumentEditor() {
     const salePrice = selectedProduct.base_price === null || selectedProduct.base_price === undefined
       ? null
       : Number(selectedProduct.base_price);
-    const previousPurchaseCost = selectedProduct.latest_purchase_cost === null || selectedProduct.latest_purchase_cost === undefined
+    const previousPurchaseCost = selectedProduct.current_cost === null || selectedProduct.current_cost === undefined
       ? null
-      : Number(selectedProduct.latest_purchase_cost);
+      : Number(selectedProduct.current_cost);
     const markupPercent = salePrice === null || !Number.isFinite(salePrice)
       ? null
       : ((salePrice - baseUnitCost) / baseUnitCost) * 100;

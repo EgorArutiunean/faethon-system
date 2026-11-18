@@ -1,6 +1,7 @@
+from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, Numeric, String, Text
+from sqlalchemy import Boolean, CheckConstraint, Date, ForeignKey, Index, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -38,6 +39,10 @@ class Product(TimestampMixin, Base):
         CheckConstraint(
             "base_price IS NULL OR base_price >= 0", name="ck_products_base_price_nonnegative"
         ),
+        CheckConstraint(
+            "opening_unit_cost IS NULL OR opening_unit_cost >= 0",
+            name="ck_products_opening_cost_nonnegative",
+        ),
         Index("ix_products_group_name_id", "group_id", "name", "id"),
         Index(
             "ix_products_name_trgm",
@@ -60,11 +65,17 @@ class Product(TimestampMixin, Base):
     group_id: Mapped[int | None] = mapped_column(ForeignKey("product_groups.id"))
     unit_id: Mapped[int | None] = mapped_column(ForeignKey("units.id"))
     base_price: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    opening_unit_cost: Mapped[Decimal | None] = mapped_column(Numeric(28, 12))
+    opening_cost_date: Mapped[date | None] = mapped_column(Date)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     group = relationship("ProductGroup", back_populates="products")
     unit = relationship("Unit", back_populates="products")
     document_lines = relationship("DocumentLine", back_populates="product")
+
+    @property
+    def unit_name(self) -> str | None:
+        return self.unit.short_name if self.unit else None
 
     @property
     def group_name(self) -> str | None:

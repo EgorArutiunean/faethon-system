@@ -1,3 +1,4 @@
+import { DocumentHistory, DocumentHistoryDetail } from "./pages/DocumentHistory";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
@@ -40,6 +41,8 @@ const router = createBrowserRouter([
           { path: "partners", element: <Partners /> },
           { path: "partners/:id/statement", element: <PartnerStatement /> },
           { path: "warehouses", element: <Warehouses /> },
+          { path: "document-history", element: <DocumentHistory /> },
+          { path: "document-history/:id", element: <DocumentHistoryDetail /> },
           { path: "documents", element: <Documents /> },
           { path: "documents/:id", element: <DocumentEditor /> },
           { path: "stock", element: <Stock /> },

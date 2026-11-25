@@ -59,11 +59,11 @@ The `legacy` Compose service reads a read-only copy and serves a small browser p
 ```bash
 mkdir -p migration/legacy_work
 cp miscelanious/BUY.GDB migration/legacy_work/BUY_COPY.GDB
-chmod a-w migration/legacy_work/BUY_COPY.GDB
+chmod 400 migration/legacy_work/BUY_COPY.GDB
 make legacy
 ```
 
-`migration/legacy_work/` is gitignored. The service mounts `BUY_COPY.GDB` read-only and restarts with Docker.
+`migration/legacy_work/` is gitignored. The service mounts `BUY_COPY.GDB` read-only and runs as the file owner's UID/GID on Unix, so the owner-only copy stays private. Do not run `make legacy` as root; set the safe copy's owner to an unprivileged user and run `make` as that user. Override `LEGACY_UID` and `LEGACY_GID` when needed. On Windows, Compose defaults to UID/GID 65534; set those variables if the mounted copy is owned by another identity.
 
 - Browser: `http://127.0.0.1:8765`
 - From another container: `http://legacy:8765`

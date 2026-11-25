@@ -1,6 +1,7 @@
 """Read-only legacy invoice archive, no operational foreign keys or triggers."""
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "0020_document_history"

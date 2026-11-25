@@ -79,7 +79,7 @@ def prepare(package):
 def import_history(db: Session, package: dict, apply: bool = False):
     """Caller owns transaction. This function writes only document_history."""
     prepared = prepare(package)
-    if apply and db.bind.dialect.name == "postgresql":
+    if apply and db.get_bind().dialect.name == "postgresql":
         db.execute(text("SELECT pg_advisory_xact_lock(44440020)"))
     existing = {
         r.source_key: r

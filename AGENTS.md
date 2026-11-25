@@ -87,9 +87,11 @@ Start the reader:
 ```bash
 mkdir -p migration/legacy_work
 cp miscelanious/BUY.GDB migration/legacy_work/BUY_COPY.GDB
-chmod a-w migration/legacy_work/BUY_COPY.GDB
+chmod 400 migration/legacy_work/BUY_COPY.GDB
 make legacy
 ```
+
+On Unix, `make legacy` runs the reader with the current user's UID/GID so it can read the owner-only copy without broadening its permissions. Do not run it as root; give the copy to an unprivileged owner before starting the reader. To use a different owner, set `LEGACY_UID` and `LEGACY_GID` when invoking `make`. On Windows, Compose defaults to UID/GID 65534; set those environment variables if the mounted copy is owned by a different identity.
 
 - Browser: `http://127.0.0.1:8765`
 - Other containers: `http://legacy:8765`

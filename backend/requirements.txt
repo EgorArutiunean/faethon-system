@@ -14,7 +14,7 @@ anyio==4.15.1
     # via
     #   starlette
     #   watchfiles
-certifi==2026.7.22
+certifi==2026.10.19
     # via sentry-sdk
 charset-normalizer==3.5.2
     # via reportlab
@@ -38,9 +38,9 @@ markupsafe==3.0.4
     # via mako
 openpyxl==3.1.5
     # via -r requirements.in
-opentelemetry-api==1.45.1
+opentelemetry-api==1.45.2
     # via fastapi
-pillow==12.3.0
+pillow==13.0.0
     # via reportlab
 psycopg==3.3.6
     # via -r requirements.in

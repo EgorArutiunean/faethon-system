@@ -1,6 +1,7 @@
 """Opening inventory values and product cost baseline."""
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "0019_opening_inventory"

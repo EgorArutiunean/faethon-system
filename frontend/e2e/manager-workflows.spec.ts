@@ -335,7 +335,9 @@ test("CAT-01: каталог сохраняет вложенные катего�
         group_id: 12,
         group_name: "Газированные",
         base_price: "100.00",
-        latest_purchase_cost: "95.00",
+        current_cost: "95.00",
+        current_cost_source: "purchase",
+        current_cost_date: "2026-10-10",
         markup_percent: "5.26",
         minimum_sale_price: "104.50",
         price_review_required: true,
@@ -354,7 +356,7 @@ test("CAT-01: каталог сохраняет вложенные катего�
   await expect(categoryTree.getByText("Газированные", { exact: true })).toBeVisible();
   await categoryTree.getByRole("button", { name: /Газированные/ }).click();
 
-  await expect(page.getByRole("columnheader", { name: "Последняя себестоимость" })).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Себестоимость" })).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "Наценка" })).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "Контроль цены" })).toBeVisible();
   await expect(page.getByText("Напиток тестовый", { exact: true })).toBeVisible();

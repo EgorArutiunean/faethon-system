@@ -22,7 +22,7 @@ anyio==4.15.1
     #   watchfiles
 ast-serialize==0.12.1
     # via mypy
-certifi==2026.7.22
+certifi==2026.10.19
     # via
     #   -r requirements.txt
     #   httpcore
@@ -78,7 +78,7 @@ mypy-extensions==1.1.0
     # via mypy
 openpyxl==3.1.5
     # via -r requirements.txt
-opentelemetry-api==1.45.1
+opentelemetry-api==1.45.2
     # via
     #   -r requirements.txt
     #   fastapi
@@ -86,7 +86,7 @@ packaging==26.3
     # via pytest
 pathspec==1.1.1
     # via mypy
-pillow==12.3.0
+pillow==13.0.0
     # via
     #   -r requirements.txt
     #   reportlab

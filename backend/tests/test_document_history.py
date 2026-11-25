@@ -1,10 +1,11 @@
 from copy import deepcopy
 
 import pytest
-from app.models.document_history import DocumentHistory
-from app.services.document_history_service import import_history
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
+
+from app.models.document_history import DocumentHistory
+from app.services.document_history_service import import_history
 
 
 def test_archived_invoice_import_is_idempotent_and_rejects_changed_payload():

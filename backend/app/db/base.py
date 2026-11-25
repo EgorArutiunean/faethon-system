@@ -7,6 +7,7 @@ from app.models.accounting import (
     PaymentAllocation,
     Price,
 )
+from app.models.document_history import DocumentHistory
 from app.models.documents import Document, DocumentLine, DocumentNumberSequence, DocumentRevision
 from app.models.identity import Permission, Role, User
 from app.models.logistics import WarehouseTask, WarehouseTaskEvent, WarehouseTaskLine
@@ -24,6 +25,7 @@ __all__ = [
     "DocumentLine",
     "DocumentNumberSequence",
     "DocumentRevision",
+    "DocumentHistory",
     "ExchangeRate",
     "Partner",
     "Payment",

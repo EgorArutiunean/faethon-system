@@ -7,6 +7,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 COPY gdb_reader.py web.py ./
 
+USER nobody:nogroup
+
 EXPOSE 8765
 
 CMD ["python", "web.py", "--host", "0.0.0.0", "--port", "8765", "--database", "/data/BUY.GDB"]

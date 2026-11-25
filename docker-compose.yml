@@ -47,6 +47,7 @@ services:
       context: ./tools/interbase
     image: buy-legacy-gdb
     restart: unless-stopped
+    user: "${LEGACY_UID:-65534}:${LEGACY_GID:-65534}"
     ports:
       - "127.0.0.1:8765:8765"
     volumes:

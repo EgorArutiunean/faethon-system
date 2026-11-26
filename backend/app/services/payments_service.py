@@ -291,7 +291,7 @@ def create_payment(db: Session, payload: PaymentCreate) -> Payment:
 
 
 def update_payment(db: Session, payment_id: int, payload: PaymentUpdate) -> Payment:
-    payment = _load_payment(db, payment_id)
+    payment = _load_payment(db, payment_id, for_update=True)
     _ensure_draft(payment)
     values = payload.model_dump(exclude_unset=True, exclude={"allocations", "document_id"})
     changed_fields = payload.model_fields_set
@@ -338,7 +338,7 @@ def update_payment(db: Session, payment_id: int, payload: PaymentUpdate) -> Paym
 
 
 def delete_draft_payment(db: Session, payment_id: int) -> None:
-    payment = _load_payment(db, payment_id)
+    payment = _load_payment(db, payment_id, for_update=True)
     if payment.status != Payment.STATUS_DRAFT:
         raise HTTPException(status_code=409, detail="Only draft payments can be deleted")
     write_audit(db, "payment", payment.id, "delete_draft")

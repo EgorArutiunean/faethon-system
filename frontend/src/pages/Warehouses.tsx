@@ -14,6 +14,7 @@ export function Warehouses() {
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [editorOpen, setEditorOpen] = useState(false);
   const [error, setError] = useState("");
 
   function load() {
@@ -24,6 +25,7 @@ export function Warehouses() {
   }
 
   function resetForm() {
+    setEditorOpen(false);
     setCode("");
     setName("");
     setAddress("");
@@ -31,8 +33,11 @@ export function Warehouses() {
   }
 
   function save() {
-    if (!name) return;
-    const payload = { code: code || null, name, address: address || null };
+    if (!name.trim()) {
+      setError(t("nameRequired"));
+      return;
+    }
+    const payload = { code: code.trim() || null, name: name.trim(), address: address.trim() || null };
     const request = editingId ? api.updateWarehouse(editingId, payload) : api.createWarehouse(payload);
     request.then(() => {
       resetForm();
@@ -42,6 +47,7 @@ export function Warehouses() {
   }
 
   function edit(row: Warehouse) {
+    setEditorOpen(true);
     setEditingId(row.id);
     setCode(row.code ?? "");
     setName(row.name);
@@ -59,13 +65,16 @@ export function Warehouses() {
 
   return (
     <PageScaffold title={t("warehouses")}>
+      <div className="workspace-command-bar"><button className="button primary" disabled={!can("warehouses.create")} onClick={() => { resetForm(); setEditorOpen(true); }} aria-expanded={editorOpen}>{t("create")}</button><span>{t("total")}: {rows.length}</span></div>
+      {editorOpen ? (
       <div className="panel form-grid" style={{ marginBottom: 10 }}>
-        <div className="field"><label>{t("code")}</label><input value={code} onChange={(event) => setCode(event.target.value)} /></div>
-        <div className="field"><label>{t("name")}</label><input value={name} onChange={(event) => setName(event.target.value)} /></div>
-        <div className="field"><label>{t("address")}</label><input value={address} onChange={(event) => setAddress(event.target.value)} /></div>
+        <div className="field"><label htmlFor="warehouse-code">{t("code")}</label><input id="warehouse-code" value={code} onChange={(event) => setCode(event.target.value)} /></div>
+        <div className="field"><label htmlFor="warehouse-name">{t("name")}</label><input id="warehouse-name" value={name} onChange={(event) => setName(event.target.value)} /></div>
+        <div className="field"><label htmlFor="warehouse-address">{t("address")}</label><input id="warehouse-address" value={address} onChange={(event) => setAddress(event.target.value)} /></div>
         <div className="field"><label>&nbsp;</label><button className="button primary" title={!can(editingId ? "warehouses.update" : "warehouses.create") ? t("noPermission") : ""} disabled={!can(editingId ? "warehouses.update" : "warehouses.create")} onClick={save}>{editingId ? t("save") : t("create")}</button></div>
-        {editingId ? <div className="field"><label>&nbsp;</label><button className="button" onClick={resetForm}>{t("cancel")}</button></div> : null}
+        <div className="field"><label>&nbsp;</label><button className="button" onClick={resetForm}>{t("cancel")}</button></div>
       </div>
+      ) : null}
       {error ? <div className="panel error-panel">{error}</div> : null}
       <DataTable<Warehouse>
         rows={rows}

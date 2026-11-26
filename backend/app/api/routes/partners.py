@@ -29,12 +29,19 @@ def list_partners(
     search: str | None = None,
     partner_type: str | None = None,
 ):
-    stmt = select(Partner).offset(skip).limit(limit)
+    stmt = select(Partner)
     if search:
-        stmt = stmt.where(Partner.name.ilike(f"%{search}%"))
+        pattern = f"%{search.strip()}%"
+        stmt = stmt.where(
+            or_(
+                Partner.name.ilike(pattern),
+                Partner.code.ilike(pattern),
+                Partner.tax_id.ilike(pattern),
+            )
+        )
     if partner_type:
         stmt = stmt.where(Partner.partner_type == partner_type)
-    return list(db.scalars(stmt).all())
+    return list(db.scalars(stmt.offset(skip).limit(limit)).all())
 
 
 @router.get(
@@ -58,6 +65,7 @@ def page_partners(
                 Partner.name.ilike(pattern),
                 Partner.code.ilike(pattern),
                 Partner.phone.ilike(pattern),
+                Partner.tax_id.ilike(pattern),
             )
         )
     if partner_type:
@@ -89,6 +97,7 @@ def partner_options(
                 Partner.name.ilike(pattern),
                 Partner.code.ilike(pattern),
                 Partner.phone.ilike(pattern),
+                Partner.tax_id.ilike(pattern),
             )
         )
     if role:

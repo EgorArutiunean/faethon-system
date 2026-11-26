@@ -128,7 +128,14 @@ export function Products() {
   }
 
   function save() {
-    if (!name.trim()) return;
+    if (!name.trim()) {
+      setError(t("nameRequired"));
+      return;
+    }
+    if (!Number.isFinite(Number(basePrice)) || Number(basePrice) < 0) {
+      setError(t("amountNonnegative"));
+      return;
+    }
     const payload = { sku: sku || null, name: name.trim(), group_id: groupId ? Number(groupId) : null, base_price: basePrice, is_active: true };
     const request = editingId ? api.updateProduct(editingId, payload) : api.createProduct(payload);
     request.then(() => {
@@ -156,7 +163,10 @@ export function Products() {
 
   function saveGroup() {
     const nextName = groupName.trim();
-    if (!nextName) return;
+    if (!nextName) {
+      setError(t("nameRequired"));
+      return;
+    }
     const payload = { name: nextName, parent_id: groupParentId ? Number(groupParentId) : null };
     const request = groupEditingId ? api.updateProductGroup(groupEditingId, payload) : api.createProductGroup(payload);
     request.then(() => {
@@ -283,7 +293,7 @@ export function Products() {
 
           {groupFormOpen ? (
             <div className="products-compact-form">
-              <div className="field"><label>{t("name")}</label><input autoFocus value={groupName} onChange={(event) => setGroupName(event.target.value)} /></div>
+              <div className="field"><label htmlFor="product-group-name">{t("name")}</label><input id="product-group-name" autoFocus value={groupName} onChange={(event) => setGroupName(event.target.value)} /></div>
               <div className="field">
                 <label>{t("parentCategory")}</label>
                 <select value={groupParentId} onChange={(event) => setGroupParentId(event.target.value)}>
@@ -316,16 +326,16 @@ export function Products() {
 
           {productFormOpen ? (
             <div className="panel form-grid products-editor">
-              <div className="field"><label>SKU</label><input value={sku} onChange={(event) => setSku(event.target.value)} /></div>
-              <div className="field"><label>{t("name")}</label><input value={name} onChange={(event) => setName(event.target.value)} /></div>
+              <div className="field"><label htmlFor="product-sku">SKU</label><input id="product-sku" value={sku} onChange={(event) => setSku(event.target.value)} /></div>
+              <div className="field"><label htmlFor="product-name">{t("name")}</label><input id="product-name" value={name} onChange={(event) => setName(event.target.value)} /></div>
               <div className="field">
-                <label>{t("productCategory")}</label>
-                <select value={groupId} onChange={(event) => setGroupId(event.target.value)}>
+                <label htmlFor="product-category">{t("productCategory")}</label>
+                <select id="product-category" value={groupId} onChange={(event) => setGroupId(event.target.value)}>
                   <option value="">{t("notSelected")}</option>
                   {groupOptions.map(({ group, depth }) => <option key={group.id} value={group.id}>{`${"— ".repeat(depth)}${group.name}`}</option>)}
                 </select>
               </div>
-              <div className="field"><label>{t("basePrice")}</label><input value={basePrice} onChange={(event) => setBasePrice(event.target.value)} /></div>
+              <div className="field"><label htmlFor="product-base-price">{t("basePrice")}</label><input id="product-base-price" inputMode="decimal" value={basePrice} onChange={(event) => setBasePrice(event.target.value)} /></div>
               <div className="products-form-actions products-editor-actions">
                 <button className="button primary" disabled={!can(editingId ? "products.update" : "products.create")} onClick={save}>{editingId ? t("save") : t("create")}</button>
                 <button className="button" onClick={() => { resetForm(); setProductFormOpen(false); }}>{t("cancel")}</button>
@@ -334,7 +344,7 @@ export function Products() {
           ) : null}
 
           <div className="panel toolbar" style={{ padding: "8px 10px", marginBottom: 10 }}>
-            <input className="search" value={search} onChange={(event) => { setSearch(event.target.value); setPage(0); }} placeholder={t("search")} />
+            <input className="search" aria-label={t("search")} value={search} onChange={(event) => { setSearch(event.target.value); setPage(0); }} placeholder={t("search")} />
             <select value={sortBy} onChange={(event) => { setSortBy(event.target.value as ProductSort); setPage(0); }}>
               <option value="name">{t("name")}</option>
               <option value="sku">SKU</option>
@@ -345,6 +355,7 @@ export function Products() {
             <button className="button" onClick={() => { setSortOrder((current) => current === "asc" ? "desc" : "asc"); setPage(0); }}>
               {sortOrder === "asc" ? "↑" : "↓"}
             </button>
+            {search || selectedGroupId !== null || sortBy !== "name" || sortOrder !== "asc" ? <button className="button" onClick={() => { setSearch(""); setSelectedGroupId(null); setSortBy("name"); setSortOrder("asc"); setPage(0); }}>{t("resetFilters")}</button> : null}
           </div>
 
           <DataTable<Product>

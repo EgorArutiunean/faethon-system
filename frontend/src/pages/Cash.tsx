@@ -28,6 +28,7 @@ export function Cash() {
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
+  const [editorOpen, setEditorOpen] = useState(() => searchParams.has("create"));
 
   function load() {
     api.cashBookPage(page * PAGE_SIZE, PAGE_SIZE)
@@ -43,7 +44,14 @@ export function Cash() {
   }
 
   function create() {
-    if (!amount) return;
+    if (!operationDate) {
+      setError(t("selectDate"));
+      return;
+    }
+    if (!Number.isFinite(Number(amount)) || (operationType === "correction" ? Number(amount) < 0 : Number(amount) <= 0)) {
+      setError(t(operationType === "correction" ? "amountNonnegative" : "amountPositive"));
+      return;
+    }
     if (operationType === "correction" && !note.trim()) {
       setError(t("cashCorrectionNoteRequired"));
       return;
@@ -58,6 +66,7 @@ export function Cash() {
       .then(() => {
         setAmount("");
         setNote("");
+        setEditorOpen(false);
         setError("");
         load();
       })
@@ -86,8 +95,13 @@ export function Cash() {
         <div style={{ color: "#52616f", fontSize: 12 }}>{t("cashBalance")}</div>
         <div style={{ fontSize: 24, fontWeight: 700 }}>{balance}</div>
       </div>
+      <div className="workspace-command-bar">
+        <button className="button primary" disabled={!can("cash.create")} onClick={() => setEditorOpen(true)} aria-expanded={editorOpen}>{t("createOperation")}</button>
+        <span>{t("total")}: {total}</span>
+      </div>
+      {editorOpen ? (
       <div className="panel form-grid" style={{ marginBottom: 10 }}>
-        <div className="field"><label>{t("date")}</label><input type="date" value={operationDate} onChange={(event) => setOperationDate(event.target.value)} /></div>
+        <div className="field"><label htmlFor="cash-operation-date">{t("date")}</label><input id="cash-operation-date" type="date" value={operationDate} onChange={(event) => setOperationDate(event.target.value)} /></div>
         <div className="field">
           <label>{t("type")}</label>
           <select value={operationType} onChange={(event) => setOperationType(event.target.value)}>
@@ -97,8 +111,9 @@ export function Cash() {
           </select>
         </div>
         <div className="field">
-          <label>{operationType === "correction" ? t("actualCashBalance") : t("amount")}</label>
+          <label htmlFor="cash-operation-amount">{operationType === "correction" ? t("actualCashBalance") : t("amount")}</label>
           <input
+            id="cash-operation-amount"
             type="number"
             min={operationType === "correction" ? "0" : "0.01"}
             step="0.01"
@@ -107,8 +122,9 @@ export function Cash() {
           />
         </div>
         <div className="field"><label>{t("note")}</label><input value={note} onChange={(event) => setNote(event.target.value)} /></div>
-        <div className="field"><label>&nbsp;</label><button className="button primary" title={!can("cash.create") ? t("noPermission") : ""} disabled={!can("cash.create")} onClick={create}>{t("createOperation")}</button></div>
+        <div className="field"><label>&nbsp;</label><div className="workspace-form-actions"><button className="button primary" title={!can("cash.create") ? t("noPermission") : ""} disabled={!can("cash.create")} onClick={create}>{t("createOperation")}</button><button className="button" onClick={() => setEditorOpen(false)}>{t("cancel")}</button></div></div>
       </div>
+      ) : null}
       {error ? <div className="panel error-panel">{error}</div> : null}
       <DataTable<CashBookRow>
         rows={rows}

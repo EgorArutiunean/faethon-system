@@ -197,6 +197,7 @@ def list_tasks(
     user: User,
     *,
     status: str | None = None,
+    document_id: int | None = None,
     skip: int = 0,
     limit: int = 100,
 ) -> list[WarehouseTask]:
@@ -209,6 +210,8 @@ def list_tasks(
         statement = statement.where(WarehouseTask.warehouse_id.in_(user.warehouse_ids))
     if status is not None:
         statement = statement.where(WarehouseTask.status == status)
+    if document_id is not None:
+        statement = statement.where(WarehouseTask.document_id == document_id)
     statement = (
         statement.order_by(WarehouseTask.created_at.desc(), WarehouseTask.id.desc())
         .offset(skip)

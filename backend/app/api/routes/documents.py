@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query, Response, status
@@ -9,6 +10,7 @@ from app.api.deps import require_permission
 from app.db.session import get_db
 from app.models.documents import Document
 from app.models.partners import Partner
+from app.schemas.document_copy import DocumentCopy
 from app.schemas.documents import (
     DocumentCreate,
     DocumentDetailRead,
@@ -21,7 +23,7 @@ from app.schemas.documents import (
     DocumentRevisionRead,
     DocumentUpdate,
 )
-from app.services import documents_print_service, documents_service
+from app.services import document_copy_service, documents_print_service, documents_service
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -69,6 +71,7 @@ def page_documents(
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=25, ge=1, le=100),
     search: str | None = Query(default=None, max_length=200),
+    date_from: date | None = None,
     document_type: str | None = None,
     status_filter: str | None = Query(default=None, alias="status"),
     sort_by: Literal[
@@ -89,6 +92,8 @@ def page_documents(
         filters.append(Document.id.in_(select(matching_documents.c.id)))
     if document_type:
         filters.append(Document.document_type == document_type)
+    if date_from:
+        filters.append(Document.document_date >= date_from)
     if status_filter:
         filters.append(Document.status == status_filter)
 
@@ -126,6 +131,22 @@ def create_document(payload: DocumentCreate, db: Session = Depends(get_db)):
 )
 def get_document(item_id: int, db: Session = Depends(get_db)):
     return documents_service._load_document(db, item_id)
+
+
+@router.post(
+    "/{item_id}/copy",
+    response_model=DocumentDetailRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[
+        Depends(require_permission("documents.read")),
+        Depends(require_permission("documents.create")),
+        Depends(require_permission("documents.update")),
+    ],
+)
+def copy_document_endpoint(
+    item_id: int, payload: DocumentCopy | None = None, db: Session = Depends(get_db)
+):
+    return document_copy_service.copy_document(db, item_id, payload or DocumentCopy())
 
 
 @router.get("/{item_id}/print", dependencies=[Depends(require_permission("documents.read"))])

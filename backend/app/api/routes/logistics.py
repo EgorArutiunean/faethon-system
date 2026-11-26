@@ -30,13 +30,17 @@ router = APIRouter(prefix="/logistics", tags=["logistics"])
 @router.get("/tasks", response_model=list[WarehouseTaskRead])
 def list_warehouse_tasks(
     status: str | None = None,
+    document_id: int | None = Query(default=None, gt=0),
     skip: int = 0,
     limit: int = Query(default=100, le=500),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("logistics.read")),
 ):
     return [
-        serialize_task(task) for task in list_tasks(db, user, status=status, skip=skip, limit=limit)
+        serialize_task(task)
+        for task in list_tasks(
+            db, user, status=status, document_id=document_id, skip=skip, limit=limit
+        )
     ]
 
 

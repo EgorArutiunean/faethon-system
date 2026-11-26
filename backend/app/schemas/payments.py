@@ -61,6 +61,37 @@ class PaymentRead(PaymentBase, Timestamped):
     unallocated_amount: Decimal = Decimal("0")
 
 
+class PaymentPage(BaseModel):
+    items: list[PaymentRead]
+    total: int
+    offset: int
+    limit: int
+
+
+class DocumentRelatedPayment(BaseModel):
+    id: int
+    payment_date: date
+    payment_type: str
+    status: str
+    amount: Decimal
+    allocated_amount_for_document: Decimal
+
+
+class DocumentPaymentSummary(BaseModel):
+    document_id: int
+    document_number: str | None = None
+    document_type: str
+    document_status: str
+    partner_id: int | None = None
+    partner_name: str | None = None
+    total_amount: Decimal
+    paid_amount: Decimal
+    outstanding_amount: Decimal
+    payment_type: str | None = None
+    payments_count: int
+    payments: list[DocumentRelatedPayment] = Field(default_factory=list)
+
+
 class PaymentAllocationReplace(BaseModel):
     allocations: list[PaymentAllocationInput]
 

@@ -1,7 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Link, useBlocker, useNavigate, useParams } from "react-router-dom";
 
 import { DataTable } from "../components/DataTable";
+import { useConfirmDialog } from "../components/ConfirmDialog";
+import { CopyDocumentButton } from "../components/CopyDocumentButton";
+import { DocumentRelations } from "../components/DocumentRelations";
+import { DraftRecoveryNotice } from "../components/DraftRecoveryNotice";
+import { useLocalDraft } from "../hooks/useLocalDraft";
 import { useAuth } from "../auth";
 import { formatCode, formatMoney, StatusBadge } from "../format";
 import { useI18n } from "../i18n";
@@ -11,8 +16,10 @@ import { Currency, Document, DocumentLine, DocumentRevision, Partner, Product, W
 export function DocumentEditor() {
   const { t } = useI18n();
   const { showToast } = useToast();
+  const { ask, dialog } = useConfirmDialog();
   const { can } = useAuth();
   const { id } = useParams();
+  const navigate = useNavigate();
   const documentId = Number(id);
   const [document, setDocument] = useState<Document | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
@@ -24,13 +31,21 @@ export function DocumentEditor() {
   const [correctionReason, setCorrectionReason] = useState("");
   const [correctionLines, setCorrectionLines] = useState<DocumentLine[]>([]);
   const [editingCorrectionLineId, setEditingCorrectionLineId] = useState<number | null>(null);
+  const [editingDraftLineId, setEditingDraftLineId] = useState<number | null>(null);
+  const [savingLine, setSavingLine] = useState(false);
+  const productInputRef = useRef<HTMLInputElement>(null);
   const [productId, setProductId] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [price, setPrice] = useState("0");
   const [productSearch, setProductSearch] = useState("");
+  const [productOptionsOpen, setProductOptionsOpen] = useState(false);
+  const [productOptionsLoading, setProductOptionsLoading] = useState(true);
+  const [activeProductIndex, setActiveProductIndex] = useState(-1);
   const [partnerSearch, setPartnerSearch] = useState("");
   const [stockBalance, setStockBalance] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  const allowExitRef = useRef(false);
   const [header, setHeader] = useState({
     document_type: "incoming",
     number: "",
@@ -42,6 +57,99 @@ export function DocumentEditor() {
     exchange_rate: "1",
     note: ""
   });
+  const [savedHeader, setSavedHeader] = useState<typeof header | null>(null);
+  const lineDraftDirty = productId !== "" || productSearch.trim() !== "" || quantity !== "1" || price !== "0";
+  const hasUnsavedChanges = document !== null && ((savedHeader !== null && JSON.stringify(header) !== JSON.stringify(savedHeader)) || correctionMode || (document.status === "draft" && lineDraftDirty));
+  const blocker = useBlocker(() => hasUnsavedChanges && !allowExitRef.current);
+
+  type InputDraft = {
+    header: typeof header;
+    productId: string;
+    productSearch: string;
+    quantity: string;
+    price: string;
+    editingDraftLineId: number | null;
+    editingCorrectionLineId: number | null;
+    correctionMode: boolean;
+    correctionReason: string;
+    correctionLines: DocumentLine[];
+  };
+
+  function validInput(value: unknown): value is InputDraft {
+    if (!value || typeof value !== "object") return false;
+    const saved = value as InputDraft;
+    if (!saved.header || Object.keys(header).some((key) => typeof saved.header[key as keyof typeof header] !== "string")
+      || ![saved.productId, saved.productSearch, saved.quantity, saved.price, saved.correctionReason].every((item) => typeof item === "string")
+      || typeof saved.correctionMode !== "boolean" || !Array.isArray(saved.correctionLines)) return false;
+    if (![saved.editingDraftLineId, saved.editingCorrectionLineId].every((item) => item === null || Number.isSafeInteger(item))) return false;
+    if (saved.editingDraftLineId !== null && !document?.lines?.some((line) => line.id === saved.editingDraftLineId)) return false;
+    if (saved.correctionMode && (document?.status !== "posted" || !can("documents.post"))) return false;
+    if (saved.correctionLines.some((line) => !line || !Number.isSafeInteger(line.id) || !Number.isSafeInteger(line.product_id) || line.document_id !== documentId
+      || typeof line.quantity !== "string" || typeof line.price !== "string" || typeof line.line_total !== "string")) return false;
+    return saved.editingCorrectionLineId === null || saved.correctionLines.some((line) => line.id === saved.editingCorrectionLineId);
+  }
+
+  const draft = useLocalDraft<InputDraft>({
+    scope: "document",
+    entityId: documentId,
+    revision: JSON.stringify(document ? [document.id, document.status, document.posting_version, document.updated_at, savedHeader, document.lines] : []),
+    value: { header, productId, productSearch, quantity, price, editingDraftLineId, editingCorrectionLineId, correctionMode, correctionReason, correctionLines },
+    dirty: hasUnsavedChanges,
+    enabled: document?.id === documentId && savedHeader !== null && can("documents.update") && (document.status === "draft" || (document.status === "posted" && can("documents.post"))),
+    validate: validInput,
+    onRestore: (saved) => {
+      setHeader(saved.header);
+      setProductId(saved.productId);
+      setProductSearch(saved.productSearch);
+      setQuantity(saved.quantity);
+      setPrice(saved.price);
+      setEditingDraftLineId(saved.editingDraftLineId);
+      setEditingCorrectionLineId(saved.editingCorrectionLineId);
+      setCorrectionMode(saved.correctionMode);
+      setCorrectionReason(saved.correctionReason);
+      setCorrectionLines(saved.correctionLines);
+      if (saved.productId) api.product(Number(saved.productId)).then((product) => {
+        if (product.id === Number(saved.productId)) setProducts((current) => current.some((item) => item.id === product.id) ? current : [product, ...current]);
+      }).catch(() => undefined);
+      if (saved.header.partner_id) api.partner(Number(saved.header.partner_id)).then((partner) => {
+        if (partner.id === Number(saved.header.partner_id)) setPartners((current) => current.some((item) => item.id === partner.id) ? current : [partner, ...current]);
+      }).catch(() => undefined);
+    },
+    onDiscard: () => {
+      if (document) applyDocument(document);
+      setCorrectionMode(false);
+      setCorrectionLines([]);
+      setCorrectionReason("");
+      resetLineEntry();
+    },
+  });
+
+  useLayoutEffect(() => {
+    allowExitRef.current = false;
+    setDocument(null);
+    setSavedHeader(null);
+    setCorrectionMode(false);
+    setCorrectionLines([]);
+    setCorrectionReason("");
+    resetLineEntry();
+  }, [documentId]);
+
+  useEffect(() => { setValidationErrors({}); }, [header]);
+  useEffect(() => {
+    if (blocker.state !== "blocked") return;
+    if (window.confirm(t(draft.storageError ? "unsavedChangesConfirm" : "leaveRecoverableDocumentConfirm"))) blocker.proceed();
+    else blocker.reset();
+  }, [blocker.state]);
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      if (allowExitRef.current) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [hasUnsavedChanges]);
 
   const isIncoming = header.document_type === "incoming";
   const lineSum = useMemo(() => Number(quantity || 0) * Number(price || 0), [quantity, price]);
@@ -94,8 +202,8 @@ export function DocumentEditor() {
   }
 
   function applyDocument(doc: Document) {
-    setDocument(doc);
-    setHeader({
+    setDocument((current) => current?.id === doc.id && !doc.lines ? { ...current, ...doc } : doc);
+    const nextHeader = {
       document_type: doc.document_type,
       number: doc.number ?? "",
       document_date: doc.document_date,
@@ -105,7 +213,9 @@ export function DocumentEditor() {
       currency_code: doc.currency_code ?? "RUB_PMR",
       exchange_rate: doc.exchange_rate ?? "1",
       note: doc.note ?? ""
-    });
+    };
+    setHeader(nextHeader);
+    setSavedHeader(nextHeader);
     if (doc.partner_id) {
       api.partner(doc.partner_id).then((partner) => {
         setPartners((current) => current.some((item) => item.id === partner.id) ? current : [partner, ...current]);
@@ -115,7 +225,7 @@ export function DocumentEditor() {
 
   function load() {
     if (!documentId) return;
-    api.document(documentId).then(applyDocument).catch((exc) => setError(String(exc)));
+    api.document(documentId).then((doc) => { draft.clear(); applyDocument(doc); }).catch((exc) => setError(String(exc)));
     api.documentRevisions(documentId).then(setRevisions).catch(() => setRevisions([]));
   }
 
@@ -142,16 +252,22 @@ export function DocumentEditor() {
 
   useEffect(() => {
     let active = true;
+    setProductOptionsLoading(true);
     const timeout = window.setTimeout(() => {
       api.productOptions(productSearch)
         .then((rows) => {
           if (!active) return;
+          setProductOptionsLoading(false);
           setProducts((current) => {
             const selected = current.find((item) => String(item.id) === productId);
             return selected && !rows.some((item) => item.id === selected.id) ? [selected, ...rows] : rows;
           });
         })
-        .catch(() => active && setProducts([]));
+        .catch(() => {
+          if (!active) return;
+          setProductOptionsLoading(false);
+          setProducts([]);
+        });
     }, 250);
     return () => {
       active = false;
@@ -195,6 +311,9 @@ export function DocumentEditor() {
   function setSelectedProduct(nextProductId: string) {
     setProductId(nextProductId);
     const product = products.find((item) => String(item.id) === nextProductId);
+    setProductSearch(product ? `${product.name}${product.sku ? ` (${product.sku})` : ""}` : "");
+    setProductOptionsOpen(false);
+    setActiveProductIndex(-1);
     if (product?.base_price !== undefined && product.base_price !== null) {
       setPrice(String(product.base_price));
     }
@@ -247,21 +366,55 @@ export function DocumentEditor() {
     };
   }
 
+  function validateHeader() {
+    const errors: Record<string, string> = {};
+    if (!header.document_date) errors.document_date = t("selectDate");
+    if (!header.warehouse_id) errors.warehouse_id = t("selectWarehouse");
+    if ((header.document_type === "incoming" || header.document_type === "outgoing") && !header.partner_id) errors.partner_id = t("selectPartner");
+    if (header.document_type === "transfer") {
+      if (!header.destination_warehouse_id) errors.destination_warehouse_id = t("selectDestinationWarehouse");
+      else if (header.destination_warehouse_id === header.warehouse_id) errors.destination_warehouse_id = t("differentWarehousesRequired");
+    }
+    if (isIncoming && (!Number.isFinite(Number(header.exchange_rate)) || Number(header.exchange_rate) <= 0)) errors.exchange_rate = t("invalidExchangeRate");
+    setValidationErrors(errors);
+    const first = Object.values(errors)[0];
+    if (first) {
+      setError(first);
+      showToast("warning", first);
+    }
+    return !first;
+  }
+
   function persistHeader() {
     return api.updateDocument(documentId, headerPayload()).then((doc) => {
-      setDocument(doc);
+      draft.clear();
+      applyDocument(doc);
       return doc;
     });
   }
 
-  function addLine() {
+  function resetLineEntry() {
+    setEditingDraftLineId(null);
+    setEditingCorrectionLineId(null);
+    setProductId("");
+    setProductSearch("");
+    setProductOptionsOpen(false);
+    setActiveProductIndex(-1);
+    setQuantity("1");
+    setPrice("0");
     setError("");
-    if (Number(quantity) <= 0) {
+  }
+
+  function addLine() {
+    if (savingLine || !can("documents.update")) return;
+    setError("");
+    if (!validateHeader()) return;
+    if (!Number.isFinite(Number(quantity)) || Number(quantity) <= 0) {
       setError(t("invalidQuantity"));
       showToast("warning", t("invalidQuantity"));
       return;
     }
-    if (Number(price) < 0) {
+    if (!Number.isFinite(Number(price)) || Number(price) < 0) {
       setError(t("invalidPrice"));
       showToast("warning", t("invalidPrice"));
       return;
@@ -298,21 +451,30 @@ export function DocumentEditor() {
       setCorrectionLines((current) => editingCorrectionLineId === null
         ? [...current, correctedLine]
         : current.map((line) => line.id === editingCorrectionLineId ? correctedLine : line));
-      setEditingCorrectionLineId(null);
+      resetLineEntry();
       showToast("success", t(editingCorrectionLineId === null ? "lineAddedToCorrection" : "lineUpdatedInCorrection"));
       return;
     }
+    const payload = { product_id: Number(productId), quantity, price: isIncoming ? "0" : price, foreign_price: isIncoming ? price : null };
+    setSavingLine(true);
     persistHeader()
-      .then(() => api.addDocumentLine(documentId, { product_id: Number(productId), quantity, price: isIncoming ? "0" : price, foreign_price: isIncoming ? price : null }))
-      .then(() => {
+      .then(() => editingDraftLineId === null
+        ? api.addDocumentLine(documentId, payload)
+        : api.updateDocumentLine(documentId, editingDraftLineId, payload))
+      .then(() => api.document(documentId))
+      .then((doc) => {
+        draft.clear();
+        applyDocument(doc);
         showToast("success", t("saved"));
-        load();
+        resetLineEntry();
       })
-      .catch(handleError);
+      .catch(handleError)
+      .finally(() => setSavingLine(false));
   }
 
   function saveHeader() {
     setError("");
+    if (!validateHeader()) return;
     persistHeader()
       .then((doc) => {
         showToast("success", t("saved"));
@@ -323,6 +485,7 @@ export function DocumentEditor() {
 
   function beginCorrection() {
     if (!document?.lines) return;
+    resetLineEntry();
     setCorrectionLines(document.lines.map((line) => ({ ...line })));
     setCorrectionReason("");
     setEditingCorrectionLineId(null);
@@ -331,15 +494,22 @@ export function DocumentEditor() {
   }
 
   function discardCorrection() {
+    draft.clear();
     if (document) applyDocument(document);
     setCorrectionLines([]);
     setCorrectionReason("");
     setCorrectionMode(false);
-    setEditingCorrectionLineId(null);
+    resetLineEntry();
     setError("");
   }
 
-  function applyCorrection() {
+  async function applyCorrection() {
+    if (lineDraftDirty) {
+      setError(t("finishLineBeforePosting"));
+      showToast("warning", t("finishLineBeforePosting"));
+      return;
+    }
+    if (!validateHeader()) return;
     const reason = correctionReason.trim();
     if (reason.length < 3) {
       setError(t("correctionReasonRequired"));
@@ -351,7 +521,7 @@ export function DocumentEditor() {
       showToast("warning", t("documentHasNoLines"));
       return;
     }
-    if (!window.confirm(t("repostConfirm"))) return;
+    if (!(await ask({ message: `${t("repostConfirm")} ${header.number || `#${documentId}`}`, confirmLabel: t("applyCorrection") }))) return;
     const rate = Number(header.exchange_rate || 1);
     api.repostDocument(documentId, {
       ...headerPayload(),
@@ -363,6 +533,7 @@ export function DocumentEditor() {
         foreign_price: isIncoming ? (line.foreign_price ?? (Number(line.price) / rate).toFixed(2)) : null
       }))
     }).then((doc) => {
+      draft.clear();
       applyDocument(doc);
       setCorrectionMode(false);
       setCorrectionLines([]);
@@ -373,12 +544,20 @@ export function DocumentEditor() {
     }).catch(handleError);
   }
 
-  function post() {
+  async function post() {
     setError("");
-    if (!window.confirm(t("postConfirm"))) return;
+    if (savingLine) return;
+    if (lineDraftDirty) {
+      setError(t("finishLineBeforePosting"));
+      showToast("warning", t("finishLineBeforePosting"));
+      return;
+    }
+    if (!validateHeader()) return;
+    if (!(await ask({ message: `${t("postConfirm")} ${header.number || `#${documentId}`}`, confirmLabel: t("post") }))) return;
     persistHeader()
       .then(() => api.postDocument(documentId))
       .then((doc) => {
+        draft.clear();
         setDocument(doc);
         showToast("success", t("postedSuccess"));
         load();
@@ -386,44 +565,58 @@ export function DocumentEditor() {
       .catch(handleError);
   }
 
-  function cancel() {
+  async function cancel() {
     setError("");
-    if (!window.confirm(t("cancelConfirm"))) return;
+    if (!(await ask({ message: `${t("cancelConfirm")} ${header.number || `#${documentId}`}`, confirmLabel: t("cancel"), danger: true }))) return;
     api.cancelDocument(documentId).then((doc) => {
+      draft.clear();
       setDocument(doc);
       showToast("success", t("cancelledSuccess"));
       load();
     }).catch(handleError);
   }
 
-  function deleteDraft() {
+  async function deleteDraft() {
     setError("");
-    if (!window.confirm(t("deleteDraftConfirm"))) return;
+    if (!(await ask({ message: `${t("deleteDraftConfirm")} ${header.number || `#${documentId}`}`, confirmLabel: t("deleteDraft"), danger: true }))) return;
     api.deleteDocument(documentId).then(() => {
+      draft.clear();
       showToast("success", t("deleteDraft"));
+      allowExitRef.current = true;
       window.location.href = "/documents";
     }).catch(handleError);
   }
 
-  function deleteLine(lineId: number) {
+  async function deleteLine(lineId: number) {
+    if (savingLine) return;
     setError("");
     if (correctionMode) {
       setCorrectionLines((current) => current.filter((line) => line.id !== lineId));
-      if (editingCorrectionLineId === lineId) setEditingCorrectionLineId(null);
+      if (editingCorrectionLineId === lineId) resetLineEntry();
       return;
     }
-    if (!window.confirm(t("deleteLineConfirm"))) return;
+    if (!(await ask({ message: t("deleteLineConfirm"), confirmLabel: t("deleteLine"), danger: true }))) return;
     api.deleteDocumentLine(documentId, lineId).then(() => {
+      if (editingDraftLineId === lineId) resetLineEntry();
       showToast("success", t("deleteLine"));
       load();
     }).catch(handleError);
   }
 
-  function editCorrectionLine(line: DocumentLine) {
-    setEditingCorrectionLineId(line.id);
+  async function editLine(line: DocumentLine) {
+    if (savingLine || !can("documents.update")) return;
+    if ((correctionMode ? editingCorrectionLineId : editingDraftLineId) === line.id) return;
+    if (lineDraftDirty && !(await ask({ message: t("unsavedLineDraftConfirm"), confirmLabel: t("editLine") }))) return;
+    if (correctionMode) setEditingCorrectionLineId(line.id);
+    else setEditingDraftLineId(line.id);
     setProductId(String(line.product_id));
+    setProductSearch(line.product_name ?? products.find((item) => item.id === line.product_id)?.name ?? "");
     setQuantity(String(line.quantity));
-    setPrice(String(isIncoming ? (line.foreign_price ?? line.price) : line.price));
+    setPrice(String(isIncoming ? (line.foreign_price ?? (Number(line.price) / Number(header.exchange_rate || 1)).toFixed(2)) : line.price));
+    setProductOptionsOpen(false);
+    setActiveProductIndex(-1);
+    setError("");
+    window.requestAnimationFrame(() => productInputRef.current?.focus());
   }
 
   function print() {
@@ -456,7 +649,9 @@ export function DocumentEditor() {
   const isDraft = document?.status === "draft";
   const isPosted = document?.status === "posted";
   const isCancelled = document?.status === "cancelled";
-  const isEditable = isDraft || correctionMode;
+  const isEditable = (isDraft || correctionMode) && !savingLine;
+  const editingLineId = correctionMode ? editingCorrectionLineId : editingDraftLineId;
+  const editingLine = (correctionMode ? correctionLines : document?.lines ?? []).find((line) => line.id === editingLineId);
   const displayedLines = correctionMode ? correctionLines : (document?.lines ?? []);
   const displayedTotal = correctionMode
     ? correctionLines.reduce((sum, line) => sum + Number(line.line_total), 0).toFixed(2)
@@ -467,20 +662,38 @@ export function DocumentEditor() {
   const readOnlyReason = isPosted && !correctionMode ? t("documentPostedReadOnly") : isCancelled ? t("documentCancelledReadOnly") : "";
 
   return (
-    <div style={{ display: "grid", gap: 10 }}>
-      <div className="toolbar">
-        <h1 style={{ fontSize: 20, margin: "0 12px 0 0" }}>{t("documentEditorTitle")} #{documentId}</h1>
-        <Link className="button" to="/documents">{t("backToDocuments")}</Link>
-        <button className="button" title={!can("documents.update") ? t("noPermission") : ""} disabled={!can("documents.update") || !isDraft} onClick={saveHeader}>{t("save")}</button>
-        <button data-testid="document-post" className="button primary" title={!can("documents.post") ? t("noPermission") : ""} disabled={!can("documents.post") || !isDraft} onClick={post}>{t("post")}</button>
+    <div className="document-workspace">
+      {dialog}
+      <div className="document-heading">
+        <div>
+          <Link className="document-back" to="/documents">← {t("backToDocuments")}</Link>
+          <h1>{formatCode(header.document_type, t)} {header.number || `#${documentId}`}</h1>
+          <div className="document-heading-meta"><StatusBadge status={document?.status} label={formatCode(document?.status, t)} />{document?.posting_version ? <span data-testid="document-posting-version">v{document.posting_version}</span> : null}</div>
+        </div>
+        {hasUnsavedChanges ? <span className="document-unsaved">{t("unsavedChanges")}</span> : null}
+      </div>
+      <div className="document-actions" aria-label={t("actions")}>
+        <button className="button" title={!can("documents.update") ? t("noPermission") : ""} disabled={!can("documents.update") || !isDraft || savingLine} onClick={saveHeader}>{t("save")}</button>
+        <button data-testid="document-post" className="button primary" title={!can("documents.post") ? t("noPermission") : ""} disabled={!can("documents.post") || !isDraft || savingLine} onClick={post}>{t("post")}</button>
         {isPosted && !correctionMode ? <button data-testid="document-correction-start" className="button primary" title={!can("documents.update") || !can("documents.post") ? t("noPermission") : ""} disabled={!can("documents.update") || !can("documents.post")} onClick={beginCorrection}>{t("correctDocument")}</button> : null}
         {correctionMode ? <button data-testid="document-correction-apply" className="button primary" onClick={applyCorrection}>{t("applyCorrection")}</button> : null}
         {correctionMode ? <button className="button" onClick={discardCorrection}>{t("discardCorrection")}</button> : null}
-        <button className="button" title={!can("documents.cancel") ? t("noPermission") : ""} disabled={!can("documents.cancel") || !isPosted || correctionMode} onClick={cancel}>{t("cancel")}</button>
-        <button className="button" title={!can("documents.delete") ? t("noPermission") : ""} disabled={!can("documents.delete") || !isDraft} onClick={deleteDraft}>{t("deleteDraft")}</button>
         <button className="button" title={!can("documents.read") ? t("noPermission") : ""} disabled={!can("documents.read")} onClick={print}>{t("print")}</button>
-        <button className="button" title={!can("documents.read") ? t("noPermission") : ""} disabled={!can("documents.read")} onClick={downloadPdf}>{t("downloadPdf")}</button>
+        <details className="document-more-actions">
+          <summary className="button">{t("moreActions")}</summary>
+          <div className="document-more-menu">
+            <CopyDocumentButton documentId={documentId} documentNumber={document?.number} hasUnsavedChanges={hasUnsavedChanges} disabled={!document || savingLine} onCopied={(copied) => {
+              allowExitRef.current = true;
+              navigate(`/documents/${copied.id}`);
+            }} />
+            <button className="button" title={!can("documents.read") ? t("noPermission") : ""} disabled={!can("documents.read")} onClick={downloadPdf}>{t("downloadPdf")}</button>
+            <button className="button" title={!can("documents.cancel") ? t("noPermission") : ""} disabled={!can("documents.cancel") || !isPosted || correctionMode} onClick={cancel}>{t("cancel")}</button>
+            <button className="button" title={!can("documents.delete") ? t("noPermission") : ""} disabled={!can("documents.delete") || !isDraft || savingLine} onClick={deleteDraft}>{t("deleteDraft")}</button>
+          </div>
+        </details>
       </div>
+      <DraftRecoveryNotice draft={draft} />
+      {document ? <DocumentRelations document={document} /> : null}
       {error ? <div className="panel error-panel">{error}</div> : null}
       {readOnlyReason ? <div className="panel" style={{ padding: 10, color: "#52616f", fontSize: 13 }}>{readOnlyReason}</div> : null}
       {correctionMode ? (
@@ -492,8 +705,9 @@ export function DocumentEditor() {
           <div style={{ gridColumn: "1 / -1", color: "#52616f", fontSize: 13 }}>{t("atomicCorrectionHint")}</div>
         </div>
       ) : null}
-      <div className="panel form-grid">
-        <div className="field"><label>{t("search")}: {t("partner")}</label><input value={partnerSearch} onChange={(event) => setPartnerSearch(event.target.value)} disabled={!isEditable} /></div>
+      <section className="document-section panel" aria-label={t("documentDetails")}>
+        <h2>{t("documentDetails")}</h2>
+        <div className="document-header-grid form-grid">
         <div className="field">
           <label>{t("type")}</label>
           <select
@@ -507,33 +721,35 @@ export function DocumentEditor() {
             <option value="transfer">{t("transfer")}</option>
           </select>
         </div>
-        <div className="field"><label>{t("status")}</label><div style={{ paddingTop: 5 }}><StatusBadge status={document?.status} label={formatCode(document?.status, t)} /> {document?.posting_version ? <span data-testid="document-posting-version">v{document.posting_version}</span> : null}</div></div>
         <div className="field"><label>{t("number")}</label><input value={header.number} onChange={(event) => setHeader({ ...header, number: event.target.value })} disabled={!isEditable} /></div>
-        <div className="field"><label>{t("date")}</label><input type="date" value={header.document_date} onChange={(event) => setHeader({ ...header, document_date: event.target.value })} disabled={!isEditable} /></div>
+        <div className="field"><label htmlFor="document-date">{t("date")}</label><input id="document-date" type="date" value={header.document_date} onChange={(event) => setHeader({ ...header, document_date: event.target.value })} disabled={!isEditable} aria-invalid={Boolean(validationErrors.document_date)} />{validationErrors.document_date ? <small className="field-error">{validationErrors.document_date}</small> : null}</div>
+        {header.document_type !== "transfer" && header.document_type !== "adjustment" ? <div className="field"><label>{t("search")}: {t("partner")}</label><input value={partnerSearch} onChange={(event) => setPartnerSearch(event.target.value)} disabled={!isEditable} /></div> : null}
         <div className="field">
-          <label>{header.document_type === "transfer" ? t("sourceWarehouse") : t("warehouse")}</label>
-          <select value={header.warehouse_id} onChange={(event) => setHeader({ ...header, warehouse_id: event.target.value })} disabled={!isEditable}>
+          <label htmlFor="document-warehouse">{header.document_type === "transfer" ? t("sourceWarehouse") : t("warehouse")}</label>
+          <select id="document-warehouse" value={header.warehouse_id} onChange={(event) => setHeader({ ...header, warehouse_id: event.target.value })} disabled={!isEditable} aria-invalid={Boolean(validationErrors.warehouse_id)}>
             <option value="">{t("notSelected")}</option>
             {warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}
           </select>
+          {validationErrors.warehouse_id ? <small className="field-error">{validationErrors.warehouse_id}</small> : null}
         </div>
         {header.document_type === "transfer" ? (
           <div className="field">
-            <label>{t("destinationWarehouse")}</label>
-            <select value={header.destination_warehouse_id} onChange={(event) => setHeader({ ...header, destination_warehouse_id: event.target.value })} disabled={!isEditable}>
+            <label htmlFor="document-destination-warehouse">{t("destinationWarehouse")}</label>
+            <select id="document-destination-warehouse" value={header.destination_warehouse_id} onChange={(event) => setHeader({ ...header, destination_warehouse_id: event.target.value })} disabled={!isEditable} aria-invalid={Boolean(validationErrors.destination_warehouse_id)}>
               <option value="">{t("notSelected")}</option>
               {warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}
             </select>
+            {validationErrors.destination_warehouse_id ? <small className="field-error">{validationErrors.destination_warehouse_id}</small> : null}
           </div>
         ) : null}
         <div className="field">
-          <label>{t("partner")}</label>
-          <select value={header.partner_id} onChange={(event) => setHeader({ ...header, partner_id: event.target.value })} disabled={!isEditable || header.document_type === "transfer" || header.document_type === "adjustment"}>
+          <label htmlFor="document-partner">{t("partner")}</label>
+          <select id="document-partner" value={header.partner_id} onChange={(event) => setHeader({ ...header, partner_id: event.target.value })} disabled={!isEditable || header.document_type === "transfer" || header.document_type === "adjustment"} aria-invalid={Boolean(validationErrors.partner_id)}>
             <option value="">{t("notSelected")}</option>
             {filteredPartners.map((partner) => <option key={partner.id} value={partner.id}>{partner.name} - {formatCode(partner.partner_type, t)}</option>)}
           </select>
+          {validationErrors.partner_id ? <small className="field-error">{validationErrors.partner_id}</small> : null}
         </div>
-        <div className="field"><label>{t("total")}</label><input value={formatMoney(displayedTotal)} readOnly /></div>
         {header.document_type === "incoming" ? (
           <>
             <div className="field">
@@ -542,35 +758,83 @@ export function DocumentEditor() {
                 {currencies.map((currency) => <option key={currency.code} value={currency.code}>{currency.code} - {currency.name}</option>)}
               </select>
             </div>
-            <div className="field"><label>{t("exchangeRate")}</label><input data-testid="document-exchange-rate" value={header.exchange_rate} onChange={(event) => setHeader({ ...header, exchange_rate: event.target.value })} disabled={!isEditable || header.currency_code === "RUB_PMR"} /></div>
-            <div className="field"><label>{t("foreignTotal")}</label><input value={`${formatMoney(displayedForeignTotal)} ${header.currency_code}`} readOnly /></div>
+            <div className="field"><label htmlFor="document-exchange-rate">{t("exchangeRate")}</label><input id="document-exchange-rate" data-testid="document-exchange-rate" value={header.exchange_rate} onChange={(event) => setHeader({ ...header, exchange_rate: event.target.value })} disabled={!isEditable || header.currency_code === "RUB_PMR"} aria-invalid={Boolean(validationErrors.exchange_rate)} />{validationErrors.exchange_rate ? <small className="field-error">{validationErrors.exchange_rate}</small> : null}</div>
           </>
         ) : null}
-        <div className="field"><label>{t("note")}</label><input value={header.note} onChange={(event) => setHeader({ ...header, note: event.target.value })} disabled={!isEditable} /></div>
-        {!isEditable ? <div className="field"><label>{t("warehouse")}</label><input value={document?.warehouse_name ?? ""} readOnly /></div> : null}
-        {!isEditable ? <div className="field"><label>{t("destinationWarehouse")}</label><input value={document?.destination_warehouse_name ?? ""} readOnly /></div> : null}
-        {!isEditable ? <div className="field"><label>{t("partner")}</label><input value={document?.partner_name ?? ""} readOnly /></div> : null}
-      </div>
+        <div className="field document-note"><label htmlFor="document-note">{t("note")}</label><input id="document-note" value={header.note} onChange={(event) => setHeader({ ...header, note: event.target.value })} disabled={!isEditable} /></div>
+        </div>
+      </section>
 
-      <div className="panel form-grid">
-        <div className="field">
-          <label>{t("productSearch")}</label>
-          <input value={productSearch} onChange={(event) => setProductSearch(event.target.value)} disabled={!isEditable} />
+      <section className="document-section document-lines-section panel" aria-label={t("documentLines")}>
+        <div className="document-section-title"><h2>{t("documentLines")}</h2><span>{displayedLines.length}</span></div>
+        {editingLine ? <div data-testid="document-line-editing" role="status" style={{ marginBottom: 10 }}><strong>{t("editingLine")}</strong>: {editingLine.product_name}</div> : null}
+        <div className="document-line-entry form-grid">
+        <div className="field document-product-picker" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setProductOptionsOpen(false); }}>
+          <label htmlFor="document-product-search">{t("product")}</label>
+          <input
+            id="document-product-search"
+            ref={productInputRef}
+            data-testid="document-product"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={productOptionsOpen}
+            aria-controls="document-product-options"
+            aria-activedescendant={productOptionsOpen && products[activeProductIndex] ? `document-product-option-${products[activeProductIndex].id}` : undefined}
+            value={productSearch}
+            placeholder={t("productSearch")}
+            onFocus={() => setProductOptionsOpen(true)}
+            onChange={(event) => {
+              setProductSearch(event.target.value);
+              setProductId("");
+              setPrice("0");
+              setActiveProductIndex(-1);
+              setProductOptionsOpen(true);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowDown") {
+                event.preventDefault();
+                setProductOptionsOpen(true);
+                setActiveProductIndex((current) => Math.min(current + 1, products.length - 1));
+              } else if (event.key === "ArrowUp") {
+                event.preventDefault();
+                setProductOptionsOpen(true);
+                setActiveProductIndex((current) => Math.max(0, current - 1));
+              } else if (event.key === "Enter" && productOptionsOpen && products.length) {
+                event.preventDefault();
+                setSelectedProduct(String(products[Math.max(0, activeProductIndex)].id));
+              } else if (event.key === "Escape") {
+                setProductOptionsOpen(false);
+              }
+            }}
+            disabled={!isEditable}
+          />
+          {productOptionsOpen && isEditable ? (
+            <div id="document-product-options" className="document-product-options" role="listbox" aria-label={t("product")}>
+              {productOptionsLoading ? <div className="document-product-option-empty">{t("loading")}</div> : products.length ? products.map((product, index) => (
+                <button
+                  key={product.id}
+                  id={`document-product-option-${product.id}`}
+                  type="button"
+                  role="option"
+                  aria-selected={index === activeProductIndex}
+                  className={index === activeProductIndex ? "active" : ""}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => setSelectedProduct(String(product.id))}
+                >
+                  <span>{product.name}</span>{product.sku ? <small>{product.sku}</small> : null}
+                </button>
+              )) : <div className="document-product-option-empty">Товары не найдены</div>}
+            </div>
+          ) : null}
         </div>
-        <div className="field">
-          <label>{t("product")}</label>
-          <select data-testid="document-product" value={productId} onChange={(event) => setSelectedProduct(event.target.value)} disabled={!isEditable}>
-            <option value="">{t("selectProduct")}</option>
-            {products.map((product) => <option key={product.id} value={product.id}>{product.name}{product.sku ? ` (${product.sku})` : ""}</option>)}
-          </select>
-        </div>
-        <div className="field"><label>{t("quantity")}</label><input data-testid="document-line-quantity" value={quantity} onChange={(event) => setQuantity(event.target.value)} disabled={!isEditable} /></div>
-        <div className="field"><label>{isIncoming ? t("foreignPrice") : t("price")}</label><input data-testid="document-line-price" value={price} onChange={(event) => setPrice(event.target.value)} disabled={!isEditable} /></div>
+        <div className="field"><label htmlFor="document-line-quantity">{t("quantity")}</label><input id="document-line-quantity" data-testid="document-line-quantity" inputMode="decimal" value={quantity} onChange={(event) => setQuantity(event.target.value)} disabled={!isEditable} /></div>
+        <div className="field"><label htmlFor="document-line-price">{isIncoming ? t("foreignPrice") : t("price")}</label><input id="document-line-price" data-testid="document-line-price" inputMode="decimal" value={price} onChange={(event) => setPrice(event.target.value)} disabled={!isEditable} /></div>
         <div className="field"><label>{isIncoming ? t("foreignSum") : t("sum")}</label><input value={lineSum.toFixed(2)} readOnly /></div>
         {isIncoming ? <div className="field"><label>{t("baseSum")}</label><input value={baseLineSum.toFixed(2)} readOnly /></div> : null}
         <div className="field"><label>{t("stockBalance")}</label><input value={stockBalance ?? ""} readOnly /></div>
-        <div className="field"><label>&nbsp;</label><button data-testid="document-line-add" className="button primary" title={!can("documents.update") ? t("noPermission") : ""} disabled={!can("documents.update") || !isEditable} onClick={addLine}>{t(editingCorrectionLineId === null ? "addLine" : "saveLine")}</button></div>
-      </div>
+        <div className="field"><label>&nbsp;</label><button data-testid="document-line-add" className="button primary" title={!can("documents.update") ? t("noPermission") : ""} disabled={!can("documents.update") || !isEditable} onClick={addLine}>{t(editingLineId === null ? "addLine" : "saveLine")}</button></div>
+        {editingLineId !== null || lineDraftDirty ? <div className="field"><label>&nbsp;</label><button data-testid="document-line-edit-cancel" className="button" disabled={savingLine} onClick={resetLineEntry}>{t("cancelLineEdit")}</button></div> : null}
+        </div>
       {salePriceReview ? (
         <div data-testid="sale-price-review" className="panel" style={{ padding: 10, color: salePriceReview.priceReviewRequired ? "#8b1e16" : "#6b5200", background: salePriceReview.priceReviewRequired ? "#fff1f0" : "#fffbea", borderColor: salePriceReview.priceReviewRequired ? "#e6a29c" : "#e8cf6a", fontSize: 13 }}>
           {salePriceReview.costChanged ? <div>{t(salePriceReview.direction === "first" ? "firstPurchaseCost" : salePriceReview.direction === "higher" ? "purchaseCostHigher" : "purchaseCostLower")} {salePriceReview.previousPurchaseCost !== null ? `${t("latestPurchaseCost")}: ${formatMoney(salePriceReview.previousPurchaseCost.toFixed(2))}; ` : ""}{t("newBasePurchasePrice")}: {formatMoney(salePriceReview.baseUnitCost.toFixed(2))}.</div> : null}
@@ -594,13 +858,18 @@ export function DocumentEditor() {
             header: t("actions"),
             render: (row) => (
               <div style={{ display: "flex", gap: 6 }}>
-                {correctionMode ? <button className="button" onClick={() => editCorrectionLine(row)}>{t("editLine")}</button> : null}
+                {isDraft || correctionMode ? <button data-testid={`document-line-edit-${row.id}`} className="button" title={!can("documents.update") ? t("noPermission") : ""} disabled={!can("documents.update") || !isEditable} onClick={() => editLine(row)}>{t("editLine")}</button> : null}
                 <button className="button" title={!can("documents.update") ? t("noPermission") : ""} disabled={!can("documents.update") || !isEditable} onClick={() => deleteLine(row.id)}>{t("deleteLine")}</button>
               </div>
             )
           }
         ]}
       />
+      <div className="document-total-bar">
+        <span>{t("total")}</span><strong>{formatMoney(displayedTotal)}</strong>
+        {isIncoming ? <small>{t("foreignTotal")}: {formatMoney(displayedForeignTotal)} {header.currency_code}</small> : null}
+      </div>
+      </section>
       {revisions.length ? (
         <div className="panel" style={{ padding: 12 }}>
           <h2 style={{ fontSize: 16, margin: "0 0 8px" }}>{t("documentHistory")}</h2>

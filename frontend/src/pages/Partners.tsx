@@ -30,7 +30,9 @@ export function Partners() {
   const [partnerType, setPartnerType] = useState<Partner["partner_type"]>("customer");
   const [typeFilter, setTypeFilter] = useState("");
   const [phone, setPhone] = useState("");
+  const [taxId, setTaxId] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [editorOpen, setEditorOpen] = useState(false);
   const [error, setError] = useState("");
   const loadRequest = useRef(0);
 
@@ -66,16 +68,21 @@ export function Partners() {
   }
 
   function resetForm() {
+    setEditorOpen(false);
     setCode("");
     setName("");
     setPhone("");
+    setTaxId("");
     setPartnerType("customer");
     setEditingId(null);
   }
 
   function save() {
-    if (!name) return;
-    const payload = { code: code || null, name, partner_type: partnerType, phone: phone || null, is_active: true };
+    if (!name.trim()) {
+      setError(t("nameRequired"));
+      return;
+    }
+    const payload = { code: code.trim() || null, name: name.trim(), partner_type: partnerType, phone: phone.trim() || null, tax_id: taxId.trim() || null, is_active: true };
     const request = editingId ? api.updatePartner(editingId, payload) : api.createPartner(payload);
     request.then(() => {
       resetForm();
@@ -85,11 +92,13 @@ export function Partners() {
   }
 
   function edit(row: Partner) {
+    setEditorOpen(true);
     setEditingId(row.id);
     setCode(row.code ?? "");
     setName(row.name);
     setPartnerType(row.partner_type);
     setPhone(row.phone ?? "");
+    setTaxId(row.tax_id ?? "");
   }
 
   function remove(row: Partner) {
@@ -106,34 +115,34 @@ export function Partners() {
 
   return (
     <PageScaffold title={t("partners")}>
+      <div className="workspace-command-bar"><button className="button primary" disabled={!can("partners.create")} onClick={() => { resetForm(); setEditorOpen(true); }} aria-expanded={editorOpen}>{t("create")}</button><span>{t("total")}: {total}</span></div>
+      {editorOpen ? (
       <div className="panel form-grid" style={{ marginBottom: 10 }}>
-        <div className="field"><label>{t("code")}</label><input value={code} onChange={(event) => setCode(event.target.value)} /></div>
-        <div className="field"><label>{t("name")}</label><input value={name} onChange={(event) => setName(event.target.value)} /></div>
+        <div className="field"><label htmlFor="partner-code">{t("code")}</label><input id="partner-code" value={code} onChange={(event) => setCode(event.target.value)} /></div>
+        <div className="field"><label htmlFor="partner-name">{t("name")}</label><input id="partner-name" value={name} onChange={(event) => setName(event.target.value)} /></div>
         <div className="field">
-          <label>{t("partnerType")}</label>
-          <select value={partnerType} onChange={(event) => setPartnerType(event.target.value as Partner["partner_type"])}>
+          <label htmlFor="partner-type">{t("partnerType")}</label>
+          <select id="partner-type" value={partnerType} onChange={(event) => setPartnerType(event.target.value as Partner["partner_type"])}>
             <option value="customer">{t("customer")}</option>
             <option value="supplier">{t("supplier")}</option>
             <option value="both">{t("both")}</option>
           </select>
         </div>
-        <div className="field"><label>{t("phone")}</label><input value={phone} onChange={(event) => setPhone(event.target.value)} /></div>
-        <div className="field"><label>{t("taxId")}</label><input /></div>
+        <div className="field"><label htmlFor="partner-phone">{t("phone")}</label><input id="partner-phone" value={phone} onChange={(event) => setPhone(event.target.value)} /></div>
+        <div className="field"><label htmlFor="partner-tax-id">{t("taxId")}</label><input id="partner-tax-id" value={taxId} onChange={(event) => setTaxId(event.target.value)} /></div>
         <div className="field"><label>&nbsp;</label><button className="button primary" title={!can(editingId ? "partners.update" : "partners.create") ? t("noPermission") : ""} disabled={!can(editingId ? "partners.update" : "partners.create")} onClick={save}>{editingId ? t("save") : t("create")}</button></div>
-        {editingId ? <div className="field"><label>&nbsp;</label><button className="button" onClick={resetForm}>{t("cancel")}</button></div> : null}
-        <div className="field">
-          <label>{t("filter")}: {t("partnerType")}</label>
-          <select value={typeFilter} onChange={(event) => { setTypeFilter(event.target.value); setPage(0); }}>
-            <option value="">{t("all")}</option>
-            <option value="customer">{t("customer")}</option>
-            <option value="supplier">{t("supplier")}</option>
-            <option value="both">{t("both")}</option>
-          </select>
-        </div>
+        <div className="field"><label>&nbsp;</label><button className="button" onClick={resetForm}>{t("cancel")}</button></div>
       </div>
+      ) : null}
       {error ? <div className="panel error-panel">{error}</div> : null}
       <div className="panel toolbar" style={{ padding: "8px 10px", marginBottom: 10 }}>
-        <input className="search" value={search} onChange={(event) => { setSearch(event.target.value); setPage(0); }} placeholder={t("search")} />
+        <input className="search" aria-label={t("search")} value={search} onChange={(event) => { setSearch(event.target.value); setPage(0); }} placeholder={t("search")} />
+        <select aria-label={`${t("filter")}: ${t("partnerType")}`} value={typeFilter} onChange={(event) => { setTypeFilter(event.target.value); setPage(0); }}>
+          <option value="">{t("all")}: {t("partnerType")}</option>
+          <option value="customer">{t("customer")}</option>
+          <option value="supplier">{t("supplier")}</option>
+          <option value="both">{t("both")}</option>
+        </select>
         <select value={sortBy} onChange={(event) => { setSortBy(event.target.value as PartnerSort); setPage(0); }}>
           <option value="name">{t("name")}</option>
           <option value="code">{t("code")}</option>
@@ -142,6 +151,7 @@ export function Partners() {
           <option value="is_active">{t("active")}</option>
         </select>
         <button className="button" onClick={() => { setSortOrder((current) => current === "asc" ? "desc" : "asc"); setPage(0); }}>{sortOrder === "asc" ? "↑" : "↓"}</button>
+        {search || typeFilter || sortBy !== "name" || sortOrder !== "asc" ? <button className="button" onClick={() => { setSearch(""); setTypeFilter(""); setSortBy("name"); setSortOrder("asc"); setPage(0); }}>{t("resetFilters")}</button> : null}
       </div>
       <DataTable<PartnerRow>
         rows={rows}

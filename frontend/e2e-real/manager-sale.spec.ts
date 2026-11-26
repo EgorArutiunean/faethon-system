@@ -122,6 +122,21 @@ async function loginAsLogist(page: Page) {
   await expect(page.getByTestId("header-user")).toContainText("E2E Logistics Operator:Логист");
 }
 
+async function selectDocumentProduct(page: Page, sku: string) {
+  const picker = page.getByTestId("document-product");
+  await picker.fill(sku);
+  await expect(page.getByRole("option", { name: new RegExp(sku) })).toBeVisible();
+  await picker.press("ArrowDown");
+  await picker.press("Enter");
+  await expect(picker).toHaveValue(new RegExp(sku));
+}
+
+async function confirmPrompt(page: Page) {
+  const dialog = page.getByRole("dialog", { name: "Подтверждение действия" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button").last().click();
+}
+
 async function createDraftThroughUi(
   page: Page,
   documentType: "incoming" | "outgoing" | "transfer",
@@ -130,6 +145,7 @@ async function createDraftThroughUi(
   destinationWarehouseId?: number,
 ) {
   await page.goto("/documents", { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: "Создать документ" }).first().click();
   await page.getByTestId("draft-document-type").selectOption(documentType);
   await page.getByTestId("draft-document-warehouse").selectOption(String(warehouseId));
   if (destinationWarehouseId) {
@@ -157,6 +173,9 @@ async function createAndPostPaymentThroughUi(
 ) {
   if (!new URL(page.url()).pathname.endsWith("/payments")) {
     await page.goto("/payments", { waitUntil: "domcontentloaded" });
+  }
+  if (!(await page.getByTestId("payment-type").isVisible())) {
+    await page.getByRole("button", { name: "Создать оплату" }).first().click();
   }
   await page.getByTestId("payment-type").selectOption(paymentType);
   await page.getByTestId("payment-partner").selectOption(String(partnerId));
@@ -195,6 +214,7 @@ async function createAndPostPaymentThroughUi(
   }).toBeGreaterThan(0);
 
   await page.getByTestId(`payment-post-${paymentId}`).click();
+  await confirmPrompt(page);
   await expect.poll(async () => {
     const response = await api.get(`payments/${paymentId}`, { headers: { Authorization: `Bearer ${token}` } });
     return response.ok() ? (await response.json()).status : "";
@@ -206,14 +226,14 @@ test("M03: продажа через интерфейс согласует до�
   const seeded = await prepareStock();
   await loginAsManager(page);
   const documentId = await createDraftThroughUi(page, "outgoing", seeded.warehouseId, seeded.customerId);
-  await page.getByTestId("document-product").selectOption(String(seeded.productId));
+  await selectDocumentProduct(page, "E2E-SALE-PRODUCT");
   await page.getByTestId("document-line-quantity").fill("2");
   await page.getByTestId("document-line-price").fill("150");
   await page.getByTestId("document-line-add").click();
   await expect(page.getByRole("cell", { name: "E2E Контрольный товар" })).toBeVisible();
 
-  page.once("dialog", (dialog) => dialog.accept());
   await page.getByTestId("document-post").click();
+  await confirmPrompt(page);
   await expect(page.getByText("Проведён", { exact: true })).toBeVisible();
   await expect(page.getByTestId("document-post")).toBeDisabled();
 
@@ -261,8 +281,8 @@ test("M08: менеджер исправляет проведенный прих
   await page.getByTestId("document-line-add").click();
   await expect(page.getByRole("cell", { name: "E2E Контрольный товар" })).toBeVisible();
 
-  page.once("dialog", (dialog) => dialog.accept());
   await page.getByTestId("document-correction-apply").click();
+  await confirmPrompt(page);
   await expect(page.getByTestId("document-posting-version")).toHaveText("v2");
   await expect(page.getByText("Уточнено фактическое количество при приёмке", { exact: true })).toBeVisible();
 
@@ -325,15 +345,15 @@ test("M02: валютный приход фиксирует курс, суммы
   const documentId = await createDraftThroughUi(page, "incoming", warehouse.id, supplier.id);
   await page.getByTestId("document-currency").selectOption("USD");
   await expect.poll(async () => Number(await page.getByTestId("document-exchange-rate").inputValue())).toBe(16.2);
-  await page.getByTestId("document-product").selectOption(String(product.id));
+  await selectDocumentProduct(page, product.sku);
   await page.getByTestId("document-line-quantity").fill("2");
   await page.getByTestId("document-line-price").fill("10");
   await expect(page.getByText("\u041f\u0435\u0440\u0435\u0441\u043c\u043e\u0442\u0440\u0438\u0442\u0435 \u0446\u0435\u043d\u0443 \u0440\u0435\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u0438.")).toBeVisible();
   await page.getByTestId("document-line-add").click();
   await expect(page.getByRole("cell", { name: "E2E FX Product" })).toBeVisible();
 
-  page.once("dialog", (dialog) => dialog.accept());
   await page.getByTestId("document-post").click();
+  await confirmPrompt(page);
   await expect(page.getByText("\u041f\u0440\u043e\u0432\u0435\u0434\u0451\u043d", { exact: true })).toBeVisible();
 
   const [documentResponse, stockResponse, productsResponse] = await Promise.all([
@@ -388,14 +408,14 @@ test("M04: неуспешный расход не меняет остаток и
 
   await loginAsManager(page);
   const documentId = await createDraftThroughUi(page, "outgoing", warehouse.id, customer.id);
-  await page.getByTestId("document-product").selectOption(String(product.id));
+  await selectDocumentProduct(page, product.sku);
   await page.getByTestId("document-line-quantity").fill("1");
   await page.getByTestId("document-line-price").fill("100");
   await page.getByTestId("document-line-add").click();
   await expect(page.getByRole("cell", { name: "E2E Empty Product" })).toBeVisible();
 
-  page.once("dialog", (dialog) => dialog.accept());
   await page.getByTestId("document-post").click();
+  await confirmPrompt(page);
   await expect(page.getByText("\u041d\u0435\u0434\u043e\u0441\u0442\u0430\u0442\u043e\u0447\u043d\u043e \u043e\u0441\u0442\u0430\u0442\u043a\u0430", { exact: true }).first()).toBeVisible();
 
   const headers = { Authorization: `Bearer ${token}` };
@@ -455,14 +475,14 @@ test("M05: перемещение сохраняет общий остаток �
 
   await loginAsManager(page);
   const transferId = await createDraftThroughUi(page, "transfer", source.id, undefined, destination.id);
-  await page.getByTestId("document-product").selectOption(String(product.id));
+  await selectDocumentProduct(page, product.sku);
   await page.getByTestId("document-line-quantity").fill("2");
   await page.getByTestId("document-line-price").fill("50");
   await page.getByTestId("document-line-add").click();
   await expect(page.getByRole("cell", { name: "E2E Transfer Product" })).toBeVisible();
 
-  page.once("dialog", (dialog) => dialog.accept());
   await page.getByTestId("document-post").click();
+  await confirmPrompt(page);
   await expect(page.getByText("\u041f\u0440\u043e\u0432\u0435\u0434\u0451\u043d", { exact: true })).toBeVisible();
 
   const headers = { Authorization: `Bearer ${token}` };
@@ -566,8 +586,7 @@ test("M06: partial customer payment updates debt, cash and statement", async ({ 
   });
   await postJson(api, `/documents/${secondOutgoing.id}/post`, seeded.token, {});
 
-  const paymentRow = page.getByRole("row").filter({ has: page.getByTestId(`payment-post-${paymentId}`) });
-  await paymentRow.getByRole("button", { name: "Распределить" }).click();
+  await page.getByRole("row").filter({ hasText: outgoing.number }).getByRole("button", { name: "Распределить", exact: true }).click();
   await expect(page.getByTestId(`payment-allocation-${secondOutgoing.id}`)).toBeVisible();
   await page.getByTestId(`payment-allocation-${outgoing.id}`).fill("");
   await page.getByTestId(`payment-allocation-${secondOutgoing.id}`).fill("120.00");
@@ -592,6 +611,23 @@ test("M06: partial customer payment updates debt, cash and statement", async ({ 
   }));
   expect(Number((await (await api.get("cash/balance", { headers })).json()).balance)).toBe(initialCash + 120);
   expect((await (await api.get(`partners/${seeded.customerId}/balance`, { headers })).json()).balance).toBe("330.00");
+
+  await page.getByRole("button", { name: "Выйти" }).first().click();
+  await loginAsCashier(page);
+  await page.goto("/payments", { waitUntil: "domcontentloaded" });
+  const paymentRow = page.getByRole("row").filter({ hasText: secondOutgoing.number });
+  await expect(paymentRow).toBeVisible();
+  await paymentRow.getByText("Ещё действия").click();
+  await paymentRow.getByRole("button", { name: "Отменить" }).click();
+  await confirmPrompt(page);
+  await expect.poll(async () => {
+    const response = await api.get(`payments/${paymentId}`, { headers });
+    return (await response.json()).status;
+  }).toBe("cancelled");
+  const cashAfterCancellation = await (await api.get("cash/book", { headers })).json();
+  expect(cashAfterCancellation.find((row: { payment_id: number }) => row.payment_id === paymentId).status).toBe("cancelled");
+  expect(Number((await (await api.get("cash/balance", { headers })).json()).balance)).toBe(initialCash);
+  expect((await (await api.get(`partners/${seeded.customerId}/balance`, { headers })).json()).balance).toBe("450.00");
   await api.dispose();
 });
 
@@ -749,5 +785,91 @@ test("LOG-01: logist completes assigned task and sees sale price only", async ({
   expect(logisticsTask.lines[0]).not.toHaveProperty("foreign_price");
   expect(logisticsTask).not.toHaveProperty("currency_code");
   expect(logisticsTask).not.toHaveProperty("exchange_rate");
+  await api.dispose();
+});
+
+test("UAT mobile: logist records a discrepancy with long product and partner names", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  const api = await request.newContext({ baseURL: apiBaseUrl });
+  const managerToken = await loginToken(api, "manager@example.com", "manager123");
+  const adminToken = await loginToken(api, "admin@example.com", "admin123");
+  const warehouse = await postJson(api, "/warehouses", managerToken, {
+    code: "E2E-MOBILE-WAREHOUSE",
+    name: "Склад мобильной приемки северного распределительного центра",
+  });
+  const productName = "Товар с очень длинным названием для проверки отображения в мобильном складском задании 1234567890";
+  const partnerName = "Поставщик с очень длинным наименованием для проверки мобильной карточки и переноса текста 1234567890";
+  const product = await postJson(api, "/products", managerToken, {
+    sku: "E2E-MOBILE-PRODUCT",
+    name: productName,
+    base_price: "150.00",
+    is_active: true,
+  });
+  const supplier = await postJson(api, "/partners", managerToken, {
+    code: "E2E-MOBILE-SUPPLIER",
+    name: partnerName,
+    partner_type: "supplier",
+    is_active: true,
+  });
+  const incoming = await postJson(api, "/documents", managerToken, {
+    document_type: "incoming",
+    document_date: "2026-07-24",
+    partner_id: supplier.id,
+    warehouse_id: warehouse.id,
+  });
+  await postJson(api, `/documents/${incoming.id}/lines`, managerToken, {
+    product_id: product.id,
+    quantity: "2",
+    price: "80.00",
+  });
+  await postJson(api, `/documents/${incoming.id}/post`, managerToken, {});
+  const email = "logist-mobile-e2e@example.com";
+  await postJson(api, "/users", adminToken, {
+    email,
+    password: "logist123",
+    full_name: "E2E Mobile Logistics Operator",
+    role_names: ["logist"],
+    warehouse_ids: [warehouse.id],
+  });
+  await loginAsManager(page);
+  await page.goto(`/documents/${incoming.id}`, { waitUntil: "domcontentloaded" });
+  await expect(page.getByText(productName, { exact: true })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Контрагент" }).locator("option:checked")).toContainText(partnerName);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1366);
+  await page.getByRole("button", { name: "Выйти" }).first().click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/login", { waitUntil: "domcontentloaded" });
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Пароль").fill("logist123");
+  await page.getByRole("button", { name: "Войти" }).click();
+  await page.getByLabel("Текущий пароль").fill("logist123");
+  await page.getByLabel("Новый пароль", { exact: true }).fill("logist-mobile-secure-2026");
+  await page.getByLabel("Подтвердите пароль").fill("logist-mobile-secure-2026");
+  await page.getByRole("button", { name: "Сменить пароль" }).click();
+  await expect(page.getByTestId("header-user")).toContainText("E2E Mobile Logistics Operator:Логист");
+
+  await page.goto("/logistics", { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: new RegExp(incoming.number) }).click();
+  await expect(page.getByRole("cell", { name: productName })).toBeVisible();
+  await expect(page.getByText(partnerName, { exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await page.getByTestId("start-warehouse-task").click();
+  const logistToken = await loginToken(api, email, "logist-mobile-secure-2026");
+  const tasksResponse = await api.get("logistics/tasks", { headers: { Authorization: `Bearer ${logistToken}` } });
+  const tasks = await tasksResponse.json();
+  const task = tasks.find((row: { document_id: number }) => row.document_id === incoming.id);
+  await page.getByTestId(`task-line-actual-${task.lines[0].id}`).fill("1");
+  await page.getByTestId("confirm-warehouse-task").click();
+  await expect(page.locator(".logistics-error")).toContainText("комментар");
+  await page.locator(".logistics-comment-input").fill("Принята одна единица, вторая отсутствует в поставке");
+  await page.getByTestId("confirm-warehouse-task").click();
+  await expect(page.locator(".logistics-detail-header .status-badge")).toHaveText("На согласовании");
+  const updatedTasks = await (await api.get("logistics/tasks", {
+    headers: { Authorization: `Bearer ${logistToken}` },
+  })).json();
+  const updatedTask = updatedTasks.find((row: { document_id: number }) => row.document_id === incoming.id);
+  expect(updatedTask.status).toBe("needs_review");
+  expect(updatedTask.lines[0].actual_quantity).toBe("1.000");
+  expect(updatedTask.lines[0].comment).toContain("Принята одна единица");
   await api.dispose();
 });

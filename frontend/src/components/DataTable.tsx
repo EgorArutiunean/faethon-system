@@ -51,6 +51,7 @@ export function DataTable<T extends object>({
   const pageCount = Math.max(1, Math.ceil(preparedRows.length / pageSize));
   const safePage = Math.min(page, pageCount - 1);
   const visibleRows = preparedRows.slice(safePage * pageSize, safePage * pageSize + pageSize);
+  const sortableColumns = columns.filter((column) => column.sortable);
 
   function toggleSort(column: Column<T>) {
     if (!column.sortable) return;
@@ -62,19 +63,28 @@ export function DataTable<T extends object>({
     <div className="panel" style={{ overflowX: "auto" }}>
       {searchable ? (
         <div className="toolbar" style={{ padding: "8px 10px", marginBottom: 0 }}>
-          <input className="search" value={search} onChange={(event) => { setSearch(event.target.value); setPage(0); }} placeholder={t("search")} />
+          <input className="search" aria-label={t("search")} value={search} onChange={(event) => { setSearch(event.target.value); setPage(0); }} placeholder={t("search")} />
         </div>
       ) : null}
-      <table className="data-table">
+      {sortableColumns.length ? <div className="mobile-table-sort">
+        <label>{t("sortBy")}
+          <select value={sort?.key ?? ""} onChange={(event) => setSort(event.target.value ? { key: event.target.value, direction: sort?.direction ?? "asc" } : null)}>
+            <option value="">—</option>
+            {sortableColumns.map((column) => <option key={String(column.key)} value={String(column.key)}>{column.header}</option>)}
+          </select>
+        </label>
+        <button className="button" aria-label={t("sortDirection")} disabled={!sort} onClick={() => setSort((current) => current ? { ...current, direction: current.direction === "asc" ? "desc" : "asc" } : null)}>{sort?.direction === "desc" ? "↓" : "↑"}</button>
+      </div> : null}
+      <table className="data-table responsive-data-table">
         <thead>
           <tr>
             {columns.map((column) => (
               <th
                 key={String(column.key)}
+                aria-sort={sort?.key === String(column.key) ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}
                 className={column.sortable ? "sortable" : ""}
-                onClick={() => toggleSort(column)}
               >
-                {column.header}{sort?.key === String(column.key) ? (sort.direction === "asc" ? " ↑" : " ↓") : ""}
+                {column.sortable ? <button className="table-sort-button" onClick={() => toggleSort(column)}>{column.header}{sort?.key === String(column.key) ? (sort.direction === "asc" ? " ↑" : " ↓") : ""}</button> : column.header}
               </th>
             ))}
           </tr>
@@ -83,7 +93,7 @@ export function DataTable<T extends object>({
           {visibleRows.map((row, index) => (
             <tr key={String("id" in row ? row.id : index)}>
               {columns.map((column) => (
-                <td key={String(column.key)}>
+                <td key={String(column.key)} data-label={column.header}>
                   {column.render ? column.render(row) : String(cellValue(row, column.key) ?? "")}
                 </td>
               ))}

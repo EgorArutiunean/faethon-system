@@ -1,43 +1,38 @@
 import {
-  BarChart3,
-  Boxes,
-  Building2,
-  ChevronsLeft,
-  ChevronsRight,
-  CircleDollarSign,
-  ClipboardList,
-  FileText,
-  History,
-  Home,
-  Package,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Settings,
-  Truck,
-  UserRound,
-  Users,
-  WalletCards
+  BarChart3, Boxes, Building2, ChevronRight, CircleDollarSign, ClipboardList,
+  FileText, History, Home, Menu, Package, PanelLeftClose, PanelLeftOpen,
+  Settings, Truck, UserRound, Users, WalletCards, X
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 
 import { useAuth } from "../auth";
 import { formatCode } from "../format";
 import { useI18n } from "../i18n";
 
+const sections = [
+  { id: "home", labelKey: "sectionHome" },
+  { id: "documents", labelKey: "sectionSales" },
+  { id: "catalog", labelKey: "sectionCatalog" },
+  { id: "warehouse", labelKey: "sectionWarehouse" },
+  { id: "finance", labelKey: "sectionFinance" },
+  { id: "reports", labelKey: "sectionReports" },
+  { id: "system", labelKey: "sectionSettings" }
+] as const;
+
 const nav = [
-  { to: "/", labelKey: "dashboard", icon: Home },
-  { to: "/products", labelKey: "products", icon: Package, permission: "products.read" },
-  { to: "/partners", labelKey: "partners", icon: Users, permission: "partners.read" },
-  { to: "/warehouses", labelKey: "warehouses", icon: Building2, permission: "warehouses.read" },
-  { to: "/documents", labelKey: "documents", icon: ClipboardList, permission: "documents.read" },
-  { to: "/stock", labelKey: "stock", icon: Boxes, permission: "stock.read" },
-  { to: "/logistics", labelKey: "logistics", icon: Truck, permission: "logistics.read" },
-  { to: "/payments", labelKey: "payments", icon: WalletCards, permission: "payments.read" },
-  { to: "/cash", labelKey: "cash", icon: CircleDollarSign, permission: "cash.read" },
-  { to: "/reports", labelKey: "reports", icon: BarChart3, permission: "reports.read" },
-  { to: "/audit", labelKey: "auditLog", icon: History, permission: "audit.read" },
-  { to: "/settings", labelKey: "settings", icon: Settings, permission: "settings.manage" }
+  { to: "/", labelKey: "dashboard", icon: Home, section: "home" },
+  { to: "/documents", labelKey: "documents", icon: ClipboardList, permission: "documents.read", section: "documents" },
+  { to: "/partners", labelKey: "partners", icon: Users, permission: "partners.read", section: "catalog" },
+  { to: "/products", labelKey: "products", icon: Package, permission: "products.read", section: "catalog" },
+  { to: "/warehouses", labelKey: "warehouses", icon: Building2, permission: "warehouses.read", section: "warehouse" },
+  { to: "/stock", labelKey: "stock", icon: Boxes, permission: "stock.read", section: "warehouse" },
+  { to: "/logistics", labelKey: "logistics", icon: Truck, permission: "logistics.read", section: "warehouse" },
+  { to: "/payments", labelKey: "payments", icon: WalletCards, permission: "payments.read", section: "finance" },
+  { to: "/cash", labelKey: "cash", icon: CircleDollarSign, permission: "cash.read", section: "finance" },
+  { to: "/reports", labelKey: "reports", icon: BarChart3, permission: "reports.read", section: "reports" },
+  { to: "/audit", labelKey: "auditLog", icon: History, permission: "audit.read", section: "system" },
+  { to: "/settings", labelKey: "settings", icon: Settings, permission: "settings.manage", section: "system" }
 ];
 
 type SidebarMode = "expanded" | "collapsed" | "hidden";
@@ -50,100 +45,70 @@ function loadSidebarMode(): SidebarMode {
 export function AppLayout() {
   const { t } = useI18n();
   const { user, logout, can } = useAuth();
+  const location = useLocation();
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>(loadSidebarMode);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const visibleNav = nav.filter((item) => !item.permission || can(item.permission));
-
-  useEffect(() => {
-    localStorage.setItem("buy-modern-sidebar-mode", sidebarMode);
-  }, [sidebarMode]);
-
+  const visibleSections = sections.filter((section) => section.id === "home" || visibleNav.some((item) => item.section === section.id));
+  const currentItem = visibleNav.find((item) => item.to === "/" ? location.pathname === "/" : location.pathname.startsWith(item.to));
+  const currentSection = visibleSections.find((section) => section.id === currentItem?.section) ?? visibleSections[0];
   const isCollapsed = sidebarMode === "collapsed";
   const isHidden = sidebarMode === "hidden";
   const roleLabel = user?.role_names[0] ? formatCode(user.role_names[0], t) : "";
   const userName = user?.full_name?.trim() || user?.email || "";
-  const collapseLabel = isCollapsed ? "\u0420\u0430\u0437\u0432\u0435\u0440\u043d\u0443\u0442\u044c \u043c\u0435\u043d\u044e" : "\u0421\u0432\u0435\u0440\u043d\u0443\u0442\u044c \u043c\u0435\u043d\u044e";
-  const hideLabel = "\u0421\u043a\u0440\u044b\u0442\u044c \u043c\u0435\u043d\u044e";
-  const showLabel = "\u041f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u043c\u0435\u043d\u044e";
+
+  useEffect(() => { localStorage.setItem("buy-modern-sidebar-mode", sidebarMode); }, [sidebarMode]);
+  useEffect(() => { setMobileMenuOpen(false); }, [location.pathname]);
 
   return (
-    <div className={`app-shell sidebar-${sidebarMode}`}>
-      {!isHidden ? (
-        <aside className="sidebar">
+    <div className={`app-shell sidebar-${sidebarMode} ${mobileMenuOpen ? "mobile-menu-open" : ""}`}>
+      <header className="header">
+        <div className="header-title">
+          <button className="mobile-menu-button layout-icon-button" aria-label="Открыть меню" aria-expanded={mobileMenuOpen} onClick={() => setMobileMenuOpen(true)}><Menu size={20} /></button>
+          <div className="app-mark"><FileText size={18} /></div>
+          <strong>{t("navTitle")}</strong>
+          <span className="header-divider" />
+          <span className="header-workspace">{t("operationalWorkspace")}</span>
+        </div>
+        <div className="header-actions">
+          <div className="header-user" data-testid="header-user" aria-label={roleLabel ? `${userName}: ${roleLabel}` : userName}>
+            <span className="header-user-icon" aria-hidden="true"><UserRound size={16} /></span>
+            <span className="header-user-label"><strong className="header-user-name">{userName}{roleLabel ? ":" : ""}</strong>{roleLabel ? <span className="header-user-role">{roleLabel}</span> : null}</span>
+          </div>
+          <button className="button header-logout" onClick={logout}>{t("logout")}</button>
+        </div>
+      </header>
+      <div className="workspace">
+        <aside className="sidebar" aria-label="Навигация">
           <div className="sidebar-title">
-            <div className="sidebar-brand">
-              <FileText size={18} />
-              {!isCollapsed ? <span>{t("navTitle")}</span> : null}
-            </div>
+            <div className="sidebar-brand"><span>Разделы</span></div>
             <div className="sidebar-controls">
-              <button
-                aria-label={collapseLabel}
-                className="sidebar-icon-button"
-                title={collapseLabel}
-                onClick={() => setSidebarMode(isCollapsed ? "expanded" : "collapsed")}
-              >
-                {isCollapsed ? <ChevronsRight size={17} /> : <ChevronsLeft size={17} />}
-              </button>
-              <button
-                aria-label={hideLabel}
-                className="sidebar-icon-button"
-                title={hideLabel}
-                onClick={() => setSidebarMode("hidden")}
-              >
-                <PanelLeftClose size={17} />
-              </button>
+              <button className="sidebar-icon-button" aria-label={isCollapsed ? "Развернуть меню" : "Свернуть меню"} title={isCollapsed ? "Развернуть меню" : "Свернуть меню"} onClick={() => setSidebarMode(isCollapsed ? "expanded" : "collapsed")}><ChevronRight size={17} className={isCollapsed ? "" : "chevron-reverse"} /></button>
+              <button className="sidebar-icon-button" aria-label="Скрыть меню" title="Скрыть меню" onClick={() => setSidebarMode("hidden")}><PanelLeftClose size={17} /></button>
             </div>
+            <button className="mobile-close-button sidebar-icon-button" aria-label="Закрыть меню" onClick={() => setMobileMenuOpen(false)}><X size={20} /></button>
           </div>
-          <nav className="sidebar-nav">
-            {visibleNav.map((item) => {
-              const Icon = item.icon;
-              const label = t(item.labelKey as Parameters<typeof t>[0]);
-              return (
-                <NavLink key={item.to} to={item.to} end={item.to === "/"} className="nav-link" title={isCollapsed ? label : ""}>
-                  <Icon size={16} />
-                  {!isCollapsed ? <span>{label}</span> : null}
-                </NavLink>
-              );
-            })}
+          <nav className="sidebar-nav" aria-label="Команды раздела">
+            {visibleSections.map((section) => <div className="sidebar-group" key={section.id}>
+              <div className="sidebar-group-label">{t(section.labelKey)}</div>
+              {visibleNav.filter((item) => item.section === section.id).map((item) => {
+                const Icon = item.icon;
+                const label = t(item.labelKey as Parameters<typeof t>[0]);
+                return <NavLink key={item.to} to={item.to} end={item.to === "/"} className="nav-link" title={isCollapsed ? label : ""} onClick={() => setMobileMenuOpen(false)}><Icon size={17} /><span>{label}</span></NavLink>;
+              })}
+            </div>)}
           </nav>
+          <button className="button mobile-logout" onClick={logout}>{t("logout")}</button>
         </aside>
-      ) : null}
-      <main className="main">
-        <header className="header">
-          <div className="header-title">
-            {isHidden ? (
-              <button
-                aria-label={showLabel}
-                className="layout-icon-button"
-                title={showLabel}
-                onClick={() => setSidebarMode("collapsed")}
-              >
-                <PanelLeftOpen size={18} />
-              </button>
-            ) : null}
-            <strong>{t("operationalWorkspace")}</strong>
+        {mobileMenuOpen ? <button className="mobile-menu-scrim" aria-label="Закрыть меню" onClick={() => setMobileMenuOpen(false)} /> : null}
+        <main className="main">
+          <div className="workplace-bar">
+            {isHidden ? <button className="layout-icon-button show-sidebar-button" aria-label="Показать меню" onClick={() => setSidebarMode("expanded")}><PanelLeftOpen size={18} /></button> : null}
+            <span>{currentSection ? t(currentSection.labelKey) : ""}</span><ChevronRight size={14} /><strong>{currentItem ? t(currentItem.labelKey as Parameters<typeof t>[0]) : currentSection ? t(currentSection.labelKey) : ""}</strong>
           </div>
-          <div className="header-actions">
-            <div
-              className="header-user"
-              data-testid="header-user"
-              aria-label={roleLabel ? `${userName}: ${roleLabel}` : userName}
-            >
-              <span className="header-user-icon" aria-hidden="true">
-                <UserRound size={16} />
-              </span>
-              <span className="header-user-label">
-                <strong className="header-user-name">{userName}{roleLabel ? ":" : ""}</strong>
-                {roleLabel ? <span className="header-user-role">{roleLabel}</span> : null}
-              </span>
-            </div>
-            <button className="button header-sync-button">{t("sync")}</button>
-            <button className="button" onClick={logout}>{t("logout")}</button>
-          </div>
-        </header>
-        <section className="content">
-          <Outlet />
-        </section>
-      </main>
+          <section className="content"><Outlet /></section>
+        </main>
+      </div>
     </div>
   );
 }

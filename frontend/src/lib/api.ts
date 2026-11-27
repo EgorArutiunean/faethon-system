@@ -57,6 +57,7 @@ export type Partner = {
   name: string;
   partner_type: "customer" | "supplier" | "both";
   phone?: string | null;
+  tax_id?: string | null;
   is_active: boolean;
 };
 
@@ -91,6 +92,7 @@ export type DocumentLine = {
 
 export type Document = {
   id: number;
+  updated_at?: string;
   document_type: string;
   number?: string | null;
   document_date: string;
@@ -115,6 +117,7 @@ export type DocumentPageParams = {
   offset?: number;
   limit?: number;
   search?: string;
+  date_from?: string;
   document_type?: string;
   status?: string;
   sort_by?: "id" | "number" | "document_date" | "status" | "document_type" | "total_amount" | "created_at";
@@ -217,6 +220,7 @@ export type PaymentWrite = {
 
 export type Payment = {
   id: number;
+  updated_at?: string;
   partner_id: number;
   partner_name?: string | null;
   document_id?: number | null;
@@ -232,6 +236,33 @@ export type Payment = {
   allocations: PaymentAllocation[];
   allocated_amount: string;
   unallocated_amount: string;
+};
+
+export type PaymentPage = { items: Payment[]; total: number; offset: number; limit: number };
+export type DocumentPaymentSummary = {
+  document_id: number;
+  document_number: string | null;
+  document_type: string;
+  document_status: string;
+  partner_id: number | null;
+  partner_name: string | null;
+  total_amount: string;
+  paid_amount: string;
+  outstanding_amount: string;
+  payment_type: "customer_payment" | "supplier_payment" | null;
+  payments_count: number;
+  payments: Array<{ id: number; payment_date: string; payment_type: string; status: string; amount: string; allocated_amount_for_document: string }>;
+};
+export type PaymentPageParams = {
+  document_id?: number;
+  offset?: number;
+  limit?: number;
+  search?: string;
+  date_from?: string;
+  status?: string;
+  payment_type?: string;
+  sort_by?: "payment_date" | "id" | "amount" | "status";
+  sort_order?: "asc" | "desc";
 };
 
 export type PartnerBalance = {
@@ -529,6 +560,7 @@ async function download(path: string): Promise<Blob> {
 }
 
 export const api = {
+  product: (productId: number) => request<Product>(`/products/${productId}`),
   login: (payload: { email: string; password: string }) =>
     request<LoginResponse>("/auth/login", { method: "POST", body: JSON.stringify(payload) }),
   me: () => request<CurrentUser>("/auth/me"),
@@ -604,6 +636,7 @@ export const api = {
   documentPage: (params: DocumentPageParams = {}) => {
     const query = new URLSearchParams({ offset: String(params.offset ?? 0), limit: String(params.limit ?? 25) });
     if (params.search?.trim()) query.set("search", params.search.trim());
+    if (params.date_from) query.set("date_from", params.date_from);
     if (params.document_type) query.set("document_type", params.document_type);
     if (params.status) query.set("status", params.status);
     if (params.sort_by) query.set("sort_by", params.sort_by);
@@ -613,10 +646,14 @@ export const api = {
   document: (id: number) => request<Document>(`/documents/${id}`),
   createDocument: (payload: Partial<Document>) =>
     request<Document>("/documents", { method: "POST", body: JSON.stringify(payload) }),
+  copyDocument: (documentId: number, payload: { document_date?: string } = {}) =>
+    request<Document>(`/documents/${documentId}/copy`, { method: "POST", body: JSON.stringify(payload) }),
   updateDocument: (id: number, payload: Partial<Document>) =>
     request<Document>(`/documents/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
   addDocumentLine: (documentId: number, payload: { product_id: number; quantity: string; price?: string; foreign_price?: string | null }) =>
     request<DocumentLine>(`/documents/${documentId}/lines`, { method: "POST", body: JSON.stringify(payload) }),
+  updateDocumentLine: (documentId: number, lineId: number, payload: { product_id: number; quantity: string; price?: string; foreign_price?: string | null }) =>
+    request<DocumentLine>(`/documents/${documentId}/lines/${lineId}`, { method: "PATCH", body: JSON.stringify(payload) }),
   currencies: () => request<Currency[]>("/currencies"),
   exchangeRates: (currencyCode?: string) => request<ExchangeRate[]>(`/currencies/rates${currencyCode ? `?currency_code=${encodeURIComponent(currencyCode)}` : ""}`),
   createExchangeRate: (payload: { currency_code: string; rate_date: string; rate_to_base: string; note?: string | null }) =>
@@ -646,6 +683,19 @@ export const api = {
   stockBalances: (params = "") => request<StockBalance[]>(`/stock/balances${params}`),
   stockMovements: (params = "") => request<StockMovement[]>(`/stock/movements${params}`),
   payments: () => request<Payment[]>("/payments"),
+  payment: (paymentId: number) => request<Payment>(`/payments/${paymentId}`),
+  documentPaymentSummary: (documentId: number) => request<DocumentPaymentSummary>(`/payments/document-summary/${documentId}`),
+  paymentPage: (params: PaymentPageParams = {}) => {
+    const query = new URLSearchParams({ offset: String(params.offset ?? 0), limit: String(params.limit ?? 25) });
+    if (params.search?.trim()) query.set("search", params.search.trim());
+    if (params.date_from) query.set("date_from", params.date_from);
+    if (params.status) query.set("status", params.status);
+    if (params.payment_type) query.set("payment_type", params.payment_type);
+    if (params.document_id) query.set("document_id", String(params.document_id));
+    if (params.sort_by) query.set("sort_by", params.sort_by);
+    if (params.sort_order) query.set("sort_order", params.sort_order);
+    return request<PaymentPage>(`/payments/page?${query.toString()}`);
+  },
   createPayment: (payload: PaymentWrite) =>
     request<Payment>("/payments", { method: "POST", body: JSON.stringify(payload) }),
   updatePayment: (id: number, payload: Partial<PaymentWrite>) =>
@@ -680,8 +730,12 @@ export const api = {
   cashBookPage: (offset = 0, limit = 25) => request<CashBookPage>(`/cash/book/page?offset=${offset}&limit=${limit}`),
   logisticsDocuments: (status = "") =>
     request<LogisticsDocument[]>(`/logistics/documents${status ? `?status=${encodeURIComponent(status)}` : ""}`),
-  warehouseTasks: (status = "") =>
-    request<WarehouseTask[]>(`/logistics/tasks${status ? `?status=${encodeURIComponent(status)}` : ""}`),
+  warehouseTasks: (status = "", documentId?: number) => {
+    const query = new URLSearchParams();
+    if (status) query.set("status", status);
+    if (documentId) query.set("document_id", String(documentId));
+    return request<WarehouseTask[]>(`/logistics/tasks${query.size ? `?${query.toString()}` : ""}`);
+  },
   warehouseTask: (taskId: number) => request<WarehouseTask>(`/logistics/tasks/${taskId}`),
   startWarehouseTask: (taskId: number) =>
     request<WarehouseTask>(`/logistics/tasks/${taskId}/start`, { method: "POST" }),

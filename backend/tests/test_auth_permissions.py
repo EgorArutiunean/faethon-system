@@ -412,11 +412,24 @@ def test_document_page_supports_partner_search_filters_sort_and_total(
     assert payload["limit"] == 1
     assert [item["number"] for item in payload["items"]] == ["OUT-NEW"]
 
+    recent = client.get(
+        "/api/v1/documents/page",
+        params={"document_type": "outgoing", "status": "posted", "date_from": "2026-02-01"},
+        headers=auth_header(client),
+    )
+    assert recent.status_code == 200
+    assert recent.json()["total"] == 1
+    assert [item["number"] for item in recent.json()["items"]] == ["OUT-NEW"]
+
 
 def test_partner_page_and_scoped_balances_are_bounded(client: TestClient, db: Session) -> None:
     partners = [
         Partner(
-            name="Alpha Customer", code="ALPHA", phone="111", partner_type=Partner.TYPE_CUSTOMER
+            name="Alpha Customer",
+            code="ALPHA",
+            phone="111",
+            tax_id="TIN-12345",
+            partner_type=Partner.TYPE_CUSTOMER,
         ),
         Partner(name="Beta Customer", code="BETA", phone="222", partner_type=Partner.TYPE_CUSTOMER),
         Partner(
@@ -444,6 +457,12 @@ def test_partner_page_and_scoped_balances_are_bounded(client: TestClient, db: Se
     assert payload["total"] == 2
     assert [item["code"] for item in payload["items"]] == ["BETA"]
 
+    tax_search = client.get(
+        "/api/v1/partners/page", params={"search": "TIN-12345"}, headers=headers
+    )
+    assert tax_search.status_code == 200
+    assert [item["code"] for item in tax_search.json()["items"]] == ["ALPHA"]
+
     balances = client.get(
         "/api/v1/partners/balances",
         params=[("partner_ids", str(partners[0].id)), ("partner_ids", str(partners[2].id))],
@@ -460,6 +479,73 @@ def test_partner_page_and_scoped_balances_are_bounded(client: TestClient, db: Se
     assert options.status_code == 200
     assert len(options.json()) == 1
     assert options.json()[0]["partner_type"] == "customer"
+
+
+def test_payment_page_searches_and_filters_all_records(client: TestClient, db: Session) -> None:
+    partner = Partner(name="Remote Customer", code="REMOTE", partner_type=Partner.TYPE_CUSTOMER)
+    db.add(partner)
+    db.flush()
+    db.add_all(
+        [
+            Payment(
+                partner_id=partner.id,
+                payment_date=date(2026, 1, 1),
+                payment_type=Payment.TYPE_CUSTOMER_PAYMENT,
+                status=Payment.STATUS_DRAFT,
+                amount=Decimal("11"),
+                method="cash",
+            ),
+            Payment(
+                partner_id=partner.id,
+                payment_date=date(2026, 1, 2),
+                payment_type=Payment.TYPE_CUSTOMER_PAYMENT,
+                status=Payment.STATUS_POSTED,
+                amount=Decimal("22"),
+                method="cash",
+            ),
+            Payment(
+                partner_id=partner.id,
+                payment_date=date(2026, 1, 3),
+                payment_type=Payment.TYPE_SUPPLIER_PAYMENT,
+                status=Payment.STATUS_DRAFT,
+                amount=Decimal("33"),
+                method="cash",
+            ),
+        ]
+    )
+    db.commit()
+
+    response = client.get(
+        "/api/v1/payments/page",
+        params={
+            "search": "Remote",
+            "status": "draft",
+            "payment_type": "customer_payment",
+            "limit": 1,
+        },
+        headers=auth_header(client),
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 1
+    assert [item["amount"] for item in payload["items"]] == ["11.00"]
+
+    next_page = client.get(
+        "/api/v1/payments/page",
+        params={"offset": 1, "limit": 1, "sort_by": "payment_date", "sort_order": "desc"},
+        headers=auth_header(client),
+    )
+    assert next_page.status_code == 200
+    assert next_page.json()["total"] == 3
+    assert [item["amount"] for item in next_page.json()["items"]] == ["22.00"]
+
+    recent = client.get(
+        "/api/v1/payments/page",
+        params={"date_from": "2026-01-02"},
+        headers=auth_header(client),
+    )
+    assert recent.status_code == 200
+    assert recent.json()["total"] == 2
 
 
 def test_dashboard_summary_aggregates_period_and_respects_permissions(

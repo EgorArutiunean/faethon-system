@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, ExternalLink, Play, RefreshCw, RotateCcw } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../auth";
+import { DraftRecoveryNotice } from "../components/DraftRecoveryNotice";
 import { PageScaffold } from "../components/PageScaffold";
 import { formatCode, formatDate, formatDateTime, formatMoney, StatusBadge } from "../format";
+import { useLocalDraft } from "../hooks/useLocalDraft";
 import { useI18n } from "../i18n";
 import { WarehouseTask, api } from "../lib/api";
 import { useToast } from "../toast";
@@ -12,6 +14,26 @@ import { useToast } from "../toast";
 const statusFilters = ["", "pending", "in_transit", "in_progress", "needs_review", "blocked", "completed", "cancelled"];
 
 type LineDraft = Record<number, { actual: string; comment: string }>;
+type TaskDraft = { lineDraft: LineDraft; reviewNote: string };
+
+function taskBaseline(task: WarehouseTask | null): TaskDraft {
+  return {
+    lineDraft: Object.fromEntries((task?.lines ?? []).map((line) => [line.id, {
+      actual: line.actual_quantity ?? line.expected_quantity,
+      comment: line.comment ?? ""
+    }])),
+    reviewNote: ""
+  };
+}
+
+function taskRevision(task: WarehouseTask | null) {
+  if (!task) return "";
+  return JSON.stringify([
+    task.posting_version, task.status, task.assigned_to_id, task.started_at, task.completed_at,
+    task.lines.map((line) => [line.id, line.expected_quantity, line.actual_quantity, line.comment]),
+    task.events.map((event) => [event.id, event.created_at])
+  ]);
+}
 
 function formatQuantity(value?: string | null) {
   if (value === undefined || value === null || value === "") return "";
@@ -25,50 +47,87 @@ export function Logistics() {
   const { t } = useI18n();
   const { user, can } = useAuth();
   const { showToast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTask = searchParams.get("task");
   const [tasks, setTasks] = useState<WarehouseTask[]>([]);
   const [selectedTask, setSelectedTask] = useState<WarehouseTask | null>(null);
   const [status, setStatus] = useState("");
-  const [lineDraft, setLineDraft] = useState<LineDraft>({});
-  const [reviewNote, setReviewNote] = useState("");
+  const [input, setInput] = useState<{ taskId: number; revision: string; value: TaskDraft } | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const loadRequest = useRef(0);
+  const revision = taskRevision(selectedTask);
+  const baseline = taskBaseline(selectedTask);
+  const value = input?.taskId === selectedTask?.id && input?.revision === revision ? input.value : baseline;
+  const { lineDraft, reviewNote } = value;
+  const editableTask = Boolean(selectedTask && (
+    (selectedTask.status === "in_progress" && can("logistics.process")) ||
+    (selectedTask.status === "needs_review" && can("logistics.review"))
+  ));
 
-  function load(preferredTaskId?: number) {
+  function setTaskInput(next: TaskDraft) {
+    if (selectedTask) setInput({ taskId: selectedTask.id, revision, value: next });
+  }
+
+  function validDraft(candidate: unknown): candidate is TaskDraft {
+    if (!candidate || typeof candidate !== "object") return false;
+    const saved = candidate as Partial<TaskDraft>;
+    if (typeof saved.reviewNote !== "string" || !saved.lineDraft || typeof saved.lineDraft !== "object" || Array.isArray(saved.lineDraft)) return false;
+    const lineIds = selectedTask?.lines.map((line) => String(line.id)) ?? [];
+    return Object.keys(saved.lineDraft).length === lineIds.length && lineIds.every((id) => {
+      const line = saved.lineDraft?.[Number(id)];
+      return line && typeof line.actual === "string" && typeof line.comment === "string";
+    });
+  }
+
+  const draft = useLocalDraft<TaskDraft>({
+    scope: "logistics-task",
+    entityId: selectedTask?.id ?? "none",
+    revision,
+    value,
+    dirty: JSON.stringify(value) !== JSON.stringify(baseline),
+    enabled: editableTask,
+    validate: validDraft,
+    onRestore: setTaskInput,
+    onDiscard: () => setTaskInput(baseline)
+  });
+
+  async function load(preferredTaskId?: number) {
     if (!can("logistics.read")) return;
+    const request = ++loadRequest.current;
     setError("");
-    api.warehouseTasks(status)
-      .then((loaded) => {
-        setTasks(loaded);
-        setSelectedTask((current) => {
-          const targetId = preferredTaskId ?? current?.id;
-          return loaded.find((task) => task.id === targetId) ?? loaded[0] ?? null;
-        });
-      })
-      .catch((exc) => {
+    try {
+      const loaded = await api.warehouseTasks(status);
+      if (request !== loadRequest.current) return;
+      setTasks(loaded);
+      if (requestedTask !== null) {
+        const targetId = Number(requestedTask);
+        if (!/^\d+$/.test(requestedTask) || !Number.isSafeInteger(targetId) || targetId <= 0) {
+          setSelectedTask(null);
+          setError(t("linkedWarehouseTaskUnavailable"));
+          return;
+        }
+        const linkedTask = loaded.find((task) => task.id === targetId) ?? await api.warehouseTask(targetId);
+        if (request !== loadRequest.current) return;
+        if (linkedTask.id !== targetId) throw new Error(t("linkedWarehouseTaskUnavailable"));
+        setSelectedTask(linkedTask);
+      } else {
+        setSelectedTask((current) => loaded.find((task) => task.id === (preferredTaskId ?? current?.id)) ?? loaded[0] ?? null);
+      }
+    } catch (exc) {
+      if (request !== loadRequest.current) return;
+      if (requestedTask === null) {
         setTasks([]);
-        setSelectedTask(null);
-        setError(exc instanceof Error ? exc.message : t("apiLoadTasksError"));
-      });
+      }
+      setSelectedTask(null);
+      setError(requestedTask !== null ? t("linkedWarehouseTaskUnavailable") : exc instanceof Error ? exc.message : t("apiLoadTasksError"));
+    }
   }
 
   useEffect(() => {
-    load();
-  }, [status, user?.id]);
-
-  useEffect(() => {
-    if (!selectedTask) {
-      setLineDraft({});
-      return;
-    }
-    setLineDraft(Object.fromEntries(selectedTask.lines.map((line) => [
-      line.id,
-      {
-        actual: line.actual_quantity ?? line.expected_quantity,
-        comment: line.comment ?? ""
-      }
-    ])));
-    setReviewNote("");
-  }, [selectedTask?.id, selectedTask?.status]);
+    void load();
+    return () => { loadRequest.current += 1; };
+  }, [status, user?.id, requestedTask]);
 
   const taskCounts = useMemo(() => tasks.reduce<Record<string, number>>((counts, task) => {
     counts[task.status] = (counts[task.status] ?? 0) + 1;
@@ -90,7 +149,10 @@ export function Logistics() {
     setBusy(true);
     setError("");
     try {
-      applyUpdatedTask(await action());
+      const updated = await action();
+      draft.clear();
+      setInput(null);
+      applyUpdatedTask(updated);
     } catch (exc) {
       const message = exc instanceof Error ? exc.message : t("apiUpdateTaskError");
       setError(message);
@@ -107,7 +169,7 @@ export function Logistics() {
       actual_quantity: lineDraft[line.id]?.actual ?? "",
       comment: lineDraft[line.id]?.comment.trim() || null
     }));
-    const invalidQuantity = lines.some((line) => line.actual_quantity === "" || Number(line.actual_quantity) < 0);
+    const invalidQuantity = lines.some((line) => line.actual_quantity === "" || !Number.isFinite(Number(line.actual_quantity)) || Number(line.actual_quantity) < 0);
     if (invalidQuantity) {
       setError(t("invalidQuantity"));
       return;
@@ -146,7 +208,7 @@ export function Logistics() {
         <span className="muted-note">
           {t("assignedWarehouses")}: {can("logistics.review") ? t("allWarehouses") : user?.warehouse_names.join(", ") || t("notSelected")}
         </span>
-        <button className="button icon-text-button" onClick={() => load(selectedTask?.id)} title={t("sync")}>
+        <button className="button icon-text-button" disabled={busy} onClick={() => load(selectedTask?.id)} title={t("sync")}>
           <RefreshCw size={16} aria-hidden="true" />
           {t("sync")}
         </button>
@@ -159,6 +221,7 @@ export function Logistics() {
             type="button"
             className={status === filter ? "active" : ""}
             onClick={() => setStatus(filter)}
+            disabled={busy}
             role="tab"
             aria-selected={status === filter}
           >
@@ -182,7 +245,8 @@ export function Logistics() {
                 type="button"
                 key={task.id}
                 className={`logistics-task-row${selectedTask?.id === task.id ? " selected" : ""}`}
-                onClick={() => setSelectedTask(task)}
+                onClick={() => { setSelectedTask(task); setSearchParams((current) => { const next = new URLSearchParams(current); next.set("task", String(task.id)); return next; }); }}
+                disabled={busy}
               >
                 <span className="logistics-task-main">
                   <b>{formatCode(task.task_type, t)}</b>
@@ -201,6 +265,7 @@ export function Logistics() {
         <section className="panel logistics-task-detail">
           {selectedTask ? (
             <>
+              <DraftRecoveryNotice draft={draft} />
               <header className="logistics-detail-header">
                 <div>
                   <span>{formatCode(selectedTask.task_type, t)}</span>
@@ -235,9 +300,9 @@ export function Logistics() {
                       const differs = Number(lineDraft[line.id]?.actual) !== Number(line.expected_quantity);
                       return (
                         <tr key={line.id} className={differs ? "has-discrepancy" : ""}>
-                          <td>{line.product_name}</td>
-                          <td>{formatQuantity(line.expected_quantity)}</td>
-                          <td>
+                          <td data-label={t("product")}>{line.product_name}</td>
+                          <td data-label={t("expectedQuantity")}>{formatQuantity(line.expected_quantity)}</td>
+                          <td data-label={t("actualQuantity")}>
                             {editable ? (
                               <input
                                 data-testid={`task-line-actual-${line.id}`}
@@ -246,24 +311,26 @@ export function Logistics() {
                                 min="0"
                                 step="0.001"
                                 value={lineDraft[line.id]?.actual ?? ""}
-                                onChange={(event) => setLineDraft((current) => ({
-                                  ...current,
-                                  [line.id]: { ...current[line.id], actual: event.target.value }
-                                }))}
+                                disabled={busy}
+                                onChange={(event) => setTaskInput({ ...value, lineDraft: {
+                                  ...lineDraft,
+                                  [line.id]: { ...lineDraft[line.id], actual: event.target.value }
+                                } })}
                               />
                             ) : formatQuantity(line.actual_quantity ?? line.expected_quantity)}
                           </td>
-                          <td>{formatMoney(line.sale_price)}</td>
-                          <td>{formatMoney(line.sale_total)}</td>
-                          <td>
+                          <td data-label={t("salePrice")}>{formatMoney(line.sale_price)}</td>
+                          <td data-label={t("sum")}>{formatMoney(line.sale_total)}</td>
+                          <td data-label={t("discrepancyComment")}>
                             {editable ? (
                               <input
                                 className="logistics-comment-input"
                                 value={lineDraft[line.id]?.comment ?? ""}
-                                onChange={(event) => setLineDraft((current) => ({
-                                  ...current,
-                                  [line.id]: { ...current[line.id], comment: event.target.value }
-                                }))}
+                                disabled={busy}
+                                onChange={(event) => setTaskInput({ ...value, lineDraft: {
+                                  ...lineDraft,
+                                  [line.id]: { ...lineDraft[line.id], comment: event.target.value }
+                                } })}
                                 placeholder={differs ? t("discrepancyCommentRequired") : ""}
                               />
                             ) : line.comment || "-"}
@@ -310,7 +377,7 @@ export function Logistics() {
                 <div className="logistics-review">
                   <div className="field">
                     <label>{t("reviewNote")}</label>
-                    <textarea value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} />
+                    <textarea data-testid="warehouse-task-review-note" disabled={busy} value={reviewNote} onChange={(event) => setTaskInput({ ...value, reviewNote: event.target.value })} />
                   </div>
                   <button className="button icon-text-button" disabled={busy} onClick={returnSelectedTask}>
                     <RotateCcw size={16} aria-hidden="true" />

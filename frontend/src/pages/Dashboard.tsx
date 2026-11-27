@@ -17,7 +17,7 @@ import { useI18n } from "../i18n";
 import { DashboardSummary, api } from "../lib/api";
 
 type Period = "today" | "week" | "month" | "all";
-type WidgetId = "summary" | "finance" | "documentTypes" | "stock" | "payments" | "recentDocuments";
+type WidgetId = "summary" | "finance" | "documentTypes" | "stock" | "payments" | "recentDocuments" | "tasks";
 
 type DashboardState = {
   loading: boolean;
@@ -44,17 +44,23 @@ const widgetConfigs: WidgetConfig[] = [
   { id: "stock", title: "Складские позиции", description: "Где сосредоточен товар" },
   { id: "payments", title: "Оплаты", description: "Черновики, проведённые и отменённые" },
   { id: "recentDocuments", title: "Последние документы", description: "Оперативная лента" },
+  { id: "tasks", title: "Задания склада", description: "Задачи для обработки" },
 ];
 
 const defaultVisibleWidgets: WidgetId[] = widgetConfigs.map((widget) => widget.id);
 
-function loadVisibleWidgets(): WidgetId[] {
-  const raw = localStorage.getItem("buy-modern-dashboard-widgets");
+function widgetStorageKey(userId?: number) {
+  return userId ? `buy-modern-dashboard-widgets-${userId}` : "buy-modern-dashboard-widgets";
+}
+
+function loadVisibleWidgets(userId?: number): WidgetId[] {
+  const savedForUser = localStorage.getItem(widgetStorageKey(userId));
+  const raw = savedForUser ?? localStorage.getItem("buy-modern-dashboard-widgets");
   if (!raw) return defaultVisibleWidgets;
   try {
     const parsed = JSON.parse(raw) as WidgetId[];
     const known = parsed.filter((id) => widgetConfigs.some((widget) => widget.id === id));
-    return known.length ? known : defaultVisibleWidgets;
+    return known.length ? (savedForUser === null && !known.includes("tasks") ? [...known, "tasks"] : known) : defaultVisibleWidgets;
   } catch {
     return defaultVisibleWidgets;
   }
@@ -87,6 +93,11 @@ function periodStartValue(period: Period) {
   return `${year}-${month}-${day}`;
 }
 
+function periodPath(path: string, period: Period) {
+  const dateFrom = periodStartValue(period);
+  return dateFrom ? `${path}${path.includes("?") ? "&" : "?"}date_from=${dateFrom}` : path;
+}
+
 function percent(value: number, total: number) {
   if (!total) return 0;
   return Math.round((value / total) * 100);
@@ -94,11 +105,25 @@ function percent(value: number, total: number) {
 
 export function Dashboard() {
   const { t } = useI18n();
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const [state, setState] = useState<DashboardState>(initialState);
   const [period, setPeriod] = useState<Period>("month");
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [visibleWidgets, setVisibleWidgets] = useState<WidgetId[]>(loadVisibleWidgets);
+  const [visibleWidgets, setVisibleWidgets] = useState<WidgetId[]>(() => loadVisibleWidgets(user?.id));
+  const [taskCounts, setTaskCounts] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    if (!can("logistics.read")) return;
+    let active = true;
+    api.warehouseTasks("").then((tasks) => {
+      if (!active) return;
+      setTaskCounts(tasks.reduce<Record<string, number>>((counts, task) => {
+        counts[task.status] = (counts[task.status] ?? 0) + 1;
+        return counts;
+      }, {}));
+    }).catch(() => { if (active) setTaskCounts({}); });
+    return () => { active = false; };
+  }, [user?.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -124,8 +149,8 @@ export function Dashboard() {
   }, [period]);
 
   useEffect(() => {
-    localStorage.setItem("buy-modern-dashboard-widgets", JSON.stringify(visibleWidgets));
-  }, [visibleWidgets]);
+    if (user?.id) localStorage.setItem(widgetStorageKey(user.id), JSON.stringify(visibleWidgets));
+  }, [user?.id, visibleWidgets]);
 
   const dashboard = useMemo(() => {
     const summary = state.summary;
@@ -151,13 +176,23 @@ export function Dashboard() {
     };
   }, [state.summary]);
 
-  const visible = (id: WidgetId) => visibleWidgets.includes(id);
+  const widgetAvailable = (id: WidgetId) => {
+    if (id === "summary") return ["documents.read", "stock.read", "partners.read", "products.read"].some(can);
+    if (id === "finance") return can("cash.read") && can("documents.read");
+    if (id === "documentTypes" || id === "recentDocuments") return can("documents.read");
+    if (id === "stock") return can("stock.read");
+    if (id === "payments") return can("payments.read");
+    if (id === "tasks") return can("logistics.read");
+    return true;
+  };
+  const visible = (id: WidgetId) => widgetAvailable(id) && visibleWidgets.includes(id);
   const placeholder = state.loading ? t("loading") : "-";
   const quickActions = [
     { label: "Новая продажа", to: "/documents?create=outgoing", icon: ShoppingCart, permission: "documents.create" },
     { label: "Новый приход", to: "/documents?create=incoming", icon: PackagePlus, permission: "documents.create" },
     { label: "Принять оплату", to: "/payments?create=customer_payment", icon: HandCoins, permission: "payments.create" },
     { label: "Записать расход", to: "/cash?create=cash_out", icon: ReceiptText, permission: "cash.create" },
+    { label: "Задания склада", to: "/logistics", icon: PackagePlus, permission: "logistics.process" },
   ].filter((action) => can(action.permission));
 
   function toggleWidget(id: WidgetId) {
@@ -225,7 +260,7 @@ export function Dashboard() {
             <p>Выберите блоки, которые нужны на рабочем месте. Настройка сохраняется в этом браузере.</p>
           </div>
           <div className="dashboard-widget-toggles">
-            {widgetConfigs.map((widget) => (
+            {widgetConfigs.filter((widget) => widgetAvailable(widget.id)).map((widget) => (
               <label key={widget.id} className="dashboard-toggle">
                 <input checked={visibleWidgets.includes(widget.id)} type="checkbox" onChange={() => toggleWidget(widget.id)} />
                 <span>
@@ -240,12 +275,12 @@ export function Dashboard() {
 
       {visible("summary") ? (
         <div className="dashboard-summary-grid">
-          <MetricCard accent="green" label="Продажи" value={state.summary?.outgoing_total == null ? placeholder : formatMoney(dashboard.outgoingTotal)} hint="Проведённые расходы" />
-          <MetricCard accent="yellow" label="Закупки" value={state.summary?.incoming_total == null ? placeholder : formatMoney(dashboard.incomingTotal)} hint="Проведённые приходы" />
-          <MetricCard accent="violet" label="Черновики" value={state.summary?.document_statuses == null ? placeholder : String(dashboard.draftDocuments)} hint="Ждут обработки" />
-          <MetricCard accent="blue" label="Позиции склада" value={state.summary?.stock_positions_count == null ? placeholder : String(state.summary.stock_positions_count)} hint={`${formatMoney(dashboard.totalStockQuantity)} ед. всего`} />
-          <MetricCard accent="slate" label="Контрагенты" value={state.summary?.partners_count == null ? placeholder : String(state.summary.partners_count)} hint="Клиенты и поставщики" />
-          <MetricCard accent="slate" label="Товары" value={state.summary?.products_count == null ? placeholder : String(state.summary.products_count)} hint="Активный справочник" />
+          {can("documents.read") ? <MetricCard accent="green" label="Продажи" value={state.summary?.outgoing_total == null ? placeholder : formatMoney(dashboard.outgoingTotal)} hint="Проведённые расходы" to={periodPath("/documents?type=outgoing&status=posted", period)} /> : null}
+          {can("documents.read") ? <MetricCard accent="yellow" label="Закупки" value={state.summary?.incoming_total == null ? placeholder : formatMoney(dashboard.incomingTotal)} hint="Проведённые приходы" to={periodPath("/documents?type=incoming&status=posted", period)} /> : null}
+          {can("documents.read") ? <MetricCard accent="violet" label="Черновики" value={state.summary?.document_statuses == null ? placeholder : String(dashboard.draftDocuments)} hint="Ждут обработки" to={periodPath("/documents?status=draft", period)} /> : null}
+          {can("stock.read") ? <MetricCard accent="blue" label="Позиции склада" value={state.summary?.stock_positions_count == null ? placeholder : String(state.summary.stock_positions_count)} hint={`${formatMoney(dashboard.totalStockQuantity)} ед. всего`} to="/stock" /> : null}
+          {can("partners.read") ? <MetricCard accent="slate" label="Контрагенты" value={state.summary?.partners_count == null ? placeholder : String(state.summary.partners_count)} hint="Клиенты и поставщики" to="/partners" /> : null}
+          {can("products.read") ? <MetricCard accent="slate" label="Товары" value={state.summary?.products_count == null ? placeholder : String(state.summary.products_count)} hint="Активный справочник" to="/products" /> : null}
         </div>
       ) : null}
 
@@ -260,6 +295,7 @@ export function Dashboard() {
               </div>
               <div className={`dashboard-delta ${dashboard.grossDelta >= 0 ? "positive" : "negative"}`}>
                 {dashboard.grossDelta >= 0 ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
+                <span className="dashboard-delta-label">Продажи − закупки</span>
                 {formatMoney(dashboard.grossDelta)}
               </div>
             </div>
@@ -268,6 +304,7 @@ export function Dashboard() {
               <ProgressRow color="#8b5cf6" label="Черновики" value={dashboard.draftDocuments} total={dashboard.documentsCount} />
               <ProgressRow color="#ef4444" label="Отменено" value={dashboard.cancelledDocuments} total={dashboard.documentsCount} />
             </div>
+            <Link className="dashboard-link" to="/cash">Открыть кассу</Link>
           </section>
         ) : null}
 
@@ -275,10 +312,10 @@ export function Dashboard() {
           <section className="dashboard-widget dashboard-widget-chart">
             <WidgetHeader title="Структура документов" />
             <div className="dashboard-rings" aria-label="Разбивка документов по типам">
-              <Ring value={dashboard.documentTypes.incoming ?? 0} total={dashboard.documentsCount} color="#f4c542" label={t("incoming")} />
-              <Ring value={dashboard.documentTypes.outgoing ?? 0} total={dashboard.documentsCount} color="#22c55e" label={t("outgoing")} />
-              <Ring value={dashboard.documentTypes.adjustment ?? 0} total={dashboard.documentsCount} color="#3b82f6" label={t("adjustment")} />
-              <Ring value={dashboard.transferCount} total={dashboard.documentsCount} color="#8b5cf6" label={t("transfer")} />
+              <Ring value={dashboard.documentTypes.incoming ?? 0} total={dashboard.documentsCount} color="#f4c542" label={t("incoming")} to={periodPath("/documents?type=incoming", period)} />
+              <Ring value={dashboard.documentTypes.outgoing ?? 0} total={dashboard.documentsCount} color="#22c55e" label={t("outgoing")} to={periodPath("/documents?type=outgoing", period)} />
+              <Ring value={dashboard.documentTypes.adjustment ?? 0} total={dashboard.documentsCount} color="#3b82f6" label={t("adjustment")} to={periodPath("/documents?type=adjustment", period)} />
+              <Ring value={dashboard.transferCount} total={dashboard.documentsCount} color="#8b5cf6" label={t("transfer")} to={periodPath("/documents?type=transfer", period)} />
             </div>
           </section>
         ) : null}
@@ -298,9 +335,9 @@ export function Dashboard() {
           <section className="dashboard-widget">
             <WidgetHeader title="Оплаты" />
             <div className="dashboard-payment-grid">
-              <MiniStat label={t("draft")} value={dashboard.paymentStatuses.draft ?? 0} />
-              <MiniStat label={t("posted")} value={dashboard.paymentStatuses.posted ?? 0} />
-              <MiniStat label={t("cancelled")} value={dashboard.paymentStatuses.cancelled ?? 0} />
+              <MiniStat label={t("draft")} value={dashboard.paymentStatuses.draft ?? 0} to={periodPath("/payments?status=draft", period)} />
+              <MiniStat label={t("posted")} value={dashboard.paymentStatuses.posted ?? 0} to={periodPath("/payments?status=posted", period)} />
+              <MiniStat label={t("cancelled")} value={dashboard.paymentStatuses.cancelled ?? 0} to={periodPath("/payments?status=cancelled", period)} />
             </div>
             <Link className="dashboard-link" to="/payments">Открыть оплаты</Link>
           </section>
@@ -325,6 +362,18 @@ export function Dashboard() {
             </div>
           </section>
         ) : null}
+
+        {visible("tasks") ? (
+          <section className="dashboard-widget">
+            <WidgetHeader title="Задания склада" />
+            <div className="dashboard-payment-grid">
+              <MiniStat label={formatCode("pending", t)} value={taskCounts.pending ?? 0} />
+              <MiniStat label={formatCode("in_progress", t)} value={taskCounts.in_progress ?? 0} />
+              <MiniStat label={formatCode("needs_review", t)} value={taskCounts.needs_review ?? 0} />
+            </div>
+            <Link className="dashboard-link" to="/logistics">Открыть задания</Link>
+          </section>
+        ) : null}
       </div>
     </div>
   );
@@ -339,17 +388,18 @@ function WidgetHeader({ title, action }: { title: string; action?: ReactNode }) 
   );
 }
 
-function MetricCard({ accent, label, value, hint }: { accent: string; label: string; value: string; hint: string }) {
+function MetricCard({ accent, label, value, hint, to }: { accent: string; label: string; value: string; hint: string; to: string }) {
   return (
-    <div className={`dashboard-metric ${accent}`}>
+    <Link className={`dashboard-metric dashboard-drilldown ${accent}`} to={to} aria-label={`${label}: ${value}. Открыть список`}>
       <span>{label}</span>
       <strong>{value}</strong>
       <small>{hint}</small>
-    </div>
+    </Link>
   );
 }
 
-function MiniStat({ label, value }: { label: string; value: number }) {
+function MiniStat({ label, value, to }: { label: string; value: number; to?: string }) {
+  if (to) return <Link className="dashboard-mini-stat dashboard-drilldown" to={to} aria-label={`${label}: ${value}. Открыть список`}><span>{label}</span><strong>{value}</strong></Link>;
   return (
     <div className="dashboard-mini-stat">
       <span>{label}</span>
@@ -374,14 +424,14 @@ function ProgressRow({ color, label, value, total }: { color: string; label: str
   );
 }
 
-function Ring({ color, label, total, value }: { color: string; label: string; total: number; value: number }) {
+function Ring({ color, label, total, value, to }: { color: string; label: string; total: number; value: number; to: string }) {
   const size = 132;
   const stroke = 12;
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (percent(value, total) / 100) * circumference;
   return (
-    <div className="dashboard-ring">
+    <Link className="dashboard-ring dashboard-drilldown" to={to} aria-label={`${label}: ${value}. Открыть список`}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
         <circle cx={size / 2} cy={size / 2} fill="none" r={radius} stroke="rgba(148, 163, 184, 0.22)" strokeWidth={stroke} />
         <circle
@@ -401,6 +451,6 @@ function Ring({ color, label, total, value }: { color: string; label: string; to
         </text>
       </svg>
       <span>{label}</span>
-    </div>
+    </Link>
   );
 }
